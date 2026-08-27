@@ -72,6 +72,37 @@ Do not undo these without understanding why they are there.
   script paths with forward slashes or `\u` in the project path corrupts them.
 - **`ctx.set_prop` warns instead of failing** on an unknown engine property.
   Every warning it prints is a real TODO. Check the log after a content build.
+- **File-local helpers go in a named namespace, not an anonymous one.**
+  `SUEGT2Menu.cpp` ends its style block with a file-scope `using namespace
+  UEGT2Menu;`, and a unity build concatenates it ahead of other files in the
+  module. An anonymous namespace puts its contents at global scope, where
+  `Ink`/`Muted`/`Accent` then collide with the menu's (C2872). This is invisible
+  locally, because adaptive unity compiles *modified* files on their own - it
+  only breaks on a clean checkout. Verify with `-DisableAdaptiveUnity`.
+- **The day/night cycle is force-frozen during captures.**
+  `AUEGT2SkyController::BeginPlay` sets `DayLengthMinutes = 0` when
+  `UUEGT2CaptureSubsystem::IsCaptureRequested()` or `IsWalkSmokeRequested()` is
+  true. Without it `Screenshot-Tour.ps1` produces a different image every run.
+- **The map wins over C++ defaults on placed actors.** `lighting.py` serialises
+  `day_length_minutes = 0.0`, so the cycle is switched on by promoting a zero
+  value in `BeginPlay`, not by changing the property default.
+- **`polyline_field` must be given a margin.** Without one it scans the entire
+  grid per road segment: at 4033 x 4033 that is 16 million samples times roughly
+  1500 segments, allocating six full-size temporaries each time, and the road
+  pass does not finish. Windowed to each segment plus a margin it is 177 seconds
+  for the whole terrain. The margin must exceed the widest falloff the caller
+  applies, or distant samples silently keep distance 1e12.
+- **`is_street` includes the Newhaven grid.** Anything that means "town street"
+  has to filter on `not is_city` too, or it will lay cottages down city avenues.
+- **Fixed attempt counts do not survive a bigger map.** Scatter loops written as
+  `range(900)` quarter in density when the extent doubles. Scale by area.
+- **Auto exposure has to follow the time of day, or night renders pure black.**
+  `lighting.py` bakes `auto_exposure_min_brightness = 10.5` *EV100* into the post
+  process volume - that is a daylight floor. A moonlit scene sits near EV 0, so a
+  fixed floor clamps it about ten stops too dark and the screen is black with a
+  completely clean log. `AUEGT2SkyController::ApplySky` slides the min/max EV
+  window down with the sun; the day values match what lighting.py writes, so
+  noon is unchanged. Brightening the moon alone does not fix this.
 
 ## Adding things
 
@@ -81,6 +112,10 @@ Do not undo these without understanding why they are there.
 | A plant or rock species | A `Species(...)` entry in `nature._rules()` |
 | A usable object | Subclass `AUEGT2InteractableActor`, implement `OnInteract`, place it in `gameplay.py` |
 | A setting | `UPROPERTY(Config)` on `UUEGT2GameUserSettings` + getter/setter + a row in `SUEGT2Menu.cpp` |
+| A dev mode control | Getter/setter on `UUEGT2DevModeSubsystem`, then a row in the matching `BuildDev*Tab()` |
+| A weather preset | An `EUEGT2Weather` entry + a row in `UEGT2WeatherTable::Presets`; the tests check the table |
+| A city building | A generator in `gen_city.py`, one line in `meshbuild._catalog()`, one entry in `city.CITY_BUILDINGS` and its ring |
+| More map | `COMPONENT_COUNT` in `world_config.py`; it must stay `count * sections * quads + 1` |
 | A colour | `Tools/Python/uegt2/palette.py` — it is the only place colours live |
 | A world feature (road, region, river) | `Tools/Terrain/world_config.py`, then re-run the terrain script |
 | A screenshot viewpoint | `UUEGT2CaptureSubsystem::GetTour()` |
@@ -99,8 +134,9 @@ Do not undo these without understanding why they are there.
 ## Git
 
 - Work on focused branches; keep `main` buildable.
-- `Content/` holds generated `.uasset`/`.umap` binaries and IS committed, so a
-  clone can be opened and packaged without a full regeneration.
+- `Content/` holds the generated `.uasset` binaries and IS committed (~5 MB), so
+  the materials, meshes and audio come with a clone. **The map does not.** See
+  below.
 - `Tools/Terrain/Output/` and `Tools/Audio/Output/` are NOT committed. Recreate
   them with `Scripts/Setup-Project.ps1`, or the two `generate_*.py` scripts
   directly; the content build needs them and will say so if they are missing.
@@ -109,17 +145,29 @@ Do not undo these without understanding why they are there.
   order logs there containing absolute user paths.
 - Never commit credentials or absolute engine paths.
 
-### The map is big
+### The map is not committed
 
-`Content/Maps/L_Fairhaven.umap` is ~54 MB and is rewritten *whole* by every
-content build. It is committed directly (no LFS) so a clone is immediately
-usable and nobody needs git-lfs. The cost is that each committed rebuild adds
-another ~54 MB of history.
+`Content/Maps/L_Fairhaven.umap` is a **build artifact** and is gitignored.
 
-So: **do not commit a map rebuild unless the world actually changed.** If the
-history does start to grow, the options in order of preference are
+It used to be committed at ~54 MB, on the reasoning that a clone should be
+immediately usable. Growing the landscape to 4033 ended that: the map is now
+~195 MB, which is past GitHub's **100 MB per-file hard limit**, so it cannot be
+pushed at all. This is option 1 of the two that used to be listed here, applied
+to the file that actually grows rather than to all of `Content/`:
 
-1. stop committing `Content/` and rely on `Scripts/Setup-Project.ps1`, which
-   regenerates the entire world in about two minutes, or
-2. move `*.umap` / `*.uasset` to Git LFS — noting that on a *public* repo every
-   clone draws on the owner's LFS bandwidth quota.
+- everything else under `Content/` is small and stable (~5 MB of materials,
+  meshes and audio) and stays committed;
+- the map is rewritten *whole* by every content build, so committing it added
+  its full size to history every time.
+
+Git LFS was the other option and was rejected for the reason already noted: on a
+*public* repo every clone draws on the owner's LFS bandwidth quota, and at
+195 MB a handful of clones would exhaust the free tier.
+
+**What a clone has to do:** run `./Scripts/Setup-Project.ps1`, which generates
+the terrain, builds both targets, rebuilds the world and packages it. Budget
+about ten minutes. `./Scripts/Build-Content.ps1 -Stages all` alone rebuilds just
+the map, in about two minutes, once the terrain output exists.
+
+If the map ever needs to ship with the repo again, LFS is the route, and it is
+one `git lfs track "*.umap"` away.

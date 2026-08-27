@@ -60,6 +60,8 @@ AUEGT2Character::AUEGT2Character()
 	Movement->NavAgentProps.bCanCrouch = true;
 	Movement->CrouchedHalfHeight = 52.0f;
 	Movement->bMaintainHorizontalGroundVelocity = true;
+
+	DefaultJumpMaxCount = JumpMaxCount;
 }
 
 void AUEGT2Character::BeginPlay()
@@ -122,6 +124,10 @@ void AUEGT2Character::BindInputActions(UEnhancedInputComponent* Input, UUEGT2Inp
 	Input->BindAction(Config->SprintAction, ETriggerEvent::Started, this, &AUEGT2Character::OnSprintStarted);
 	Input->BindAction(Config->SprintAction, ETriggerEvent::Completed, this, &AUEGT2Character::OnSprintStopped);
 	Input->BindAction(Config->CrouchAction, ETriggerEvent::Started, this, &AUEGT2Character::OnCrouchToggle);
+	// Held jump/crouch ascend and descend, but only while flying. Reusing the
+	// existing actions keeps flight off the rebind list entirely.
+	Input->BindAction(Config->JumpAction, ETriggerEvent::Triggered, this, &AUEGT2Character::OnFlyUp);
+	Input->BindAction(Config->CrouchAction, ETriggerEvent::Triggered, this, &AUEGT2Character::OnFlyDown);
 	Input->BindAction(Config->InteractAction, ETriggerEvent::Started, this, &AUEGT2Character::OnInteract);
 }
 
@@ -132,9 +138,14 @@ void AUEGT2Character::OnMove(const FInputActionValue& Value)
 	{
 		return;
 	}
-	const FRotator YawOnly(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
-	AddMovementInput(FRotationMatrix(YawOnly).GetUnitAxis(EAxis::X), Axis.Y);
-	AddMovementInput(FRotationMatrix(YawOnly).GetUnitAxis(EAxis::Y), Axis.X);
+	// Flying follows the full camera rotation, so looking up and holding
+	// forward climbs. On foot it stays yaw-only or you would walk into the
+	// ground every time you looked down.
+	const FRotator Basis = bFlying
+		? Controller->GetControlRotation()
+		: FRotator(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
+	AddMovementInput(FRotationMatrix(Basis).GetUnitAxis(EAxis::X), Axis.Y);
+	AddMovementInput(FRotationMatrix(Basis).GetUnitAxis(EAxis::Y), Axis.X);
 }
 
 void AUEGT2Character::OnLook(const FInputActionValue& Value)
@@ -150,6 +161,10 @@ void AUEGT2Character::OnLook(const FInputActionValue& Value)
 
 void AUEGT2Character::OnJumpStarted()
 {
+	if (bFlying)
+	{
+		return;
+	}
 	if (GetCharacterMovement()->IsMovingOnGround() && JumpSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, JumpSound, GetActorLocation(), 0.5f);
@@ -190,6 +205,10 @@ void AUEGT2Character::OnSprintStopped()
 
 void AUEGT2Character::OnCrouchToggle()
 {
+	if (bFlying)
+	{
+		return;
+	}
 	if (bIsCrouched)
 	{
 		UnCrouch();
@@ -206,6 +225,94 @@ void AUEGT2Character::OnInteract()
 	if (Interaction)
 	{
 		Interaction->TryInteract();
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Dev mode
+// ---------------------------------------------------------------------------
+void AUEGT2Character::SetGodMode(bool bEnabled)
+{
+	bGodMode = bEnabled;
+	SetCanBeDamaged(!bEnabled);
+	// Fairhaven has no damage sources yet, so the observable half of god mode
+	// is the jump count. SetCanBeDamaged is here so it keeps meaning something
+	// the moment a hazard exists.
+	JumpMaxCount = bEnabled ? 999 : DefaultJumpMaxCount;
+	UE_LOG(LogUEGT2Player, Log, TEXT("God mode %s."), bEnabled ? TEXT("on") : TEXT("off"));
+}
+
+void AUEGT2Character::SetFlyEnabled(bool bEnabled)
+{
+	if (bFlying == bEnabled)
+	{
+		return;
+	}
+	bFlying = bEnabled;
+
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	if (bEnabled)
+	{
+		if (bIsCrouched)
+		{
+			UnCrouch();
+		}
+		Movement->SetMovementMode(MOVE_Flying);
+	}
+	else
+	{
+		// Clearing flight clears noclip too: falling through the world with
+		// collision off is not a state anyone wants to land in.
+		SetNoclipEnabled(false);
+		Movement->SetMovementMode(MOVE_Falling);
+	}
+	UE_LOG(LogUEGT2Player, Log, TEXT("Fly %s."), bEnabled ? TEXT("on") : TEXT("off"));
+}
+
+void AUEGT2Character::SetNoclipEnabled(bool bEnabled)
+{
+	if (bNoclip == bEnabled)
+	{
+		return;
+	}
+	bNoclip = bEnabled;
+
+	if (bEnabled)
+	{
+		// Noclip is flight plus no collision; asking for it alone would leave
+		// you standing on the ground inside the terrain.
+		SetFlyEnabled(true);
+	}
+	SetActorEnableCollision(!bEnabled);
+	UE_LOG(LogUEGT2Player, Log, TEXT("Noclip %s."), bEnabled ? TEXT("on") : TEXT("off"));
+}
+
+void AUEGT2Character::SetSpeedMultiplier(float Multiplier)
+{
+	SpeedMultiplier = FMath::Clamp(Multiplier, 1.0f, 50.0f);
+}
+
+void AUEGT2Character::ClearDevMovement()
+{
+	SetNoclipEnabled(false);
+	SetFlyEnabled(false);
+	SetGodMode(false);
+	SetSpeedMultiplier(1.0f);
+}
+
+void AUEGT2Character::OnFlyUp()
+{
+	if (bFlying)
+	{
+		AddMovementInput(FVector::UpVector, 1.0f);
+	}
+}
+
+void AUEGT2Character::OnFlyDown()
+{
+	if (bFlying)
+	{
+		AddMovementInput(FVector::UpVector, -1.0f);
 	}
 }
 
@@ -278,7 +385,12 @@ void AUEGT2Character::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	GetCharacterMovement()->MaxWalkSpeed = DesiredMaxSpeed();
+	UCharacterMovementComponent* Movement = GetCharacterMovement();
+	Movement->MaxWalkSpeed = DesiredMaxSpeed() * SpeedMultiplier;
+	Movement->MaxWalkSpeedCrouched = CrouchSpeed * SpeedMultiplier;
+	Movement->MaxSwimSpeed = SwimSpeed * SpeedMultiplier;
+	Movement->MaxFlySpeed = FlySpeed * SpeedMultiplier * (bSprinting ? FlySprintScale : 1.0f);
+
 	UpdateHeadBob(DeltaSeconds);
 	UpdateFieldOfView(DeltaSeconds);
 }

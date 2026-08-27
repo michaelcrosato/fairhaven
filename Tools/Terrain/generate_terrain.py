@@ -55,7 +55,13 @@ def build_height(seed: int):
     coast_wiggle = ns.fbm(1, size, 2.6, seed + 17, octaves=4)[0, :] * 5200.0
     headland = 26000.0 * ns.smoothstep(34000.0, 96000.0, axis)
     southern_bay = -13000.0 * ns.smoothstep(-24000.0, -74000.0, axis)
-    coast_y = (C.COAST_Y + coast_wiggle + headland + southern_bay).astype(np.float32)
+    # The far south swings the shoreline back out to sea. That shelf is the flat
+    # coastal land Newhaven stands on; without it the southern half of the
+    # larger map would be nothing but open water.
+    south_shelf = C.SOUTH_SHELF_AMOUNT * ns.smoothstep(
+        C.SOUTH_SHELF_START_X, C.SOUTH_SHELF_FULL_X, axis)
+    coast_y = (C.COAST_Y + coast_wiggle + headland + southern_bay
+               + south_shelf).astype(np.float32)
     coast_row = coast_y[None, :]
     inland = (coast_row - wy).astype(np.float32)     # >0 on land, <0 at sea
 
@@ -128,7 +134,7 @@ def build_height(seed: int):
     channel_pts = [(C.LAGOON_CENTER[0], C.LAGOON_CENTER[1], -3.0),
                    (C.LAGOON_CENTER[0] + 12000.0, C.LAGOON_CENTER[1] + 4000.0, -2.5),
                    (-38000.0, 22000.0, -2.0), (-30000.0, 30000.0, -2.0)]
-    ch_d, ch_e = geom.polyline_field(wx, wy, channel_pts, attr_index=2)
+    ch_d, ch_e = geom.polyline_field(wx, wy, channel_pts, attr_index=2, margin=9000.0)
     ch_t = (1.0 - ns.smoothstep(1400.0, 4200.0, ch_d)) * tropics_mask
     height = height * (1.0 - ch_t) + ch_e * ch_t
 
@@ -147,6 +153,23 @@ def carve_town(height, ctx, seed):
                + 2.1 * ns.fbm(C.SIZE, C.SIZE, 7.0, seed + 1301, octaves=3)
                - 1.6 * ns.smoothstep(0.0, C.TOWN_RADIUS, d))
     strength = np.power(t, 0.75, dtype=np.float32)
+    return (height * (1.0 - strength) + terrace * strength).astype(np.float32)
+
+
+def carve_city(height, ctx, seed):
+    """Flatten Newhaven onto a coastal shelf so a rectilinear grid sits on it.
+
+    A city needs a flatter platform than the town does. Blocks are rectangular
+    and buildings are tall, so residual slope that reads as charm under a
+    cottage reads as a tower floating at one corner.
+    """
+    wx, wy = ctx["wx"], ctx["wy"]
+    d = np.hypot(wx - np.float32(C.CITY_CENTER[0]), wy - np.float32(C.CITY_CENTER[1]))
+    t = 1.0 - ns.smoothstep(C.CITY_RADIUS, C.CITY_RADIUS + C.CITY_FALLOFF, d)
+    terrace = (C.CITY_HEIGHT_M
+               + 1.1 * ns.fbm(C.SIZE, C.SIZE, 9.0, seed + 1601, octaves=3)
+               - 0.9 * ns.smoothstep(0.0, C.CITY_RADIUS, d))
+    strength = np.power(t, 0.6, dtype=np.float32)
     return (height * (1.0 - strength) + terrace * strength).astype(np.float32)
 
 
@@ -172,7 +195,8 @@ def carve_ponds(height, ctx, seed):
 def carve_river(height, ctx):
     """Cut a valley and channel along the river; returns (height, channel mask)."""
     wx, wy = ctx["wx"], ctx["wy"]
-    d, elev = geom.polyline_field(wx, wy, C.RIVER_POINTS, attr_index=2)
+    d, elev = geom.polyline_field(wx, wy, C.RIVER_POINTS, attr_index=2,
+                                  margin=C.RIVER_VALLEY_WIDTH * 2.0)
 
     valley_t = (1.0 - ns.smoothstep(C.RIVER_VALLEY_WIDTH * 0.25,
                                     C.RIVER_VALLEY_WIDTH, d)) * 0.72
@@ -191,17 +215,22 @@ def carve_roads(height, ctx):
     road_mask = np.zeros(height.shape, dtype=np.float32)
     exported = []
 
-    definitions = [(name, width, pts, False) for name, width, pts in C.ROADS]
-    definitions += [("TownStreet%d" % i, C.TOWN_STREET_WIDTH, pts, True)
+    definitions = [(name, width, pts, False, False) for name, width, pts in C.ROADS]
+    definitions += [("TownStreet%d" % i, C.TOWN_STREET_WIDTH, pts, True, False)
                     for i, pts in enumerate(C.TOWN_STREETS)]
+    # The city grid is carved exactly like the town streets, which is what keeps
+    # the blocks and the terrain agreeing on where the roadway is.
+    definitions += [(name, width, pts, True, True)
+                    for name, width, pts in C.city_streets()]
 
-    for name, width, points, is_street in definitions:
+    for name, width, points, is_street, is_city in definitions:
         dense = geom.densify(points, 700.0)
         raw = [geom.sample_bilinear(height, p[0], p[1], C.ORIGIN_UU, C.QUAD_UU) for p in dense]
         graded = geom.smooth_profile(raw, 5 if is_street else 13, passes=4)
         spline = [[p[0], p[1], e] for p, e in zip(dense, graded)]
 
-        d, elev = geom.polyline_field(wx, wy, spline, attr_index=2)
+        d, elev = geom.polyline_field(wx, wy, spline, attr_index=2,
+                                      margin=width * 8.0 + 4000.0)
         surface_t = 1.0 - ns.smoothstep(width * 0.55, width * 1.15, d)
         shoulder_t = 1.0 - ns.smoothstep(width, width * 4.2, d)
 
@@ -210,6 +239,7 @@ def carve_roads(height, ctx):
         road_mask = np.maximum(road_mask, surface_t)
 
         exported.append({"name": name, "width_uu": width, "is_street": is_street,
+                         "is_city": is_city,
                          "points": [[round(v, 1) for v in p] for p in spline]})
 
     return height.astype(np.float32), road_mask, exported
@@ -254,6 +284,10 @@ def build_weights(height, ctx, road_mask, river_mask, seed):
     town_d = np.hypot(wx - np.float32(C.TOWN_CENTER[0]), wy - np.float32(C.TOWN_CENTER[1]))
     town_t = 1.0 - ns.smoothstep(C.TOWN_RADIUS * 0.7, C.TOWN_RADIUS + C.TOWN_FALLOFF * 0.6, town_d)
 
+    city_d = np.hypot(wx - np.float32(C.CITY_CENTER[0]), wy - np.float32(C.CITY_CENTER[1]))
+    city_t = 1.0 - ns.smoothstep(C.CITY_RADIUS * 0.8,
+                                 C.CITY_RADIUS + C.CITY_FALLOFF * 0.5, city_d)
+
     w = {}
 
     # Sand: beaches, shallow seabed, low river banks (not alpine gorges).
@@ -280,16 +314,21 @@ def build_weights(height, ctx, road_mask, river_mask, seed):
     farm = ctx["farm_mask"] * (1.0 - ns.smoothstep(7.0, 16.0, slope))
     farm = farm * (1.0 - town_t) * ns.smoothstep(5.0, 14.0, height)
     farm = farm * crop * (1.0 - hedge) * (1.0 - ctx["tropics_mask"] * 0.8)
+    farm = farm * (1.0 - city_t)
     w["Farm"] = np.clip(farm, 0.0, 1.0)
 
     # Jungle floor: dark humid soil in the south.
     jungle = ctx["tropics_mask"] * (1.0 - ns.smoothstep(30.0, 46.0, slope))
     jungle = jungle * ns.smoothstep(0.5, 7.0, height) * (0.7 + 0.3 * variation)
+    jungle = jungle * (1.0 - city_t)
     w["Jungle"] = np.clip(jungle, 0.0, 1.0)
 
     # Dirt: roads and worn town ground only. A slope term was tried here and
     # removed: it turned every moderate hillside brown. Rock covers slopes.
     dirt = np.maximum(road_mask, town_t * (0.55 + 0.35 * fine))
+    # Newhaven paves harder than the town does. There is no Paving layer, so
+    # Dirt at high weight is what reads as a made surface under the blocks.
+    dirt = np.maximum(dirt, city_t * (0.74 + 0.20 * fine))
     w["Dirt"] = np.clip(dirt, 0.0, 1.0)
 
     # Grass fills whatever is left on land.
@@ -376,6 +415,10 @@ def write_previews(height, weights, out_dir, roads, ponds):
     tc = to_px(C.TOWN_CENTER[0], C.TOWN_CENTER[1])
     tr = C.TOWN_RADIUS / C.QUAD_UU / step
     draw.ellipse([tc[0] - tr, tc[1] - tr, tc[0] + tr, tc[1] + tr], outline=(255, 90, 90), width=2)
+    cc = to_px(C.CITY_CENTER[0], C.CITY_CENTER[1])
+    cr = C.CITY_RADIUS / C.QUAD_UU / step
+    draw.ellipse([cc[0] - cr, cc[1] - cr, cc[0] + cr, cc[1] + cr],
+                 outline=(255, 170, 60), width=3)
     img.transpose(Image.Transpose.ROTATE_90).save(os.path.join(out_dir, "preview_relief.png"))
 
     stack = np.stack([weights[name][::step, ::step] for name in C.LAYERS], axis=0)
@@ -407,9 +450,10 @@ def main():
     log("base terrain built  min=%.1f m  max=%.1f m" % (height.min(), height.max()))
 
     height = carve_town(height, ctx, args.seed)
+    height = carve_city(height, ctx, args.seed)
     height, ponds = carve_ponds(height, ctx, args.seed)
     height, river_mask = carve_river(height, ctx)
-    log("town terrace, %d ponds and river carved" % len(ponds))
+    log("town and city terraces, %d ponds and river carved" % len(ponds))
 
     height, road_mask, roads = carve_roads(height, ctx)
     log("%d road corridors carved" % len(roads))
@@ -423,6 +467,16 @@ def main():
     weights = build_weights(height, ctx, road_mask, river_mask, args.seed)
     coverage = dict((name, float(weights[name].mean())) for name in C.LAYERS)
     log("layer coverage: " + ", ".join("%s=%.1f%%" % (k, v * 100) for k, v in coverage.items()))
+
+    # Anything over MAX_ENCODABLE_M clips flat to white in the uint16 heightmap,
+    # which reads as a mesa where a peak should be. Warn rather than let that
+    # pass silently, then clamp with a little headroom.
+    ceiling = C.MAX_ENCODABLE_M - 4.0
+    over = float((height > ceiling).mean())
+    if over > 0.0:
+        log("WARNING: %.4f%% of the map is above %.0f m and was clamped"
+            % (over * 100.0, ceiling))
+    height = np.clip(height, -C.MAX_ENCODABLE_M + 4.0, ceiling).astype(np.float32)
 
     h16 = np.clip(C.metres_to_h16(height), 0, 65535).astype("<u2")
     h16.tofile(os.path.join(args.out, "heightmap.r16"))
@@ -448,6 +502,20 @@ def main():
         "height_range_m": [float(height.min()), float(height.max())],
         "town": {"center": list(C.TOWN_CENTER), "radius_uu": C.TOWN_RADIUS,
                  "height_m": C.TOWN_HEIGHT_M},
+        "city": {
+            "name": "Newhaven",
+            "center": list(C.CITY_CENTER),
+            "radius_uu": C.CITY_RADIUS,
+            "height_m": C.CITY_HEIGHT_M,
+            "angle_deg": math.degrees(C.CITY_ANGLE),
+            "block_u": C.CITY_BLOCK_U,
+            "block_v": C.CITY_BLOCK_V,
+            "street_width_uu": C.CITY_STREET_WIDTH,
+            "avenue_width_uu": C.CITY_AVENUE_WIDTH,
+            "core_radius_uu": C.CITY_CORE_RADIUS,
+            "mid_radius_uu": C.CITY_MID_RADIUS,
+            "blocks": C.city_blocks(),
+        },
         "coast": coast_points,
         "river": {"width_uu": C.RIVER_CHANNEL_WIDTH,
                   "points": [[round(v, 1) for v in p] for p in geom.densify(C.RIVER_POINTS, 1200.0)]},

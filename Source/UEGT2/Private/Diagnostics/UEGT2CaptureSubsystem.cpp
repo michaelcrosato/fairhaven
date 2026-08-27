@@ -98,6 +98,18 @@ const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
 			TEXT("High overlook back toward the town and coast"));
 		Add(TEXT("Vista"), 70000.0f, 20000.0f, 320.0f, 200.0f, -22.0f,
 			TEXT("Mountain vista over the whole region"));
+		// Newhaven, on the southern coastal shelf.
+		// On the centre avenue, not on a block. The capture traces straight down
+		// for the ground, so a point inside a block lands on a roof.
+		Add(TEXT("Newhaven"), -123088.0f, 5153.0f, 1.8f, 99.0f, 3.0f,
+			TEXT("Downtown Newhaven looking up the avenue"));
+		Add(TEXT("NewhavenSkyline"), -162000.0f, -14000.0f, 70.0f, 40.0f, -3.0f,
+			TEXT("The Newhaven skyline from the southern approach"));
+		Add(TEXT("NewhavenWharf"), -125000.0f, 44000.0f, 4.0f, -90.0f, -2.0f,
+			TEXT("The container wharf looking back at the city"));
+		Add(TEXT("NewhavenAerial"), -120220.0f, -12617.0f, 260.0f, 99.0f, -30.0f,
+			TEXT("Newhaven street grid from above"));
+
 		// Development-only: the asset showcase grid (see Tools/Python/uegt2/showcase.py).
 		Add(TEXT("ShowcaseA"), 27200.0f, -57500.0f, 3.4f, 90.0f, -3.0f,
 			TEXT("Asset showcase, front row"));

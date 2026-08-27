@@ -69,6 +69,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Diagnostics")
 	bool IsDiagnosticsVisible() const { return bDiagnosticsVisible; }
 
+	/** Set it directly, so the dev menu and the F3 key agree. */
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Diagnostics")
+	void SetDiagnosticsVisible(bool bVisible) { bDiagnosticsVisible = bVisible; }
+
 private:
 	void ApplyMenuState(EUEGT2MenuState NewState);
 	/** Bind the pawn's own actions. Safe to call from either possession or

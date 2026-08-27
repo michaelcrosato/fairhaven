@@ -42,17 +42,20 @@ HOUSE_DEPTH = {
 class Placer(object):
     """Spawns static mesh actors and keeps them from overlapping."""
 
-    def __init__(self, world_data, meshes):
+    def __init__(self, world_data, meshes, label_prefix=LABEL_PREFIX):
         self.wd = world_data
         self.meshes = meshes
         self.subsystem = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
         self.occupied = []           # (x, y, radius)
         self.count = 0
+        # Parameterised so the Newhaven stage can reuse the same spawner and
+        # overlap rejection without clearing the town on the way past.
+        self.prefix = label_prefix
 
     def clear(self):
         removed = 0
         for actor in self.subsystem.get_all_level_actors():
-            if actor.get_actor_label().startswith(LABEL_PREFIX):
+            if actor.get_actor_label().startswith(self.prefix):
                 self.subsystem.destroy_actor(actor)
                 removed += 1
         return removed
@@ -81,7 +84,7 @@ class Placer(object):
             return None
         mesh = self.meshes.get(mesh_name)
         if mesh is None:
-            ctx.warn("town: mesh %s missing" % mesh_name)
+            ctx.warn("%s: mesh %s missing" % (self.prefix.strip(), mesh_name))
             return None
 
         z = self.ground(wx, wy, footprint) + z_offset
@@ -96,7 +99,7 @@ class Placer(object):
         component.set_editor_property("mobility", unreal.ComponentMobility.STATIC)
         if scale != 1.0:
             actor.set_actor_scale3d(unreal.Vector(scale, scale, scale))
-        actor.set_actor_label("%s%s" % (LABEL_PREFIX, label))
+        actor.set_actor_label("%s%s" % (self.prefix, label))
 
         if radius > 0.0:
             self.reserve(wx, wy, radius)
@@ -132,7 +135,10 @@ def _walk(points, step):
 # ---------------------------------------------------------------------------
 def _place_streets(placer, rng):
     """Houses along both sides of every town street, plus lamps and benches."""
-    streets = [r for r in placer.wd.roads if r["is_street"]]
+    # is_city matters: the city grid is also flagged is_street, and without
+    # this the town stage would line Newhaven avenues with thatched cottages.
+    streets = [r for r in placer.wd.roads
+               if r["is_street"] and not r.get("is_city")]
     houses = 0
     lamps = 0
 
@@ -335,7 +341,11 @@ def _place_farms(placer, rng):
     # Scarecrows in the middle of tilled fields.
     scarecrows = 0
     extent = placer.wd.extent - 6000.0
-    for i in range(900):
+    # Fixed attempt counts silently thin out when the map grows, so scale with
+    # area against the 2 km world these numbers were tuned on.
+    area_scale = (placer.wd.extent / 100800.0) ** 2
+    attempts = int(900 * area_scale)
+    for i in range(attempts):
         wx = rng.uniform(-extent, extent)
         wy = rng.uniform(-extent, extent)
         if placer.wd.weight_at("Farm", wx, wy) < 0.35:

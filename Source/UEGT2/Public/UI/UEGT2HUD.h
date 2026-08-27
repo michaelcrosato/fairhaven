@@ -30,6 +30,8 @@ private:
 	void DrawPrompt(float CentreX, float CentreY);
 	void DrawMessage(float CentreX, float ScreenHeight);
 	void DrawDiagnostics(AUEGT2Character* Explorer);
+	/** Top-right banner listing whatever dev mode currently has switched on. */
+	void DrawDevStatus(float ScreenWidth);
 
 	FText CurrentMessage;
 	float MessageExpiry = 0.0f;

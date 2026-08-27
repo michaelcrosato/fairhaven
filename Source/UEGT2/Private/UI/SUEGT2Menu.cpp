@@ -1,5 +1,8 @@
 #include "SUEGT2Menu.h"
 
+#include "Dev/UEGT2DevModeSubsystem.h"
+#include "Diagnostics/UEGT2CaptureSubsystem.h"
+
 #include "Framework/Application/SlateApplication.h"
 #include "Player/UEGT2InputConfig.h"
 #include "Settings/UEGT2GameUserSettings.h"
@@ -120,6 +123,21 @@ namespace
 	UUEGT2GameUserSettings* Settings()
 	{
 		return UUEGT2GameUserSettings::Get();
+	}
+
+	/** The dev subsystem for the menu's controller, or null outside a world. */
+	UUEGT2DevModeSubsystem* DevOf(const TWeakObjectPtr<AUEGT2PlayerController>& WeakPC)
+	{
+		const AUEGT2PlayerController* PC = WeakPC.Get();
+		return PC ? UUEGT2DevModeSubsystem::Get(PC->GetWorld()) : nullptr;
+	}
+
+	/** 13.75 -> "13:45". */
+	FText HourText(float Hours)
+	{
+		const int32 Whole = FMath::Clamp(FMath::FloorToInt(Hours), 0, 23);
+		const int32 Minutes = FMath::Clamp(FMath::RoundToInt((Hours - Whole) * 60.0f), 0, 59);
+		return FText::FromString(FString::Printf(TEXT("%02d:%02d"), Whole, Minutes));
 	}
 
 	FText QualityName(int32 Level)
@@ -280,13 +298,23 @@ void SUEGT2Menu::SelectTab(EUEGT2SettingsTab InTab)
 	Rebuild();
 }
 
+void SUEGT2Menu::SelectDevTab(EUEGT2DevTab InDevTab)
+{
+	DevTab = InDevTab;
+	PendingRebind.Reset();
+	Rebuild();
+}
+
 void SUEGT2Menu::Rebuild()
 {
 	if (!ContentHost.IsValid())
 	{
 		return;
 	}
-	ContentHost->SetContent(Page == EUEGT2MenuPage::Root ? BuildRoot() : BuildSettings());
+	ContentHost->SetContent(
+		Page == EUEGT2MenuPage::Root    ? BuildRoot() :
+		Page == EUEGT2MenuPage::DevMode ? BuildDevMode() :
+		                                  BuildSettings());
 }
 
 void SUEGT2Menu::ApplyAndSave(bool bResolutionToo)
@@ -344,6 +372,7 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 	}
 
 	AddButton(LOCTEXT("Settings", "Settings"), [this]() { GoToPage(EUEGT2MenuPage::Settings); });
+	AddButton(LOCTEXT("DevMode", "Dev Mode"), [this]() { GoToPage(EUEGT2MenuPage::DevMode); });
 
 	if (!bMain)
 	{
@@ -796,6 +825,416 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 }
 
 // ---------------------------------------------------------------------------
+// Dev mode page
+// ---------------------------------------------------------------------------
+TSharedRef<SWidget> SUEGT2Menu::BuildDevMode()
+{
+	TSharedRef<SHorizontalBox> DevTabs = SNew(SHorizontalBox);
+	auto AddDevTab = [this, &DevTabs](const FText& Text, EUEGT2DevTab Which)
+	{
+		DevTabs->AddSlot().AutoWidth().Padding(0, 0, 8, 0)
+		[
+			SNew(SButton)
+			.ButtonStyle(&TabStyle(DevTab == Which))
+			.OnClicked_Lambda([this, Which]() { SelectDevTab(Which); return FReply::Handled(); })
+			[ Label(Text, 13, DevTab == Which ? Ink : Muted, "Bold") ]
+		];
+	};
+	AddDevTab(LOCTEXT("DevTabPlayer", "Player"), EUEGT2DevTab::Player);
+	AddDevTab(LOCTEXT("DevTabWorld", "World"), EUEGT2DevTab::World);
+	AddDevTab(LOCTEXT("DevTabDisplay", "Display"), EUEGT2DevTab::Display);
+	AddDevTab(LOCTEXT("DevTabTeleport", "Teleport"), EUEGT2DevTab::Teleport);
+
+	TSharedRef<SWidget> Body =
+		DevTab == EUEGT2DevTab::Player  ? BuildDevPlayerTab() :
+		DevTab == EUEGT2DevTab::World   ? BuildDevWorldTab() :
+		DevTab == EUEGT2DevTab::Display ? BuildDevDisplayTab() :
+		                                  BuildDevTeleportTab();
+
+	return SNew(SBox).WidthOverride(720.0f)
+	[
+		SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			Label(LOCTEXT("DevTitle", "DEV MODE"), 30, Ink, "Bold")
+		]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0, 5, 0, 0)
+		[
+			Label(LOCTEXT("DevSubtitle", "free camera, world controls and diagnostics"), 12, Muted)
+		]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0, 18, 0, 14)
+		[
+			DevTabs
+		]
+		+ SVerticalBox::Slot().FillHeight(1.0f)
+		[
+			SNew(SBox).HeightOverride(420.0f)
+			[
+				SNew(SScrollBox)
+				+ SScrollBox::Slot()
+				[
+					Body
+				]
+			]
+		]
+		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Left).Padding(0, 18, 0, 0)
+		[
+			SNew(SBox).WidthOverride(150.0f).HeightOverride(40.0f)
+			[
+				MenuButton(LOCTEXT("Back", "Back"), FOnClicked::CreateLambda([this]()
+				{
+					GoToPage(EUEGT2MenuPage::Root);
+					return FReply::Handled();
+				}), 14)
+			]
+		]
+	];
+}
+
+TSharedRef<SWidget> SUEGT2Menu::BuildDevPlayerTab()
+{
+	TSharedRef<SVerticalBox> List = SNew(SVerticalBox);
+	const TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	// Resolved on every read rather than captured once: the subsystem dies with
+	// the world, and this menu outlives a quit to the front end.
+	auto D = [WeakPC]() { return DevOf(WeakPC); };
+
+	if (!D())
+	{
+		List->AddSlot().AutoHeight()
+		[ Label(LOCTEXT("DevNoWorld", "No world loaded."), 13, Muted) ];
+		return List;
+	}
+
+	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
+	[ Label(LOCTEXT("DevHeadingMaster", "DEV MODE"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevEnabled", "Enable Dev Mode"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsDevModeEnabled(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetDevModeEnabled(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 12)
+	[ Label(LOCTEXT("DevEnabledHint", "Turning it off restores walking, collision, jumps and speed."), 11, Muted) ];
+
+	if (!D()->HasPlayer())
+	{
+		List->AddSlot().AutoHeight().Padding(0, 10)
+		[ Label(LOCTEXT("DevNoPawn", "Start playing to use the player controls."), 12, Muted) ];
+		return List;
+	}
+
+	List->AddSlot().AutoHeight().Padding(0, 12, 0, 10)
+	[ Label(LOCTEXT("DevHeadingMovement", "MOVEMENT"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevGod", "God Mode"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsGodMode(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetGodMode(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevFly", "Fly"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsFlyEnabled(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetFlyEnabled(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevNoclip", "Noclip"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsNoclipEnabled(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetNoclipEnabled(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("DevNoclipHint", "Noclip turns flight on; clearing flight clears noclip."), 11, Muted) ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevSpeed", "Speed"), MakeSlider(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev ? Dev->GetSpeedMultiplier() : 1.0f; },
+			[D](float Value) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetSpeedMultiplier(Value); } },
+			1.0f, 50.0f,
+			[D]()
+			{
+				UUEGT2DevModeSubsystem* Dev = D();
+				return FText::FromString(FString::Printf(TEXT("%.1fx"), Dev ? Dev->GetSpeedMultiplier() : 1.0f));
+			}))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("DevFlyHint", "Flying: W A S D follow the camera, Space up, Ctrl down, Shift faster."), 11, Muted) ];
+
+	return List;
+}
+
+TSharedRef<SWidget> SUEGT2Menu::BuildDevWorldTab()
+{
+	TSharedRef<SVerticalBox> List = SNew(SVerticalBox);
+	const TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	auto D = [WeakPC]() { return DevOf(WeakPC); };
+
+	if (!D())
+	{
+		List->AddSlot().AutoHeight()
+		[ Label(LOCTEXT("DevNoWorldW", "No world loaded."), 13, Muted) ];
+		return List;
+	}
+
+	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
+	[ Label(LOCTEXT("DevHeadingTime", "TIME OF DAY"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevTime", "Time of Day"), MakeSlider(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev ? Dev->GetTimeOfDay() : 12.0f; },
+			[D](float Value) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetTimeOfDay(Value); } },
+			0.0f, 24.0f,
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return HourText(Dev ? Dev->GetTimeOfDay() : 12.0f); }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevCycle", "Day/Night Cycle"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsDayNightCycleEnabled(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetDayNightCycleEnabled(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevDayLength", "Day Length"), MakeSlider(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev ? Dev->GetDayLengthMinutes() : 20.0f; },
+			[D](float Value) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetDayLengthMinutes(Value); } },
+			1.0f, 120.0f,
+			[D]()
+			{
+				UUEGT2DevModeSubsystem* Dev = D();
+				return FText::FromString(FString::Printf(TEXT("%.0f min"), Dev ? Dev->GetDayLengthMinutes() : 20.0f));
+			}))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 16, 0, 10)
+	[ Label(LOCTEXT("DevHeadingWeather", "WEATHER"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevWeather", "Weather"), MakeChoice(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev ? (int32)Dev->GetWeather() : 0; },
+			[D](int32 Value) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetWeather((EUEGT2Weather)Value); } },
+			[]() { return (int32)EUEGT2Weather::Count; },
+			[](int32 Value) { return GetWeatherDisplayName((EUEGT2Weather)Value); }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevFog", "Fog Density"), MakeSlider(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev ? Dev->GetFogDensity() : 0.012f; },
+			[D](float Value) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetFogDensity(Value); } },
+			0.0f, 0.25f,
+			[D]()
+			{
+				UUEGT2DevModeSubsystem* Dev = D();
+				return FText::FromString(FString::Printf(TEXT("%.3f"), Dev ? Dev->GetFogDensity() : 0.0f));
+			}))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("DevWeatherHint", "Presets change light, fog and cloud height. There is no precipitation."), 11, Muted) ];
+
+	List->AddSlot().AutoHeight().Padding(0, 16, 0, 10)
+	[ Label(LOCTEXT("DevHeadingTimeScale", "TIME SCALE"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevGameSpeed", "Game Speed"), MakeSlider(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev ? Dev->GetGameSpeed() : 1.0f; },
+			[D](float Value) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetGameSpeed(Value); } },
+			0.1f, 5.0f,
+			[D]()
+			{
+				UUEGT2DevModeSubsystem* Dev = D();
+				return FText::FromString(FString::Printf(TEXT("%.2fx"), Dev ? Dev->GetGameSpeed() : 1.0f));
+			}))
+	];
+
+	return List;
+}
+
+TSharedRef<SWidget> SUEGT2Menu::BuildDevDisplayTab()
+{
+	TSharedRef<SVerticalBox> List = SNew(SVerticalBox);
+	const TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	auto D = [WeakPC]() { return DevOf(WeakPC); };
+
+	if (!D())
+	{
+		List->AddSlot().AutoHeight()
+		[ Label(LOCTEXT("DevNoWorldD", "No world loaded."), 13, Muted) ];
+		return List;
+	}
+
+	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
+	[ Label(LOCTEXT("DevHeadingView", "VIEW"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevViewMode", "View Mode"), MakeChoice(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev ? (int32)Dev->GetViewMode() : 0; },
+			[D](int32 Value) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetViewMode((EUEGT2ViewMode)Value); } },
+			[]() { return (int32)EUEGT2ViewMode::Count; },
+			[](int32 Value)
+			{
+				switch ((EUEGT2ViewMode)Value)
+				{
+				case EUEGT2ViewMode::Unlit:     return LOCTEXT("ViewUnlit", "Unlit");
+				case EUEGT2ViewMode::Wireframe: return LOCTEXT("ViewWireframe", "Wireframe");
+				default:                        return LOCTEXT("ViewLit", "Lit");
+				}
+			}))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevCollision", "Show Collision"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsShowCollision(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetShowCollision(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 16, 0, 10)
+	[ Label(LOCTEXT("DevHeadingOverlays", "OVERLAYS"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevDiagnostics", "Diagnostics Overlay"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsDiagnosticsVisible(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetDiagnosticsVisible(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevStatFps", "stat fps"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsStatFps(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetStatFps(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevStatUnit", "stat unit"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsStatUnit(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetStatUnit(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevProbe", "Draw Interaction Probe"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsDrawInteractionProbe(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetDrawInteractionProbe(bValue); } }))
+	];
+
+	return List;
+}
+
+TSharedRef<SWidget> SUEGT2Menu::BuildDevTeleportTab()
+{
+	TSharedRef<SVerticalBox> List = SNew(SVerticalBox);
+	const TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	auto D = [WeakPC]() { return DevOf(WeakPC); };
+
+	if (!D())
+	{
+		List->AddSlot().AutoHeight()
+		[ Label(LOCTEXT("DevNoWorldT", "No world loaded."), 13, Muted) ];
+		return List;
+	}
+
+	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
+	[ Label(LOCTEXT("DevHeadingPosition", "POSITION"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([D]()
+		{
+			UUEGT2DevModeSubsystem* Dev = D();
+			if (!Dev || !Dev->HasPlayer())
+			{
+				return LOCTEXT("DevNoPawnShort", "No pawn.");
+			}
+			const FVector Location = Dev->GetPlayerLocation();
+			return FText::FromString(FString::Printf(TEXT("X %.0f    Y %.0f    Z %.0f"),
+				Location.X, Location.Y, Location.Z));
+		})
+		.Font(Font("Regular", 13))
+		.ColorAndOpacity(FSlateColor(Ink))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 12)
+	[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 10, 0)
+		[
+			SNew(SBox).WidthOverride(160.0f).HeightOverride(38.0f)
+			[
+				MenuButton(LOCTEXT("DevSavePos", "Save Position"), FOnClicked::CreateLambda([D]()
+				{
+					if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SavePosition(); }
+					return FReply::Handled();
+				}), 12)
+			]
+		]
+		+ SHorizontalBox::Slot().AutoWidth()
+		[
+			SNew(SBox).WidthOverride(180.0f).HeightOverride(38.0f)
+			[
+				MenuButton(LOCTEXT("DevRestorePos", "Restore Position"), FOnClicked::CreateLambda([D]()
+				{
+					if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->RestorePosition(); }
+					return FReply::Handled();
+				}), 12)
+			]
+		]
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 16, 0, 10)
+	[ Label(LOCTEXT("DevHeadingViewpoints", "VIEWPOINTS"), 12, Accent, "Bold") ];
+
+	// Two columns, over the same list the screenshot tour walks.
+	const TArray<FUEGT2Viewpoint>& Tour = UUEGT2CaptureSubsystem::GetTour();
+	for (int32 Index = 0; Index < Tour.Num(); Index += 2)
+	{
+		TSharedRef<SHorizontalBox> RowBox = SNew(SHorizontalBox);
+		for (int32 Column = 0; Column < 2; ++Column)
+		{
+			const int32 Which = Index + Column;
+			if (!Tour.IsValidIndex(Which))
+			{
+				RowBox->AddSlot().FillWidth(0.5f)[ SNew(SSpacer) ];
+				continue;
+			}
+			const FText Name = FText::FromName(Tour[Which].Name);
+			RowBox->AddSlot().FillWidth(0.5f).Padding(0, 0, 8, 0)
+			[
+				SNew(SBox).HeightOverride(36.0f)
+				[
+					MenuButton(Name, FOnClicked::CreateLambda([D, Which]()
+					{
+						if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->TeleportToViewpoint(Which); }
+						return FReply::Handled();
+					}), 12)
+				]
+			];
+		}
+		List->AddSlot().AutoHeight().Padding(0, 4)[ RowBox ];
+	}
+
+	return List;
+}
+
+// ---------------------------------------------------------------------------
 // Input
 // ---------------------------------------------------------------------------
 FReply SUEGT2Menu::OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent)
@@ -823,7 +1262,7 @@ FReply SUEGT2Menu::OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEven
 
 	if (KeyEvent.GetKey() == EKeys::Escape)
 	{
-		if (Page == EUEGT2MenuPage::Settings)
+		if (Page == EUEGT2MenuPage::Settings || Page == EUEGT2MenuPage::DevMode)
 		{
 			GoToPage(EUEGT2MenuPage::Root);
 			return FReply::Handled();

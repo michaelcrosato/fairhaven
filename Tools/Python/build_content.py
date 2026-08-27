@@ -18,6 +18,7 @@ Stage list:
     water      ocean, river, lake and pond bodies
     lighting   sun, sky, fog, post process
     town       buildings, streets, props, docks
+    city       Newhaven: blocks, towers, street furniture, wharf
     nature     vegetation and rock scatter
     gameplay   player start, interactables, landmarks
 """
@@ -39,11 +40,11 @@ if _PY_ROOT not in sys.path:
 from uegt2 import ctx                                            # noqa: E402
 
 ALL_STAGES = ["materials", "meshes", "audio", "level", "landscape", "water",
-              "lighting", "town", "nature", "gameplay", "showcase"]
+              "lighting", "town", "city", "nature", "gameplay", "showcase"]
 
 # Stages that need a level open (and therefore a level save at the end).
-WORLD_STAGES = {"level", "landscape", "water", "lighting", "town", "nature",
-                "gameplay", "showcase", "audio"}
+WORLD_STAGES = {"level", "landscape", "water", "lighting", "town", "city",
+                "nature", "gameplay", "showcase", "audio"}
 
 SUCCESS_MARKER = "UEGT2_CONTENT_BUILD_SUCCEEDED"
 
@@ -160,6 +161,13 @@ def main(argv):
     if "town" in stages:
         from uegt2 import town as town_mod
         town_mod.build(world, world_data)
+
+    # City before nature: the scatter reads the city hole out of world_features,
+    # not out of what is already placed, but keeping build order the same as
+    # stage order keeps the logs readable.
+    if "city" in stages:
+        from uegt2 import city as city_mod
+        city_mod.build(world, world_data)
 
     if "nature" in stages:
         from uegt2 import nature as nature_mod

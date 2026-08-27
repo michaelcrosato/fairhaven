@@ -13,6 +13,7 @@ complex-as-simple. These meshes are tiny, so that is cheap.
 from __future__ import annotations
 
 from . import ctx
+from . import gen_city as city
 from . import gen_nature as nat
 from . import gen_town as town
 from . import meshkit
@@ -20,6 +21,7 @@ from . import meshkit
 P_NATURE = ctx.P_MESH + "/Nature"
 P_TOWN = ctx.P_MESH + "/Town"
 P_PROPS = ctx.P_MESH + "/Props"
+P_CITY = ctx.P_MESH + "/City"
 
 
 def _catalog():
@@ -101,6 +103,32 @@ def _catalog():
         ("SM_FishingBoat_A", P_TOWN, lambda: town.fishing_boat(379), "prop", "complex"),
         ("SM_Bridge_A", P_TOWN, lambda: town.bridge_section(383), "prop", "complex"),
 
+        # -- Newhaven -------------------------------------------------------
+        # Floor counts are what set the skyline: towers downtown, offices and
+        # apartments in the middle ring, shophouses on the edge.
+        ("SM_Tower_A", P_CITY, lambda: city.tower(431, 1800.0, 1600.0, 20), "prop", "complex"),
+        ("SM_Tower_B", P_CITY, lambda: city.tower(433, 2000.0, 1750.0, 26), "prop", "complex"),
+        ("SM_Tower_C", P_CITY, lambda: city.tower(439, 1600.0, 1500.0, 15), "prop", "complex"),
+        ("SM_Tower_D", P_CITY, lambda: city.tower(443, 2200.0, 1500.0, 31), "prop", "complex"),
+        ("SM_Office_A", P_CITY, lambda: city.office_block(449, 2100.0, 1700.0, 9), "prop", "complex"),
+        ("SM_Office_B", P_CITY, lambda: city.office_block(457, 2400.0, 1600.0, 12), "prop", "complex"),
+        ("SM_Apartment_A", P_CITY, lambda: city.apartment(461, 1700.0, 1500.0, 6), "prop", "complex"),
+        ("SM_Apartment_B", P_CITY, lambda: city.apartment(463, 1900.0, 1400.0, 8), "prop", "complex"),
+        ("SM_Apartment_C", P_CITY, lambda: city.apartment(467, 1500.0, 1300.0, 4), "prop", "complex"),
+        ("SM_Shophouse_A", P_CITY, lambda: city.shophouse(479, 1050.0, 1250.0, 3), "prop", "complex"),
+        ("SM_Shophouse_B", P_CITY, lambda: city.shophouse(487, 950.0, 1150.0, 2), "prop", "complex"),
+        ("SM_ParkingDeck_A", P_CITY, lambda: city.parking_deck(491, 2200.0, 1800.0, 4), "prop", "complex"),
+        ("SM_CityHall_A", P_CITY, lambda: city.city_hall(499), "prop", "complex"),
+
+        # -- City street furniture ------------------------------------------
+        ("SM_TrafficLight_A", P_CITY, lambda: city.traffic_light(503), "prop", "complex"),
+        ("SM_CityLamp_A", P_CITY, lambda: city.city_lamp(509), "prop", "complex"),
+        ("SM_CityLamp_Glow", P_CITY, lambda: city.city_lamp_glow(509), "emissive", "none"),
+        ("SM_Kiosk_A", P_CITY, lambda: city.kiosk(521), "prop", "complex"),
+        ("SM_BusShelter_A", P_CITY, lambda: city.bus_shelter(523), "prop", "complex"),
+        ("SM_Fountain_A", P_CITY, lambda: city.fountain(541), "prop", "complex"),
+        ("SM_PlanterLong_A", P_CITY, lambda: city.planter_long(547), "prop", "complex"),
+
         # -- Characters -----------------------------------------------------
         ("SM_Villager_A", P_TOWN, lambda: town.villager(401), "prop", "complex"),
         ("SM_Villager_B", P_TOWN, lambda: town.villager(409), "prop", "complex"),
@@ -116,7 +144,7 @@ def build_all(prop_material, emissive_material, foliage_material, world_data):
         "emissive": emissive_material,
         "foliage": foliage_material,
     }
-    for folder in (P_NATURE, P_TOWN, P_PROPS):
+    for folder in (P_NATURE, P_TOWN, P_PROPS, P_CITY):
         ctx.ensure_directory(folder)
 
     built = {}

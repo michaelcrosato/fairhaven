@@ -18,6 +18,16 @@ enum class EUEGT2MenuPage : uint8
 {
 	Root,
 	Settings,
+	DevMode,
+};
+
+/** Dev mode tab. */
+enum class EUEGT2DevTab : uint8
+{
+	Player,
+	World,
+	Display,
+	Teleport,
 };
 
 /** Settings tab. */
@@ -55,15 +65,23 @@ private:
 	TSharedRef<SWidget> BuildControlsTab();
 	TSharedRef<SWidget> BuildGameplayTab();
 
+	TSharedRef<SWidget> BuildDevMode();
+	TSharedRef<SWidget> BuildDevPlayerTab();
+	TSharedRef<SWidget> BuildDevWorldTab();
+	TSharedRef<SWidget> BuildDevDisplayTab();
+	TSharedRef<SWidget> BuildDevTeleportTab();
+
 	void Rebuild();
 	void GoToPage(EUEGT2MenuPage Page);
 	void SelectTab(EUEGT2SettingsTab Tab);
+	void SelectDevTab(EUEGT2DevTab InDevTab);
 	void ApplyAndSave(bool bResolutionToo = false);
 
 	TWeakObjectPtr<AUEGT2PlayerController> Controller;
 	EUEGT2MenuState MenuState = EUEGT2MenuState::Main;
 	EUEGT2MenuPage Page = EUEGT2MenuPage::Root;
 	EUEGT2SettingsTab Tab = EUEGT2SettingsTab::Graphics;
+	EUEGT2DevTab DevTab = EUEGT2DevTab::Player;
 
 	/** Set while waiting for the player to press a key for a rebind. */
 	TOptional<EUEGT2InputSlot> PendingRebind;

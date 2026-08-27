@@ -103,7 +103,18 @@ def _place_landmarks(world_data, meshes):
         ("The High Road", cx + 52000.0, cy + 15000.0),
         ("Green Lagoon", -60000.0, 9000.0),
         ("Southern Palms", -46000.0, 17000.0),
+        ("The Summit Road", 148000.0, -2500.0),
     ]
+
+    # Newhaven, derived from the city block so the markers follow if it moves.
+    city = getattr(world_data, "city", None)
+    if city:
+        ncx, ncy = city["center"]
+        spots.extend([
+            ("Newhaven Plaza", ncx + 1200.0, ncy - 1200.0),
+            ("Newhaven Wharf", ncx, coast_y(ncx) - 2200.0),
+            ("Newhaven Heights", ncx - 14000.0, ncy + 12000.0),
+        ])
 
     placed = 0
     for name, wx, wy in spots:

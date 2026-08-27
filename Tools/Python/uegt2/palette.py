@@ -109,6 +109,27 @@ CLOTH_CREAM = 0xE6DAC0
 CLOTH_GREEN = 0x4F7A50
 CLOTH_YELLOW = 0xDCB055
 LAMP_GLASS = 0xFFE9B0
+# --- Newhaven (the city) ----------------------------------------------------
+# Cooler and greyer than the town on purpose: Fairhaven is warm render and
+# painted timber, Newhaven is concrete, glass and tar. Putting them side by side
+# is what makes the drive south read as going somewhere else.
+CONCRETE_PALE = 0xCFC9BE
+CONCRETE_GREY = 0xA8A49C
+CONCRETE_DARK = 0x7C7973
+GLASS_BLUE = 0x6E93AE
+GLASS_TEAL = 0x5F9698
+GLASS_DARK = 0x445C6E
+CURTAIN_WALL = 0x8FA8B8
+FACADE_SAND = 0xC8B394
+FACADE_BRICK = 0x9C6350
+FACADE_TERRA = 0xB0705A
+ROOF_TAR = 0x4A4A4C
+ASPHALT = 0x53535A
+KERB_GREY = 0xB8B4AC
+NEON_SIGN = 0xE86A4C
+AWNING_RED = 0xB4483C
+AWNING_GREEN = 0x3F7A5C
+
 STONE_PALE = 0xC3BBA9
 STONE_DARK = 0x8D877A
 BRICK_RED = 0xA35A48

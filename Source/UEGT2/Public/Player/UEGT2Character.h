@@ -45,11 +45,37 @@ public:
 	/** Re-read anything that depends on player settings (FOV, bob scale). */
 	void RefreshFromSettings();
 
+	// ---- Dev mode ---------------------------------------------------------
+	// Owned by UUEGT2DevModeSubsystem; the pawn only knows how to be in these
+	// states, not when it should be.
+
+	/** Invulnerable and unlimited air jumps. */
+	void SetGodMode(bool bEnabled);
+	bool IsGodMode() const { return bGodMode; }
+
+	/** Free 3D flight along the camera direction. */
+	void SetFlyEnabled(bool bEnabled);
+	bool IsFlyEnabled() const { return bFlying; }
+
+	/** Fly and pass through geometry. Implies flight. */
+	void SetNoclipEnabled(bool bEnabled);
+	bool IsNoclipEnabled() const { return bNoclip; }
+
+	/** 1-50x on walk, sprint, crouch, swim and fly speed. */
+	void SetSpeedMultiplier(float Multiplier);
+	float GetSpeedMultiplier() const { return SpeedMultiplier; }
+
+	/** Put movement, collision, jump count and speed back to normal play. */
+	void ClearDevMovement();
+
 	// ---- Tuning -----------------------------------------------------------
 	UPROPERTY(EditDefaultsOnly, Category = "UEGT2|Movement") float WalkSpeed = 380.0f;
 	UPROPERTY(EditDefaultsOnly, Category = "UEGT2|Movement") float SprintSpeed = 720.0f;
 	UPROPERTY(EditDefaultsOnly, Category = "UEGT2|Movement") float CrouchSpeed = 190.0f;
 	UPROPERTY(EditDefaultsOnly, Category = "UEGT2|Movement") float SwimSpeed = 260.0f;
+	UPROPERTY(EditDefaultsOnly, Category = "UEGT2|Movement") float FlySpeed = 900.0f;
+	/** Extra multiplier from holding sprint while flying. */
+	UPROPERTY(EditDefaultsOnly, Category = "UEGT2|Movement") float FlySprintScale = 2.5f;
 	UPROPERTY(EditDefaultsOnly, Category = "UEGT2|Camera") float SprintFovBonus = 8.0f;
 	UPROPERTY(EditDefaultsOnly, Category = "UEGT2|Camera") float EyeHeight = 68.0f;
 
@@ -62,6 +88,9 @@ protected:
 	void OnSprintStopped();
 	void OnCrouchToggle();
 	void OnInteract();
+	/** Jump and crouch become ascend/descend while flying. */
+	void OnFlyUp();
+	void OnFlyDown();
 
 private:
 	void UpdateHeadBob(float DeltaSeconds);
@@ -77,6 +106,12 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USoundBase> JumpSound;
 
 	bool bSprinting = false;
+	bool bGodMode = false;
+	bool bFlying = false;
+	bool bNoclip = false;
+	float SpeedMultiplier = 1.0f;
+	/** JumpMaxCount before god mode raised it, so it can be put back. */
+	int32 DefaultJumpMaxCount = 1;
 	float BobPhase = 0.0f;
 	float BobStrength = 0.0f;
 	float CurrentFov = 90.0f;
