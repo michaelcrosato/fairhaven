@@ -1,0 +1,33 @@
+{
+  "FileVersion": 3,
+  "EngineAssociation": "5.8",
+  "Category": "Games",
+  "Description": "Fairhaven - first-person low-poly open world foundation (UEGT2)",
+  "Modules": [
+    {
+      "Name": "UEGT2",
+      "Type": "Runtime",
+      "LoadingPhase": "Default"
+    },
+    {
+      "Name": "UEGT2Editor",
+      "Type": "Editor",
+      "LoadingPhase": "Default"
+    }
+  ],
+  "Plugins": [
+    { "Name": "EnhancedInput", "Enabled": true },
+    { "Name": "GeometryScripting", "Enabled": true },
+    { "Name": "Water", "Enabled": true },
+    { "Name": "Landmass", "Enabled": true },
+    { "Name": "Niagara", "Enabled": true },
+    { "Name": "PythonScriptPlugin", "Enabled": true, "TargetAllowList": [ "Editor" ] },
+    { "Name": "EditorScriptingUtilities", "Enabled": true, "TargetAllowList": [ "Editor" ] },
+    { "Name": "ModelingToolsEditorMode", "Enabled": true, "TargetAllowList": [ "Editor" ] },
+    { "Name": "AndroidFileServer", "Enabled": false },
+    { "Name": "OnlineSubsystemGooglePlay", "Enabled": false },
+    { "Name": "OnlineSubsystemIOS", "Enabled": false },
+    { "Name": "AppleImageUtils", "Enabled": false }
+  ],
+  "TargetPlatforms": [ "Windows" ]
+}

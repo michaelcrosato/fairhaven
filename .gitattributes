@@ -1,0 +1,14 @@
+* text=auto
+*.uasset binary
+*.umap binary
+*.r16 binary
+*.r8 binary
+*.png binary
+*.wav binary
+*.ps1 text eol=crlf
+*.cpp text eol=crlf
+*.h text eol=crlf
+*.cs text eol=crlf
+*.ini text eol=crlf
+*.py text eol=lf
+*.md text eol=lf

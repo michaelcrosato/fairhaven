@@ -1,0 +1,22 @@
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+LocalBuilds/
+Platforms/
+.vs/
+.vscode/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+# Generated inputs for the content build. Regenerated in ~2 minutes by
+# Scripts/Setup-Project.ps1 (or the two Tools/*/generate_*.py scripts), so they
+# are not worth ~44 MB of history.
+Tools/Terrain/Output/
+Tools/Audio/Output/
+__pycache__/
+*.pyc
