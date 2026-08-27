@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Kismet/GameplayStatics.h"
+#include "NPC/UEGT2NPCDirector.h"
 #include "Player/UEGT2Character.h"
 #include "Player/UEGT2PlayerController.h"
 #include "UEGT2LogChannels.h"
@@ -78,6 +79,11 @@ AUEGT2SkyController* UUEGT2DevModeSubsystem::GetSky() const
 	return AUEGT2SkyController::Get(GetWorld());
 }
 
+UUEGT2NPCDirector* UUEGT2DevModeSubsystem::GetNPCs() const
+{
+	return UUEGT2NPCDirector::Get(GetWorld());
+}
+
 bool UUEGT2DevModeSubsystem::HasPlayer() const
 {
 	return GetCharacter() != nullptr;
@@ -135,6 +141,8 @@ void UUEGT2DevModeSubsystem::SetDevModeEnabled(bool bEnabled)
 		SetStatUnit(false);
 		SetDrawInteractionProbe(false);
 		SetGameSpeed(1.0f);
+		SetNPCDebugVisible(false);
+		SetSchedulesPaused(false);
 	}
 	UE_LOG(LogUEGT2Dev, Log, TEXT("Dev mode %s."), bEnabled ? TEXT("on") : TEXT("off"));
 }
@@ -319,6 +327,92 @@ void UUEGT2DevModeSubsystem::SetDrawInteractionProbe(bool bVisible)
 	{
 		CVar->Set(bVisible ? 1 : 0, ECVF_SetByConsole);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Life
+// ---------------------------------------------------------------------------
+void UUEGT2DevModeSubsystem::SetSchedulesPaused(bool bPaused)
+{
+	if (UUEGT2NPCDirector* NPCs = GetNPCs()) { NPCs->SetSchedulesPaused(bPaused); }
+}
+
+bool UUEGT2DevModeSubsystem::AreSchedulesPaused() const
+{
+	const UUEGT2NPCDirector* NPCs = GetNPCs();
+	return NPCs && NPCs->AreSchedulesPaused();
+}
+
+void UUEGT2DevModeSubsystem::SetNPCDebugVisible(bool bVisible)
+{
+	if (UUEGT2NPCDirector* NPCs = GetNPCs()) { NPCs->SetDebugOverlay(bVisible); }
+}
+
+bool UUEGT2DevModeSubsystem::IsNPCDebugVisible() const
+{
+	const UUEGT2NPCDirector* NPCs = GetNPCs();
+	return NPCs && NPCs->IsDebugOverlay();
+}
+
+void UUEGT2DevModeSubsystem::SetCrowdDensity(float Density)
+{
+	if (UUEGT2NPCDirector* NPCs = GetNPCs()) { NPCs->SetCrowdDensity(Density); }
+}
+
+float UUEGT2DevModeSubsystem::GetCrowdDensity() const
+{
+	const UUEGT2NPCDirector* NPCs = GetNPCs();
+	return NPCs ? NPCs->GetCrowdDensity() : 1.0f;
+}
+
+int32 UUEGT2DevModeSubsystem::TriggerChatter()
+{
+	UUEGT2NPCDirector* NPCs = GetNPCs();
+	const int32 Spoke = NPCs ? NPCs->TriggerChatter() : 0;
+	Notify(FString::Printf(TEXT("%d inhabitants announced their plans"), Spoke));
+	return Spoke;
+}
+
+int32 UUEGT2DevModeSubsystem::GetPeopleCount() const
+{
+	const UUEGT2NPCDirector* NPCs = GetNPCs();
+	return NPCs ? NPCs->GetPeopleCount() : 0;
+}
+
+int32 UUEGT2DevModeSubsystem::GetAnimalCount() const
+{
+	const UUEGT2NPCDirector* NPCs = GetNPCs();
+	return NPCs ? NPCs->GetAnimalCount() : 0;
+}
+
+int32 UUEGT2DevModeSubsystem::GetActiveNPCCount() const
+{
+	const UUEGT2NPCDirector* NPCs = GetNPCs();
+	return NPCs ? NPCs->GetActiveCount() : 0;
+}
+
+int32 UUEGT2DevModeSubsystem::GetSpeakingCount() const
+{
+	const UUEGT2NPCDirector* NPCs = GetNPCs();
+	return NPCs ? NPCs->GetSpeakingCount() : 0;
+}
+
+int32 UUEGT2DevModeSubsystem::GetDayIndex() const
+{
+	const UUEGT2NPCDirector* NPCs = GetNPCs();
+	return NPCs ? NPCs->GetDayIndex() : 0;
+}
+
+FText UUEGT2DevModeSubsystem::GetDayLabel() const
+{
+	const UUEGT2NPCDirector* NPCs = GetNPCs();
+	return NPCs ? NPCs->GetDayLabel() : FText::GetEmpty();
+}
+
+bool UUEGT2DevModeSubsystem::HasPopulation() const
+{
+	const UUEGT2NPCDirector* NPCs = GetNPCs();
+	return NPCs && NPCs->GetPopulation() > 0;
 }
 
 // ---------------------------------------------------------------------------

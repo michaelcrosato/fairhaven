@@ -26,6 +26,7 @@ enum class EUEGT2DevTab : uint8
 {
 	Player,
 	World,
+	Life,
 	Display,
 	Teleport,
 };
@@ -68,6 +69,7 @@ private:
 	TSharedRef<SWidget> BuildDevMode();
 	TSharedRef<SWidget> BuildDevPlayerTab();
 	TSharedRef<SWidget> BuildDevWorldTab();
+	TSharedRef<SWidget> BuildDevLifeTab();
 	TSharedRef<SWidget> BuildDevDisplayTab();
 	TSharedRef<SWidget> BuildDevTeleportTab();
 

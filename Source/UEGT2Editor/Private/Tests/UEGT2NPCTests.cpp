@@ -1,0 +1,786 @@
+// Fairhaven (UEGT2) - automation tests over the inhabitants.
+//
+// The whole life system was written so that the interesting half of it - the
+// decision - is a pure function over a struct. That is what these tests exist
+// to exploit: "a timid chicken with the player two metres away" is three lines
+// here and would be a map, a pawn and a stopwatch otherwise.
+//
+// What is deliberately NOT here: anything that needs the world. Walking,
+// pathing over the baked network, LOD tiers and the bubbles themselves are
+// covered by UEGT2ContentTests (which loads the map) and by looking at a
+// screenshot, because that is where their failure modes actually show up.
+#include "Misc/AutomationTest.h"
+
+#if WITH_AUTOMATION_TESTS
+
+#include "NPC/UEGT2NPCRoutines.h"
+#include "NPC/UEGT2NPCSpeech.h"
+#include "NPC/UEGT2NPCTypes.h"
+
+namespace UEGT2NPCTests
+{
+	/** A context with nothing interesting happening: midday, clear, alone. */
+	FUEGT2NPCContext Plain(float Hour)
+	{
+		FUEGT2NPCContext Context;
+		Context.Hour = Hour;
+		Context.DayIndex = 0;             // neither market day nor rest day
+		Context.Weather = EUEGT2Weather::Clear;
+		Context.PlayerDistance = 1.0e9f;
+		Context.Seed = 12345;
+		// Everything at 0.5 so GetEffectiveHour does not shift the hour and the
+		// tests can name an exact time.
+		Context.Personality.Sociability = 0.5f;
+		Context.Personality.Punctuality = 0.5f;
+		Context.Personality.Energy = 0.5f;
+		Context.Personality.Curiosity = 0.0f;   // no detours in a fixed test
+		Context.Personality.Bravery = 0.5f;
+		return Context;
+	}
+
+	const TCHAR* ActivityName(EUEGT2Activity Activity)
+	{
+		static FString Buffer;
+		Buffer = GetActivityDisplayName(Activity).ToString();
+		return *Buffer;
+	}
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2RoutineTableTest,
+	"UEGT2.NPC.RoutineTable",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2RoutineTableTest::RunTest(const FString& Parameters)
+{
+	auto CheckRoutine = [this](const FUEGT2Routine& Routine, const FString& Label)
+	{
+		if (!TestTrue(FString::Printf(TEXT("%s has entries"), *Label), Routine.IsValid()))
+		{
+			return;
+		}
+		TestFalse(FString::Printf(TEXT("%s is named"), *Label), Routine.Name.IsNone());
+
+		// EntryAt wraps backwards from any hour to the last row at or before
+		// it. Without a row at zero there is nothing to wrap to just after
+		// midnight, and the whole routine silently becomes the fallback.
+		TestEqual(FString::Printf(TEXT("%s starts at hour 0"), *Label),
+			Routine.Entries[0].StartHour, 0.0f);
+
+		float Previous = -1.0f;
+		for (const FUEGT2ScheduleEntry& Entry : Routine.Entries)
+		{
+			TestTrue(FString::Printf(TEXT("%s hours strictly increase"), *Label),
+				Entry.StartHour > Previous);
+			TestTrue(FString::Printf(TEXT("%s hours in range"), *Label),
+				Entry.StartHour >= 0.0f && Entry.StartHour < 24.0f);
+			TestTrue(FString::Printf(TEXT("%s activity in range"), *Label),
+				(int32)Entry.Activity < (int32)EUEGT2Activity::Count);
+			TestTrue(FString::Printf(TEXT("%s anchor in range"), *Label),
+				(int32)Entry.Anchor < (int32)EUEGT2Anchor::Count);
+			Previous = Entry.StartHour;
+		}
+	};
+
+	for (int32 Index = 0; Index < (int32)EUEGT2NPCRole::Count; ++Index)
+	{
+		const EUEGT2NPCRole Role = (EUEGT2NPCRole)Index;
+		CheckRoutine(GetRoleRoutine(Role), GetRoleDisplayName(Role).ToString());
+	}
+	for (int32 Index = 0; Index < (int32)EUEGT2NPCSpecies::Count; ++Index)
+	{
+		const EUEGT2NPCSpecies Species = (EUEGT2NPCSpecies)Index;
+		CheckRoutine(GetSpeciesRoutine(Species), GetSpeciesDisplayName(Species).ToString());
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2RoutineLookupTest,
+	"UEGT2.NPC.RoutineLookup",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2RoutineLookupTest::RunTest(const FString& Parameters)
+{
+	const FUEGT2Routine& Farmer = GetRoleRoutine(EUEGT2NPCRole::Farmer);
+
+	TestEqual(TEXT("farmer is asleep at 02:00"),
+		Farmer.EntryAt(2.0f).Activity, EUEGT2Activity::Sleep);
+	TestEqual(TEXT("farmer is in the field at 08:00"),
+		Farmer.EntryAt(8.0f).Activity, EUEGT2Activity::Work);
+	TestEqual(TEXT("farmer works the field anchor"),
+		Farmer.EntryAt(8.0f).Anchor, EUEGT2Anchor::Field);
+	TestEqual(TEXT("farmer eats at 12:10"),
+		Farmer.EntryAt(12.17f).Activity, EUEGT2Activity::Lunch);
+
+	// The wrap cases: an hour of exactly 24 is hour 0, and out-of-range hours
+	// fold rather than falling off the end of the table.
+	TestEqual(TEXT("hour 24 is hour 0"),
+		Farmer.EntryAt(24.0f).Activity, Farmer.EntryAt(0.0f).Activity);
+	TestEqual(TEXT("hour 26 is hour 2"),
+		Farmer.EntryAt(26.0f).Activity, Farmer.EntryAt(2.0f).Activity);
+	TestEqual(TEXT("hour -1 is hour 23"),
+		Farmer.EntryAt(-1.0f).Activity, Farmer.EntryAt(23.0f).Activity);
+
+	// The baker is the awkward one: they work through midnight, so the row in
+	// force at 01:00 is the row that starts at 00:00 and nothing earlier.
+	const FUEGT2Routine& Baker = GetRoleRoutine(EUEGT2NPCRole::Baker);
+	TestEqual(TEXT("baker bakes at 03:00"),
+		Baker.EntryAt(3.0f).Activity, EUEGT2Activity::Work);
+	TestEqual(TEXT("baker sleeps in the afternoon"),
+		Baker.EntryAt(14.0f).Activity, EUEGT2Activity::Sleep);
+
+	// NextChangeHour is what the director would use to know when to look again.
+	TestTrue(TEXT("next change is later than now"), Farmer.NextChangeHour(8.0f) > 8.0f);
+	TestEqual(TEXT("next change after the last row is midnight"),
+		Farmer.NextChangeHour(23.5f), 24.0f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2PersonalityTest,
+	"UEGT2.NPC.Personality",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2PersonalityTest::RunTest(const FString& Parameters)
+{
+	const FUEGT2Personality A = FUEGT2Personality::FromSeed(4242);
+	const FUEGT2Personality B = FUEGT2Personality::FromSeed(4242);
+	TestEqual(TEXT("the same seed is the same person"), A.Sociability, B.Sociability);
+	TestEqual(TEXT("the same seed is the same person (bravery)"), A.Bravery, B.Bravery);
+
+	// A trait that came out constant, or clamped to one end, would quietly turn
+	// the whole population into one person.
+	float MinTrait = 1.0f, MaxTrait = 0.0f, Sum = 0.0f;
+	const int32 Samples = 400;
+	for (int32 Index = 0; Index < Samples; ++Index)
+	{
+		const FUEGT2Personality P = FUEGT2Personality::FromSeed(1000 + Index * 17);
+		const float Traits[] = { P.Sociability, P.Punctuality, P.Energy, P.Curiosity, P.Bravery };
+		for (float Trait : Traits)
+		{
+			TestTrue(TEXT("trait in 0..1"), Trait >= 0.0f && Trait <= 1.0f);
+			MinTrait = FMath::Min(MinTrait, Trait);
+			MaxTrait = FMath::Max(MaxTrait, Trait);
+		}
+		Sum += P.Sociability;
+	}
+	TestTrue(TEXT("traits span most of the range"), MinTrait < 0.1f && MaxTrait > 0.9f);
+	const float Mean = Sum / Samples;
+	TestTrue(FString::Printf(TEXT("sociability averages near 0.5 (got %.3f)"), Mean),
+		Mean > 0.4f && Mean < 0.6f);
+
+	// Two traits drawn from the same seed must not be the same number, or
+	// "brave" and "sociable" would always travel together.
+	TestNotEqual(TEXT("traits are independent"), A.Sociability, A.Bravery);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2NeedsTest,
+	"UEGT2.NPC.Needs",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2NeedsTest::RunTest(const FString& Parameters)
+{
+	FUEGT2NPCNeeds Needs;
+	Needs.Energy = 0.2f;
+	Needs.Advance(4.0f, EUEGT2Activity::Sleep);
+	TestTrue(TEXT("sleeping restores energy"), Needs.Energy > 0.9f);
+	TestTrue(TEXT("energy never exceeds 1"), Needs.Energy <= 1.0f);
+
+	FUEGT2NPCNeeds Hungry;
+	Hungry.Fed = 0.1f;
+	Hungry.Advance(1.0f, EUEGT2Activity::Lunch);
+	TestTrue(TEXT("eating feeds"), Hungry.Fed > 0.8f);
+
+	FUEGT2NPCNeeds Working;
+	Working.Advance(8.0f, EUEGT2Activity::Work);
+	TestTrue(TEXT("a working day makes you hungry"), Working.Fed < 0.3f);
+	TestTrue(TEXT("needs never go below zero"), Working.Fed >= 0.0f);
+
+	FUEGT2NPCNeeds Lonely;
+	Lonely.Company = 0.05f;
+	Lonely.Advance(1.0f, EUEGT2Activity::Tavern);
+	TestTrue(TEXT("the tavern is company"), Lonely.Company > 0.4f);
+
+	// A zero or negative slice must be a no-op rather than running backwards.
+	FUEGT2NPCNeeds Frozen;
+	const float Before = Frozen.Fed;
+	Frozen.Advance(0.0f, EUEGT2Activity::Work);
+	Frozen.Advance(-3.0f, EUEGT2Activity::Work);
+	TestEqual(TEXT("no time, no change"), Frozen.Fed, Before);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2ScheduleDecisionTest,
+	"UEGT2.NPC.ScheduleDecision",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2ScheduleDecisionTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2NPCTests;
+
+	// An ordinary day: the routine, and nothing but the routine.
+	const FUEGT2ActivityDecision Morning = ResolveActivity(EUEGT2NPCRole::Farmer,
+		EUEGT2NPCSpecies::Person, Plain(6.5f));
+	TestEqual(TEXT("farmer works at 06:30"), Morning.Activity, EUEGT2Activity::Work);
+	TestEqual(TEXT("farmer is in the field"), Morning.Anchor, EUEGT2Anchor::Field);
+	TestEqual(TEXT("and the reason is the routine"), Morning.Reason,
+		EUEGT2ActivityReason::Schedule);
+
+	const FUEGT2ActivityDecision Night = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Person, Plain(1.0f));
+	TestEqual(TEXT("villager sleeps at 01:00"), Night.Activity, EUEGT2Activity::Sleep);
+	TestEqual(TEXT("at home"), Night.Anchor, EUEGT2Anchor::Home);
+
+	// Punctuality shifts the transition, which is what stops the whole town
+	// changing activity on the same frame.
+	FUEGT2NPCContext Early = Plain(8.9f);
+	Early.Personality.Punctuality = 1.0f;
+	FUEGT2NPCContext Late = Plain(8.9f);
+	Late.Personality.Punctuality = 0.0f;
+	const EUEGT2Activity EarlyActivity =
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Early).Activity;
+	const EUEGT2Activity LateActivity =
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Late).Activity;
+	TestEqual(TEXT("the punctual villager has already started work"),
+		EarlyActivity, EUEGT2Activity::Work);
+	TestEqual(TEXT("the unpunctual one is still out strolling"),
+		LateActivity, EUEGT2Activity::Stroll);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2WeatherDecisionTest,
+	"UEGT2.NPC.WeatherDecision",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2WeatherDecisionTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2NPCTests;
+
+	FUEGT2NPCContext Storm = Plain(10.0f);
+	Storm.Weather = EUEGT2Weather::Storm;
+
+	const FUEGT2ActivityDecision Caught = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Person, Storm);
+	TestEqual(TEXT("a storm drives a villager under cover"),
+		Caught.Activity, EUEGT2Activity::Shelter);
+	TestEqual(TEXT("and toward a shelter anchor"), Caught.Anchor, EUEGT2Anchor::Shelter);
+	TestEqual(TEXT("for the weather"), Caught.Reason, EUEGT2ActivityReason::Weather);
+
+	// The stubborn stay out. Two ways to be stubborn: brave, or a trade whose
+	// work does not stop for weather.
+	FUEGT2NPCContext BraveStorm = Storm;
+	BraveStorm.Personality.Bravery = 0.95f;
+	TestEqual(TEXT("the brave stay out in it"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, BraveStorm).Activity,
+		EUEGT2Activity::Work);
+
+	FUEGT2NPCContext FisherStorm = Storm;
+	FisherStorm.Personality.Bravery = 0.6f;
+	TestEqual(TEXT("a fisher in a storm is still a fisher"),
+		ResolveActivity(EUEGT2NPCRole::Fisher, EUEGT2NPCSpecies::Person, FisherStorm).Activity,
+		EUEGT2Activity::Work);
+
+	// Animals shelter in the coop, not in a doorway.
+	const FUEGT2ActivityDecision Hen = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Chicken, Storm);
+	TestEqual(TEXT("a hen gets into the coop"), Hen.Activity, EUEGT2Activity::Shelter);
+	TestEqual(TEXT("the coop, specifically"), Hen.Anchor, EUEGT2Anchor::Coop);
+
+	// Clear weather changes nothing, which is the case that would silently
+	// break if the rain rule ever stopped checking the weather.
+	TestEqual(TEXT("clear weather leaves the routine alone"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Plain(10.0f)).Activity,
+		EUEGT2Activity::Work);
+
+	// Somebody already indoors is not rained on.
+	FUEGT2NPCContext Inside = Storm;
+	Inside.bExposed = false;
+	TestEqual(TEXT("being inside already is enough"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Inside).Activity,
+		EUEGT2Activity::Work);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2ProximityDecisionTest,
+	"UEGT2.NPC.ProximityDecision",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2ProximityDecisionTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2NPCTests;
+
+	FUEGT2NPCContext Close = Plain(10.0f);
+	Close.PlayerDistance = 200.0f;
+
+	FUEGT2NPCContext Sociable = Close;
+	Sociable.Personality.Sociability = 0.9f;
+	const FUEGT2ActivityDecision Chat = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Person, Sociable);
+	TestEqual(TEXT("a sociable villager stops to talk"),
+		Chat.Activity, EUEGT2Activity::Socialise);
+	TestEqual(TEXT("because of the player"), Chat.Reason, EUEGT2ActivityReason::Player);
+
+	FUEGT2NPCContext Shy = Close;
+	Shy.Personality.Sociability = 0.1f;
+	TestEqual(TEXT("a shy one keeps working"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Shy).Activity,
+		EUEGT2Activity::Work);
+
+	// Nobody is woken up to be sociable at. This is the rule that stops the
+	// town from standing up at three in the morning when you walk through it.
+	FUEGT2NPCContext CloseAtNight = Sociable;
+	CloseAtNight.Hour = 2.0f;
+	TestEqual(TEXT("standing over a sleeping villager does not wake them"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, CloseAtNight).Activity,
+		EUEGT2Activity::Sleep);
+
+	// Animals: timid ones bolt, dogs come over, cattle do not care.
+	const FUEGT2ActivityDecision Hen = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Chicken, Close);
+	TestEqual(TEXT("a chicken bolts"), Hen.Activity, EUEGT2Activity::Flee);
+
+	FUEGT2NPCContext DogClose = Close;
+	DogClose.PlayerDistance = 700.0f;
+	TestEqual(TEXT("a dog comes over"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Dog, DogClose).Activity,
+		EUEGT2Activity::Follow);
+
+	TestEqual(TEXT("a cow carries on grazing"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Cow, Close).Activity,
+		EUEGT2Activity::Graze);
+
+	// Bravery widens the flee radius, so a flock scatters raggedly instead of
+	// all at once.
+	FUEGT2NPCContext BraveHen = Close;
+	BraveHen.PlayerDistance = 500.0f;
+	BraveHen.Personality.Bravery = 1.0f;
+	TestEqual(TEXT("the bold hen holds its ground"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Chicken, BraveHen).Activity,
+		EUEGT2Activity::Forage);
+
+	// Flee radii must be positive for the timid species and zero for the rest,
+	// or the whole rule silently applies to nobody.
+	TestTrue(TEXT("chickens have a flee radius"), GetFleeRadius(EUEGT2NPCSpecies::Chicken) > 0.0f);
+	TestEqual(TEXT("cows do not"), GetFleeRadius(EUEGT2NPCSpecies::Cow), 0.0f);
+	TestEqual(TEXT("people do not"), GetFleeRadius(EUEGT2NPCSpecies::Person), 0.0f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2NeedDecisionTest,
+	"UEGT2.NPC.NeedDecision",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2NeedDecisionTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2NPCTests;
+
+	FUEGT2NPCContext Hungry = Plain(12.0f);
+	Hungry.Needs.Fed = 0.05f;
+	const FUEGT2ActivityDecision Lunch = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Person, Hungry);
+	TestEqual(TEXT("a hungry worker breaks for lunch"), Lunch.Activity, EUEGT2Activity::Lunch);
+	TestEqual(TEXT("driven by a need"), Lunch.Reason, EUEGT2ActivityReason::Need);
+
+	// The same hunger outside the lunch window is not a reason to stop working.
+	FUEGT2NPCContext HungryEarly = Hungry;
+	HungryEarly.Hour = 9.5f;
+	TestEqual(TEXT("hungry at half nine is just hungry"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, HungryEarly).Activity,
+		EUEGT2Activity::Work);
+
+	FUEGT2NPCContext Exhausted = Plain(21.5f);
+	Exhausted.Needs.Energy = 0.05f;
+	TestEqual(TEXT("an exhausted villager goes home early"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Exhausted).Activity,
+		EUEGT2Activity::HomeTime);
+
+	FUEGT2NPCContext Lonely = Plain(10.0f);
+	Lonely.Needs.Company = 0.05f;
+	Lonely.Personality.Sociability = 0.9f;
+	TestEqual(TEXT("a lonely sociable villager goes looking for company"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Lonely).Activity,
+		EUEGT2Activity::Socialise);
+
+	FUEGT2NPCContext LonelyLoner = Lonely;
+	LonelyLoner.Personality.Sociability = 0.1f;
+	TestEqual(TEXT("a loner does not"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, LonelyLoner).Activity,
+		EUEGT2Activity::Work);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2WeekdayDecisionTest,
+	"UEGT2.NPC.WeekdayDecision",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2WeekdayDecisionTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2NPCTests;
+
+	// Exactly one of each per week, and the modulo must survive a negative
+	// index rather than moving market day.
+	int32 MarketDays = 0, RestDays = 0;
+	for (int32 Day = 0; Day < UEGT2DaysPerWeek; ++Day)
+	{
+		MarketDays += IsMarketDay(Day) ? 1 : 0;
+		RestDays += IsRestDay(Day) ? 1 : 0;
+	}
+	TestEqual(TEXT("one market day a week"), MarketDays, 1);
+	TestEqual(TEXT("one rest day a week"), RestDays, 1);
+	TestEqual(TEXT("the week repeats"), IsMarketDay(2), IsMarketDay(2 + UEGT2DaysPerWeek));
+	TestEqual(TEXT("and folds backwards"), IsMarketDay(2), IsMarketDay(2 - UEGT2DaysPerWeek));
+
+	FUEGT2NPCContext Market = Plain(10.0f);
+	Market.DayIndex = 2;
+	const FUEGT2ActivityDecision Stall = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Person, Market);
+	TestEqual(TEXT("market day empties the workshops"), Stall.Activity, EUEGT2Activity::Market);
+	TestEqual(TEXT("into the market"), Stall.Anchor, EUEGT2Anchor::Market);
+	TestEqual(TEXT("because of the day"), Stall.Reason, EUEGT2ActivityReason::DayOfWeek);
+
+	FUEGT2NPCContext Rest = Plain(10.0f);
+	Rest.DayIndex = 5;
+	const FUEGT2ActivityDecision Church = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Person, Rest);
+	TestEqual(TEXT("rest day morning fills the church"),
+		Church.Activity, EUEGT2Activity::Worship);
+	TestEqual(TEXT("at the church"), Church.Anchor, EUEGT2Anchor::Church);
+
+	// The innkeeper works the rest day, because that is when the trade is.
+	FUEGT2NPCContext InnRest = Plain(14.0f);
+	InnRest.DayIndex = 5;
+	TestEqual(TEXT("the innkeeper works the rest day"),
+		ResolveActivity(EUEGT2NPCRole::Innkeeper, EUEGT2NPCSpecies::Person, InnRest).Activity,
+		EUEGT2Activity::Work);
+
+	// Animals keep no calendar.
+	FUEGT2NPCContext SheepRest = Plain(10.0f);
+	SheepRest.DayIndex = 5;
+	TestEqual(TEXT("sheep do not observe the rest day"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Sheep, SheepRest).Activity,
+		EUEGT2Activity::Graze);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2DetourTest,
+	"UEGT2.NPC.Detours",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2DetourTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2NPCTests;
+
+	// Curiosity produces errands. The point of the test is that it produces
+	// them for *some* seeds and not all: a rate of zero means the rule is dead,
+	// and a rate of one means nobody ever does their job.
+	int32 Detours = 0;
+	const int32 Samples = 300;
+	for (int32 Index = 0; Index < Samples; ++Index)
+	{
+		FUEGT2NPCContext Curious = Plain(10.0f);
+		Curious.Seed = 7000 + Index * 13;
+		Curious.Personality.Curiosity = 1.0f;
+		const FUEGT2ActivityDecision Decision = ResolveActivity(EUEGT2NPCRole::Villager,
+			EUEGT2NPCSpecies::Person, Curious);
+		if (Decision.Activity == EUEGT2Activity::Errand)
+		{
+			TestEqual(TEXT("a detour is reported as a detour"), Decision.Reason,
+				EUEGT2ActivityReason::Detour);
+			++Detours;
+		}
+	}
+	TestTrue(FString::Printf(TEXT("curiosity produces some detours (got %d/%d)"),
+		Detours, Samples), Detours > 5);
+	TestTrue(FString::Printf(TEXT("but most people still work (got %d/%d)"),
+		Detours, Samples), Detours < Samples / 3);
+
+	// Zero curiosity never detours, and the same seed always makes the same
+	// choice - a habit, not a dice roll.
+	FUEGT2NPCContext Dull = Plain(10.0f);
+	Dull.Personality.Curiosity = 0.0f;
+	TestEqual(TEXT("no curiosity, no detour"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Dull).Activity,
+		EUEGT2Activity::Work);
+
+	FUEGT2NPCContext Repeat = Plain(10.0f);
+	Repeat.Personality.Curiosity = 1.0f;
+	Repeat.Seed = 999;
+	TestEqual(TEXT("the same person makes the same choice"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Repeat).Activity,
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Repeat).Activity);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2SpeechCoverageTest,
+	"UEGT2.NPC.SpeechCoverage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2SpeechCoverageTest::RunTest(const FString& Parameters)
+{
+	int32 Checked = 0;
+	int32 Longest = 0;
+	FString LongestLine;
+
+	for (int32 RoleIndex = 0; RoleIndex < (int32)EUEGT2NPCRole::Count; ++RoleIndex)
+	{
+		for (int32 ActivityIndex = 0; ActivityIndex < (int32)EUEGT2Activity::Count; ++ActivityIndex)
+		{
+			for (int32 MoodIndex = 0; MoodIndex < (int32)EUEGT2SpeechMood::Count; ++MoodIndex)
+			{
+				const EUEGT2NPCRole Role = (EUEGT2NPCRole)RoleIndex;
+				const EUEGT2Activity Activity = (EUEGT2Activity)ActivityIndex;
+				const EUEGT2SpeechMood Mood = (EUEGT2SpeechMood)MoodIndex;
+
+				const TArray<FText>& Pool = GetSpeechPool(Role, EUEGT2NPCSpecies::Person,
+					Activity, Mood, EUEGT2Weather::Clear, 12.0f);
+				if (!TestTrue(FString::Printf(TEXT("pool for role %d activity %d mood %d is not empty"),
+					RoleIndex, ActivityIndex, MoodIndex), Pool.Num() > 0))
+				{
+					continue;
+				}
+				for (const FText& Line : Pool)
+				{
+					const FString Text = Line.ToString();
+					TestFalse(TEXT("no empty lines"), Text.IsEmpty());
+					if (Text.Len() > Longest)
+					{
+						Longest = Text.Len();
+						LongestLine = Text;
+					}
+					++Checked;
+				}
+			}
+		}
+	}
+
+	// The bubble wraps at roughly forty characters a row. Anything past the
+	// budget turns a message into a monologue hanging over the town square.
+	TestTrue(FString::Printf(TEXT("longest line fits the bubble: %d chars, \"%s\""),
+		Longest, *LongestLine), Longest <= UEGT2MaxSpeechLength);
+	AddInfo(FString::Printf(TEXT("%d lines checked, longest %d chars"), Checked, Longest));
+
+	// Every animal makes a noise, whatever it is doing.
+	for (int32 Index = 1; Index < (int32)EUEGT2NPCSpecies::Count; ++Index)
+	{
+		const EUEGT2NPCSpecies Species = (EUEGT2NPCSpecies)Index;
+		const FText Line = GetSpeechLine(EUEGT2NPCRole::Villager, Species,
+			EUEGT2Activity::Idle, EUEGT2SpeechMood::Idle, EUEGT2Weather::Clear, 12.0f, 5u);
+		TestFalse(FString::Printf(TEXT("%s makes a sound"),
+			*GetSpeciesDisplayName(Species).ToString()), Line.IsEmpty());
+	}
+
+	// Weather comments must actually differ by weather, or a storm sounds like
+	// a clear day.
+	const FText Clear = GetSpeechLine(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person,
+		EUEGT2Activity::Stroll, EUEGT2SpeechMood::Comment, EUEGT2Weather::Clear, 12.0f, 3u);
+	const FText Storm = GetSpeechLine(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person,
+		EUEGT2Activity::Stroll, EUEGT2SpeechMood::Comment, EUEGT2Weather::Storm, 12.0f, 3u);
+	TestNotEqual(TEXT("a storm is remarked on differently"),
+		Clear.ToString(), Storm.ToString());
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2SpeechSelectionTest,
+	"UEGT2.NPC.SpeechSelection",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2SpeechSelectionTest::RunTest(const FString& Parameters)
+{
+	// Same situation, same seed, same words: an NPC that said something
+	// different every time you looked at it would not read as a person.
+	const FText First = GetSpeechLine(EUEGT2NPCRole::Farmer, EUEGT2NPCSpecies::Person,
+		EUEGT2Activity::Work, EUEGT2SpeechMood::Announce, EUEGT2Weather::Clear, 8.0f, 4242u);
+	const FText Again = GetSpeechLine(EUEGT2NPCRole::Farmer, EUEGT2NPCSpecies::Person,
+		EUEGT2Activity::Work, EUEGT2SpeechMood::Announce, EUEGT2Weather::Clear, 8.0f, 4242u);
+	TestEqual(TEXT("the same person says the same thing"), First.ToString(), Again.ToString());
+
+	// Across a population the pool must actually be used, not collapse onto one
+	// favourite line.
+	TSet<FString> Distinct;
+	for (uint32 Seed = 0; Seed < 200u; ++Seed)
+	{
+		Distinct.Add(GetSpeechLine(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person,
+			EUEGT2Activity::Market, EUEGT2SpeechMood::Announce,
+			EUEGT2Weather::Clear, 12.0f, Seed * 37u).ToString());
+	}
+	TestTrue(FString::Printf(TEXT("the pool is spread over the population (got %d)"),
+		Distinct.Num()), Distinct.Num() >= 4);
+
+	// Variation is what makes the second half of a conversation, and asking
+	// twice, land on something new.
+	TSet<FString> Variations;
+	for (uint32 Variation = 0; Variation < 12u; ++Variation)
+	{
+		Variations.Add(GetSpeechLine(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person,
+			EUEGT2Activity::Work, EUEGT2SpeechMood::Reply,
+			EUEGT2Weather::Clear, 12.0f, 77u, Variation).ToString());
+	}
+	TestTrue(TEXT("variation moves through the pool"), Variations.Num() > 1);
+
+	// A trade voice must displace the generic one, or every worker in town says
+	// "back at it".
+	const FString FarmerWork = GetSpeechLine(EUEGT2NPCRole::Farmer, EUEGT2NPCSpecies::Person,
+		EUEGT2Activity::Work, EUEGT2SpeechMood::Announce, EUEGT2Weather::Clear, 8.0f, 11u).ToString();
+	const FString SmithWork = GetSpeechLine(EUEGT2NPCRole::Smith, EUEGT2NPCSpecies::Person,
+		EUEGT2Activity::Work, EUEGT2SpeechMood::Announce, EUEGT2Weather::Clear, 8.0f, 11u).ToString();
+	TestNotEqual(TEXT("a farmer and a smith do not describe the same job"),
+		FarmerWork, SmithWork);
+
+	// Greetings follow the clock.
+	const FString Morning = GetSpeechLine(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person,
+		EUEGT2Activity::Stroll, EUEGT2SpeechMood::Greet, EUEGT2Weather::Clear, 9.0f, 5u).ToString();
+	const FString Midnight = GetSpeechLine(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person,
+		EUEGT2Activity::Stroll, EUEGT2SpeechMood::Greet, EUEGT2Weather::Clear, 23.0f, 5u).ToString();
+	TestNotEqual(TEXT("a greeting at nine is not a greeting at eleven at night"),
+		Morning, Midnight);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2NPCUtilityTest,
+	"UEGT2.NPC.Utility",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2NPCUtilityTest::RunTest(const FString& Parameters)
+{
+	// The hash underpins every stable choice in the system: which line, which
+	// jitter, who is hidden at 50% crowd density. A biased or clamped hash
+	// would show up as the same villagers always being the ones who talk.
+	float Min = 1.0f, Max = 0.0f, Sum = 0.0f;
+	const int32 Samples = 2000;
+	for (int32 Index = 0; Index < Samples; ++Index)
+	{
+		const float Value = UEGT2HashUnit((uint32)Index, 17u, 99u);
+		TestTrue(TEXT("hash in [0,1)"), Value >= 0.0f && Value < 1.0f);
+		Min = FMath::Min(Min, Value);
+		Max = FMath::Max(Max, Value);
+		Sum += Value;
+	}
+	const float Mean = Sum / Samples;
+	TestTrue(FString::Printf(TEXT("hash is roughly uniform (mean %.3f)"), Mean),
+		Mean > 0.45f && Mean < 0.55f);
+	TestTrue(TEXT("hash spans the range"), Min < 0.02f && Max > 0.98f);
+	TestEqual(TEXT("hash is stable"), UEGT2HashSeed(1u, 2u, 3u), UEGT2HashSeed(1u, 2u, 3u));
+	TestNotEqual(TEXT("hash separates its arguments"),
+		UEGT2HashSeed(1u, 2u, 3u), UEGT2HashSeed(3u, 2u, 1u));
+
+	// Pace: every activity has to move at some positive speed, and the ones
+	// that are supposed to be urgent have to actually be faster.
+	for (int32 Index = 0; Index < (int32)EUEGT2Activity::Count; ++Index)
+	{
+		TestTrue(TEXT("pace is positive"), GetActivityPace((EUEGT2Activity)Index) > 0.0f);
+	}
+	TestTrue(TEXT("fleeing beats strolling"),
+		GetActivityPace(EUEGT2Activity::Flee) > GetActivityPace(EUEGT2Activity::Stroll));
+	TestTrue(TEXT("running for shelter beats a commute"),
+		GetActivityPace(EUEGT2Activity::Shelter) > GetActivityPace(EUEGT2Activity::Commute));
+	TestTrue(TEXT("grazing is slow"),
+		GetActivityPace(EUEGT2Activity::Graze) < GetActivityPace(EUEGT2Activity::Work));
+
+	// Indoor activities are the ones that hide the actor. Getting this wrong
+	// leaves people standing inside walls, or standing outside all night.
+	TestTrue(TEXT("sleeping is indoors"), IsIndoorActivity(EUEGT2Activity::Sleep));
+	TestTrue(TEXT("dinner is indoors"), IsIndoorActivity(EUEGT2Activity::Dinner));
+	TestFalse(TEXT("working is not"), IsIndoorActivity(EUEGT2Activity::Work));
+	TestFalse(TEXT("sheltering is not - you can see them under the awning"),
+		IsIndoorActivity(EUEGT2Activity::Shelter));
+
+	TestTrue(TEXT("a dog is an animal"), IsAnimalSpecies(EUEGT2NPCSpecies::Dog));
+	TestFalse(TEXT("a person is not"), IsAnimalSpecies(EUEGT2NPCSpecies::Person));
+	TestTrue(TEXT("a storm is wet"), IsWetWeather(EUEGT2Weather::Storm));
+	TestFalse(TEXT("fog is not"), IsWetWeather(EUEGT2Weather::Foggy));
+
+	// Display names: the bubble header and the dev overlay both print these.
+	for (int32 Index = 0; Index < (int32)EUEGT2Activity::Count; ++Index)
+	{
+		TestFalse(TEXT("every activity has a name"),
+			GetActivityDisplayName((EUEGT2Activity)Index).IsEmpty());
+	}
+	for (int32 Index = 0; Index < (int32)EUEGT2NPCRole::Count; ++Index)
+	{
+		TestFalse(TEXT("every role has a name"),
+			GetRoleDisplayName((EUEGT2NPCRole)Index).IsEmpty());
+	}
+	for (int32 Index = 0; Index < (int32)EUEGT2Anchor::Count; ++Index)
+	{
+		TestTrue(TEXT("every anchor has a name"),
+			FCString::Strlen(GetAnchorName((EUEGT2Anchor)Index)) > 0);
+	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2FullDayTest,
+	"UEGT2.NPC.FullDay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2FullDayTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2NPCTests;
+
+	// Walk a whole day for every role and check the shape of it. This is the
+	// test that catches a routine edited into nonsense - a trade that never
+	// sleeps, or one that never leaves the house.
+	for (int32 RoleIndex = 0; RoleIndex < (int32)EUEGT2NPCRole::Count; ++RoleIndex)
+	{
+		const EUEGT2NPCRole Role = (EUEGT2NPCRole)RoleIndex;
+		const FString Name = GetRoleDisplayName(Role).ToString();
+
+		TSet<EUEGT2Activity> Seen;
+		TSet<EUEGT2Anchor> Anchors;
+		int32 SleepSamples = 0;
+		int32 OutdoorSamples = 0;
+
+		for (int32 Step = 0; Step < 96; ++Step)          // every quarter hour
+		{
+			FUEGT2NPCContext Context = Plain(Step * 0.25f);
+			const FUEGT2ActivityDecision Decision = ResolveActivity(Role,
+				EUEGT2NPCSpecies::Person, Context);
+			Seen.Add(Decision.Activity);
+			Anchors.Add(Decision.Anchor);
+			SleepSamples += (Decision.Activity == EUEGT2Activity::Sleep) ? 1 : 0;
+			OutdoorSamples += IsIndoorActivity(Decision.Activity) ? 0 : 1;
+		}
+
+		TestTrue(FString::Printf(TEXT("%s sleeps at some point"), *Name), SleepSamples > 0);
+		TestTrue(FString::Printf(TEXT("%s does not sleep all day"), *Name), SleepSamples < 80);
+		TestTrue(FString::Printf(TEXT("%s leaves the house"), *Name), OutdoorSamples > 24);
+		TestTrue(FString::Printf(TEXT("%s does more than three things (got %d)"),
+			*Name, Seen.Num()), Seen.Num() >= 4);
+		TestTrue(FString::Printf(TEXT("%s visits more than one place (got %d)"),
+			*Name, Anchors.Num()), Anchors.Num() >= 3);
+	}
+
+	// Animals too, but a sheep is allowed a much smaller day than a courier.
+	for (int32 Index = 1; Index < (int32)EUEGT2NPCSpecies::Count; ++Index)
+	{
+		const EUEGT2NPCSpecies Species = (EUEGT2NPCSpecies)Index;
+		const FString Name = GetSpeciesDisplayName(Species).ToString();
+		TSet<EUEGT2Activity> Seen;
+		int32 RoostSamples = 0;
+		for (int32 Step = 0; Step < 96; ++Step)
+		{
+			const FUEGT2ActivityDecision Decision = ResolveActivity(EUEGT2NPCRole::Villager,
+				Species, Plain(Step * 0.25f));
+			Seen.Add(Decision.Activity);
+			RoostSamples += (Decision.Activity == EUEGT2Activity::Roost) ? 1 : 0;
+		}
+		TestTrue(FString::Printf(TEXT("%s rests at some point"), *Name), RoostSamples > 0);
+		TestTrue(FString::Printf(TEXT("%s does more than one thing (got %d)"),
+			*Name, Seen.Num()), Seen.Num() >= 2);
+	}
+	return true;
+}
+
+#endif // WITH_AUTOMATION_TESTS

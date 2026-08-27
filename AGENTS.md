@@ -21,9 +21,10 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Build.ps1 -Target Both                # ALWAYS both targets
 ./Scripts/Build-Content.ps1 -Stages all         # rebuild the world
 ./Scripts/Build-Content.ps1 -Stages nature      # rebuild one stage
+./Scripts/Build-Content.ps1 -Stages npc         # re-roll the population + road graph
 ./Scripts/Test.ps1                              # automation tests
 ./Scripts/Package.ps1                           # playable build
-./Scripts/Screenshot-Tour.ps1                   # 14 viewpoints -> PNG
+./Scripts/Screenshot-Tour.ps1                   # 19 viewpoints -> PNG
 ./Scripts/Screenshot-Tour.ps1 -Menu             # menu + settings -> PNG
 ./Scripts/Preview.ps1 -Stages lighting          # build + package + screenshot
 python Tools/Terrain/generate_terrain.py        # re-roll terrain (+ PNG previews)
@@ -41,10 +42,17 @@ python Tools/Audio/generate_audio.py            # re-generate sounds
 3. **Package it.** The cook is the only place material shaders actually compile
    and the only place bad physics collision is reported. `Build-Content.ps1` and
    `Package.ps1` both fail the build on a material that does not compile.
-4. **`./Scripts/Test.ps1`.** Guards materials, vertex colours and world
-   composition.
+4. **`./Scripts/Test.ps1`.** Guards materials, vertex colours, world composition,
+   and the whole NPC behaviour model - the routines, the rules that override
+   them, the speech pools and the baked population.
+   `UEGT2.NPC.*` needs no map and runs in seconds.
 5. **Read `Saved/Logs/ContentBuild.log`** when a stage misbehaves. The build
    script echoes only the `[UEGT2]` lines; the full log has everything.
+6. **Read the population report.** Any run logs one `LogUEGT2NPC` line twelve
+   seconds in: how many inhabitants exist, how many are out, how many are
+   walking, how many are near the player, and the mean frame rate. "769 placed,
+   none of them anywhere near the player" is what a movement bug looks like from
+   the outside, and it renders as a perfectly clean log over an empty town.
 
 ## Traps already paid for
 
@@ -96,6 +104,28 @@ Do not undo these without understanding why they are there.
   has to filter on `not is_city` too, or it will lay cottages down city avenues.
 - **Fixed attempt counts do not survive a bigger map.** Scatter loops written as
   `range(900)` quarter in density when the extent doubles. Scale by area.
+- **An NPC's mesh must not be its root component.** The walk cycle is a relative
+  offset applied to the mesh every frame, and a relative move on the *root* is a
+  world move: every NPC inside LOD range teleports to the world origin, which is
+  under the town square. `AUEGT2NPCActor` puts a plain scene root above the mesh
+  for exactly this reason. The symptom is a town that is full when frozen for a
+  capture and empty the moment anything ticks.
+- **NPC ground traces query `ECC_WorldStatic` by object type, not the Visibility
+  channel.** Every NPC blocks Visibility so the interaction probe can find them,
+  and a channel trace lands one NPC on another's head.
+- **NPCs do not block the player.** Query-only collision, Visibility alone. The
+  player starts in the town square where the crowd is thickest, and a solid crowd
+  there means getting wedged between four villagers - and a packaged walk smoke
+  that fails because somebody stood in front of the pawn.
+- **Shared NPC anchors are picked from the closest few by seed, not by rank.**
+  The town has five market stalls and ninety villagers; "nearest" sends all
+  ninety to the same one and produces a single writhing mass of people.
+- **The NPC director tracks the player's view point, not the pawn.** They differ
+  during a screenshot tour, which parks the pawn at the player start and flies a
+  separate camera around.
+- **Screenshot tours freeze the population**, for the same reason they freeze the
+  sun. `-UEGT2LiveNPCs` opts out and logs every line spoken; it is not
+  reproducible, which is why it is not the default.
 - **Auto exposure has to follow the time of day, or night renders pure black.**
   `lighting.py` bakes `auto_exposure_min_brightness = 10.5` *EV100* into the post
   process volume - that is a daylight floor. A moonlit scene sits near EV 0, so a
@@ -119,6 +149,10 @@ Do not undo these without understanding why they are there.
 | A colour | `Tools/Python/uegt2/palette.py` — it is the only place colours live |
 | A world feature (road, region, river) | `Tools/Terrain/world_config.py`, then re-run the terrain script |
 | A screenshot viewpoint | `UUEGT2CaptureSubsystem::GetTour()` |
+| A trade, or a change to one's day | A routine in `UEGT2NPCRoutines.cpp`, plus a `_ROLE_LOOK` row in `npc.py` |
+| An animal | A generator in `gen_fauna.py`, a `meshbuild._catalog()` line, a species routine |
+| Something an NPC says | A pool in `UEGT2NPCSpeech.cpp`; the tests check every pool is filled |
+| A rule that overrides a routine | `ResolveActivity` in `UEGT2NPCRoutines.cpp` |
 | A content stage | A module in `uegt2/`, then register it in `build_content.py` |
 
 ## Style

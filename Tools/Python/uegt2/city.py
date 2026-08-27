@@ -143,7 +143,7 @@ def _place_blocks(placer, rng, blocks, plaza_index, park_indices):
     return buildings
 
 
-def _place_plaza(placer, rng, block):
+def _place_plaza(placer, block):
     """Civic centre: the city hall behind a fountain, benches and planters."""
     cx, cy = block.center
     hall_depth = CITY_BUILDINGS["SM_CityHall_A"][1]
@@ -171,12 +171,8 @@ def _place_plaza(placer, rng, block):
         placer.place("SM_PlanterLong_A", wx, wy, angle, "PlazaPlanter %d" % i,
                      radius=520.0, z_offset=-10.0)
 
-    for i in range(12):
-        wx = cx + rng.uniform(-2600.0, 2600.0)
-        wy = cy + rng.uniform(-2600.0, 2600.0)
-        name = ["SM_Villager_A", "SM_Villager_B", "SM_Villager_C", "SM_Villager_D"][i % 4]
-        placer.place(name, wx, wy, rng.uniform(0.0, 360.0), "Citizen %d" % i,
-                     radius=130.0, z_offset=-4.0)
+    # Citizens are spawned by the npc stage, which gives them somewhere to be
+    # at each hour rather than standing them in the plaza forever.
 
     ctx.log("city: civic plaza at (%.0f, %.0f)" % (cx, cy))
 
@@ -342,7 +338,7 @@ def build(world, world_data, meshes=None):
     streets = [r for r in world_data.roads
                if r.get("is_city") and r.get("is_street")]
 
-    _place_plaza(placer, rng, blocks[plaza_index])
+    _place_plaza(placer, blocks[plaza_index])
     _place_blocks(placer, rng, blocks, plaza_index, park_indices)
     _place_parks(placer, rng, blocks, park_indices)
     _place_street_furniture(placer, rng, streets)

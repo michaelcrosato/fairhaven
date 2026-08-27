@@ -24,3 +24,5 @@ UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2World, Log, All);
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Diag, Log, All);
 /** Dev mode: free camera, world controls and teleports. */
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Dev, Log, All);
+/** Inhabitants: schedules, routing, speech and the population director. */
+UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2NPC, Log, All);

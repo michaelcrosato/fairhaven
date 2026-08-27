@@ -48,8 +48,11 @@ Useful console commands (backtick to open the console):
 
 You start just off the town square, facing east toward the harbour.
 
-1. **Town square** — the well, market stalls, villagers. Try `E` on a crate:
-   you pick it up, carry it, and `E` again throws it. Open a house door.
+1. **Town square** — the well, the market stalls, and the crowd. Try `E` on a
+   crate: you pick it up, carry it, and `E` again throws it. Open a house door.
+   Try `E` on a villager: they answer, and the HUD tells you what they are
+   actually doing. Stand still for a minute and read what people say as they set
+   off somewhere.
 2. **East to the harbour** (about 300 m) — docks, boats, the beach. Walk into
    the sea: you should start swimming at chest depth.
 3. **North-east to the lighthouse** — the tallest landmark on the coast. Survey
@@ -66,6 +69,18 @@ There are 7 survey landmarks. Each shows a count when you use it.
 
 **Scale.** Does a house feel house-sized next to you? Do the villagers read as
 people? Is the walk from town to the coast the right length, or too long/short?
+
+**The town's day.** This is the main new question. Escape → Dev Mode → World →
+Time of Day, and drag it. Half four in the morning should be a fisher walking to
+the boats and nobody else; nine should be a working town; six in the evening
+should be a full square; one in the morning should be empty except for the
+constable and a light in the bakery. Does it read as a town keeping hours, or as
+actors hitting marks? Dev Mode → Life → **Show Plans** tells you what each of
+them thinks it is doing, and why.
+
+**The bubbles.** Do they arrive often enough to notice and rarely enough to be
+worth reading? Do people say what they then visibly go and do? Settings →
+Gameplay turns them off if they are too much.
 
 **Movement.** Walk, sprint, crouch, jump. Does the head bob feel right (it is
 adjustable in Settings → Gameplay)? Can you climb the terrain you expect to, and
@@ -91,13 +106,21 @@ binding. Quit and relaunch: everything should persist.
 
 These are known. Reporting them again costs you time.
 
-- **No gameplay.** No objectives, inventory, combat, NPCs behaviour, saving of
-  world state. Only settings persist. Villagers are static props.
+- **No gameplay.** No objectives, inventory, combat or saving of world state.
+  Only settings persist. The inhabitants keep a routine and react to the hour,
+  the weather, the day and to you, but there is nothing to *do* with them beyond
+  talking; nothing you do changes their day.
 - **Water is a stylised surface, not the Water plugin.** No waves, no buoyancy,
   no underwater post-process. Swimming works because there is a physics volume
   under the sea plane. The river is a flat ribbon.
-- **The windmill sails do not turn** and no character is animated. That is
+- **The windmill sails do not turn**, and there is no skeletal animation
+  anywhere. A walking figure is a static mesh with a bob and a sway. That is
   deliberate for this milestone.
+- **You walk through people.** NPC collision is query-only, on purpose: the
+  player starts in the busiest part of town and a solid crowd there means getting
+  wedged.
+- **Nobody goes inside.** There are no interiors, so sleeping and eating at home
+  are modelled by the inhabitant standing on their own doorstep and vanishing.
 - **Interiors do not exist.** Doors swing open onto a solid wall.
 - **Vegetation pops** at its cull distance rather than fading.
 - **The town is one density everywhere** — no separate districts, and building

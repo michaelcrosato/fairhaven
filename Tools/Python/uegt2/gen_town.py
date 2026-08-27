@@ -470,24 +470,106 @@ def bridge_section(seed=1, span=700.0, width=520.0):
 # ---------------------------------------------------------------------------
 # Characters: blocky standing figures, no skeleton and no animation
 # ---------------------------------------------------------------------------
-def villager(seed=1):
+def _scale_mesh(mesh, factor):
+    """Uniformly scale a finished mesh in place.
+
+    Cheaper than threading a scale factor through every literal in person(),
+    and safe because the scale is uniform: face normals are unchanged, so the
+    flat shading and the winding both survive.
+    """
+    if factor == 1.0:
+        return mesh
+    mesh.vertices = [(v[0] * factor, v[1] * factor, v[2] * factor) for v in mesh.vertices]
+    return mesh
+
+
+# What each figure wears. Adding an entry here and a catalog line is the whole
+# cost of a new kind of inhabitant.
+PERSON_KINDS = ("plain", "hat", "apron", "coat", "pack", "robe", "suit",
+                "uniform", "hivis", "child")
+
+
+def person(seed=1, kind="plain", scale=1.0):
+    """One blocky inhabitant.
+
+    Proportions are deliberately toy-like: big head, short limbs, no neck to
+    speak of. ``kind`` swaps the clothing and adds one silhouette-changing
+    prop - a brim, a pack, a long coat - because at this scale the silhouette
+    is the only thing that survives being fifteen metres away.
+
+    Built facing +X, like everything in gen_fauna: the NPC actor sets yaw from
+    its direction of travel, and actor forward is +X.
+    """
     rng = _SmallRng(seed)
     skin = rng_choice(rng, pal.SKIN_TONES)
     shirt = rng_choice(rng, pal.SHIRT_COLOURS)
     trousers = rng_choice(rng, pal.TROUSER_COLOURS)
+    boots = pal.WOOD_DARK
+
+    if kind == "suit":
+        shirt = rng_choice(rng, pal.SUIT_COLOURS)
+        trousers = shirt
+        boots = pal.HIDE_BLACK
+    elif kind == "uniform":
+        shirt = pal.UNIFORM_NAVY
+        trousers = pal.UNIFORM_NAVY
+        boots = pal.HIDE_BLACK
+    elif kind == "hivis":
+        shirt = pal.HIVIS_AMBER
+    elif kind == "robe":
+        shirt = pal.ROBE_CREAM
+        trousers = pal.ROBE_CREAM
+    elif kind == "child":
+        shirt = rng_choice(rng, [pal.CLOTH_RED, pal.CLOTH_YELLOW, pal.CLOTH_BLUE,
+                                 pal.CLOTH_GREEN])
 
     mesh = MeshBuilder()
-    # Proportions are deliberately toy-like: big head, short limbs.
     for sy in (-1.0, 1.0):
         mesh.box((0.0, sy * 20.0, 33.0), (34.0, 32.0, 66.0), trousers)
-        mesh.box((0.0, sy * 20.0, 4.0), (44.0, 34.0, 16.0), pal.WOOD_DARK)
+        mesh.box((0.0, sy * 20.0, 4.0), (44.0, 34.0, 16.0), boots)
     mesh.box((0.0, 0.0, 96.0), (46.0, 74.0, 62.0), shirt)
     for sy in (-1.0, 1.0):
         mesh.box((0.0, sy * 48.0, 92.0), (28.0, 24.0, 58.0), shirt)
         mesh.box((0.0, sy * 48.0, 60.0), (26.0, 22.0, 22.0), skin)
     mesh.box((0.0, 0.0, 134.0), (34.0, 40.0, 18.0), skin)
     mesh.box((0.0, 0.0, 164.0), (52.0, 56.0, 46.0), skin)
-    if rng.next() > 0.45:
+
+    # --- what makes each one different --------------------------------------
+    if kind == "hat":
+        # Wide straw brim: the farm silhouette, readable across a field.
+        mesh.box((0.0, 0.0, 188.0), (92.0, 96.0, 8.0), pal.CROP_WHEAT)
+        mesh.box((0.0, 0.0, 200.0), (48.0, 52.0, 22.0), pal.CROP_WHEAT)
+    elif kind == "apron":
+        mesh.box((25.0, 0.0, 88.0), (10.0, 62.0, 78.0), pal.APRON_CREAM)
+        mesh.box((0.0, 0.0, 190.0), (58.0, 62.0, 14.0), pal.CLOTH_CREAM)
+    elif kind == "coat":
+        # A long coat: one taller, wider box over the torso and hips.
+        mesh.box((0.0, 0.0, 92.0), (52.0, 80.0, 96.0), rng_choice(rng, pal.COAT_COLOURS))
+        mesh.box((0.0, 0.0, 190.0), (62.0, 66.0, 16.0), pal.CLOTH_BLUE)
+    elif kind == "pack":
+        mesh.box((-30.0, 0.0, 104.0), (26.0, 54.0, 52.0), pal.ROPE_TAN)
+        mesh.box((-30.0, 0.0, 132.0), (28.0, 30.0, 12.0), pal.WOOD_DARK)
+    elif kind == "robe":
+        # Skirted, so the priest reads as a priest and not as a pale villager.
+        mesh.frustum((0.0, 0.0, 0.0), (74.0, 84.0), (52.0, 62.0), 70.0, pal.ROBE_CREAM)
+        mesh.box((22.0, 0.0, 104.0), (8.0, 12.0, 46.0), pal.CLOTH_YELLOW)
+    elif kind == "suit":
+        mesh.box((24.0, 0.0, 104.0), (6.0, 12.0, 40.0), pal.CLOTH_RED)
+        mesh.box((14.0, 52.0, 52.0), (30.0, 16.0, 34.0), pal.WOOD_DARK)   # case
+    elif kind == "uniform":
+        mesh.box((0.0, 0.0, 190.0), (56.0, 60.0, 18.0), pal.UNIFORM_NAVY)
+        mesh.box((26.0, 0.0, 190.0), (18.0, 52.0, 6.0), pal.UNIFORM_NAVY)  # peak
+    elif kind == "hivis":
+        mesh.box((0.0, 0.0, 190.0), (58.0, 62.0, 16.0), pal.HIVIS_AMBER)
+    elif rng.next() > 0.45:
+        # Everyone else: a hat about half the time, as before.
         mesh.box((0.0, 0.0, 190.0), (62.0, 66.0, 16.0),
                  rng_choice(rng, [pal.CLOTH_BLUE, pal.CROP_WHEAT, pal.CLOTH_GREEN]))
-    return mesh
+
+    return _scale_mesh(mesh, scale)
+
+
+def villager(seed=1):
+    """The plain townsfolk figure. Kept as its own name: the mesh catalog and
+    the 0.1 screenshots both refer to SM_Villager_*."""
+    return person(seed, "plain")

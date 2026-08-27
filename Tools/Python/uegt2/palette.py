@@ -148,6 +148,37 @@ SKIN_TONES = [0xF2CDA7, 0xE0B183, 0xC28E63, 0x8D5A3C, 0x63412C]
 SHIRT_COLOURS = [0xB6503F, 0x40688E, 0x4F7A50, 0xDCB055, 0x7A5C8E, 0xE6DAC0]
 TROUSER_COLOURS = [0x3B4A5C, 0x5C4A38, 0x44523F, 0x6B5B4A, 0x2F3742]
 
+# Newhaven dresses differently from Fairhaven, and the point of the drive south
+# is that you can see that at a glance: the town wears dye, the city wears wool.
+SUIT_COLOURS = [0x2E3742, 0x3A3F46, 0x434A52, 0x2B3540, 0x50565E]
+COAT_COLOURS = [0x5A4632, 0x3F4A55, 0x4A4038, 0x6B5C46]
+APRON_CREAM = 0xE8DFC8
+ROBE_CREAM = 0xDED3B8
+UNIFORM_NAVY = 0x2A3B57
+HIVIS_AMBER = 0xD4913A
+
+# --- Animals ----------------------------------------------------------------
+# Kept naturalistic where the props are not: a lilac cow would be the one thing
+# in the world that reads as a mistake rather than as a style.
+FUR_BROWN = 0x8A6446
+FUR_TAN = 0xB08A5E
+FUR_DARK = 0x4B3A2C
+FUR_GINGER = 0xB5703C
+FUR_GREY = 0x8E8880
+FUR_WHITE = 0xE6E0D2
+WOOL_CREAM = 0xDED8C6
+HIDE_BROWN = 0x6E4A32
+HIDE_BLACK = 0x3A342E
+PIG_PINK = 0xD9A091
+HOOF_DARK = 0x3B342D
+HORN_PALE = 0xC9BC9C
+FEATHER_WHITE = 0xEDE9DC
+FEATHER_BROWN = 0x9A7248
+FEATHER_GREY = 0xA7ADB4
+FEATHER_GREEN = 0x3F6B4E
+BEAK_ORANGE = 0xD9942F
+COMB_RED = 0xB4453A
+
 
 def leaf_set(biome: str):
     """Leaf colour choices for a biome, used by the tree generators."""
