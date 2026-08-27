@@ -145,6 +145,8 @@ class WorldData(object):
         self.river = self.data["river"]
         self.ponds = self.data.get("ponds", [])
         self.lagoon = self.data["lagoon"]
+        # None for a world_features.json generated before Newhaven existed.
+        self.city = self.data.get("city")
         self.coast = self.data["coast"]
 
         self._heights = None

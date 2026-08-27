@@ -11,6 +11,7 @@ Source/UEGT2/Private/Diagnostics/UEGT2CaptureSubsystem.cpp.
 ./Scripts/Screenshot-Tour.ps1
 ./Scripts/Screenshot-Tour.ps1 -Only TownSquare -ResX 2560 -ResY 1440
 ./Scripts/Screenshot-Tour.ps1 -Menu -OutputDirectory Saved/Screenshots/Menu
+./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2Time=22.5 -UEGT2Weather=storm'
 #>
 [CmdletBinding()]
 param(
@@ -22,7 +23,11 @@ param(
     [double] $Hold = 1.8,
     [int] $TimeoutMinutes = 20,
     [switch] $Menu,
-    [string] $EngineRoot
+    [string] $EngineRoot,
+    # Passed straight through to the game. -UEGT2Time=<hours> and
+    # -UEGT2Weather=<name> render a specific sky; both freeze the day/night
+    # cycle so the shot stays reproducible.
+    [string] $ExtraArgs
 )
 
 $ErrorActionPreference = 'Stop'
@@ -78,6 +83,7 @@ $arguments = @(
 )
 if ($Only) { $arguments += "-UEGT2CaptureOnly=$Only" }
 if ($Menu) { $arguments += '-UEGT2CaptureMenu' }
+if ($ExtraArgs) { $arguments += ($ExtraArgs -split '\s+' | Where-Object { $_ }) }
 
 Write-Host "Capturing tour at ${ResX}x${ResY} -> $OutputDirectory"
 $process = Start-Process -FilePath $gameExe -ArgumentList $arguments -PassThru -WindowStyle Hidden `

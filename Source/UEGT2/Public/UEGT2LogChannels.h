@@ -22,3 +22,5 @@ UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2UI, Log, All);
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2World, Log, All);
 /** Performance counters and the diagnostics overlay. */
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Diag, Log, All);
+/** Dev mode: free camera, world controls and teleports. */
+UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Dev, Log, All);

@@ -13,10 +13,17 @@ Platforms/
 *.sdf
 *.VC.db
 *.VC.opendb
-# Generated inputs for the content build. Regenerated in ~2 minutes by
+# Generated inputs for the content build. Regenerated in ~3 minutes by
 # Scripts/Setup-Project.ps1 (or the two Tools/*/generate_*.py scripts), so they
-# are not worth ~44 MB of history.
+# are not worth ~150 MB of history.
 Tools/Terrain/Output/
 Tools/Audio/Output/
+
+# The map, for the same reason and one harder one. It is rewritten whole by
+# every content build, and at the 4033 landscape it is ~195 MB - past GitHub's
+# 100 MB per-file hard limit, so it cannot be pushed at all. Everything else
+# under Content/ is small (~5 MB) and stays committed; the map is rebuilt by
+# Scripts/Setup-Project.ps1 or Scripts/Build-Content.ps1.
+Content/Maps/*.umap
 __pycache__/
 *.pyc

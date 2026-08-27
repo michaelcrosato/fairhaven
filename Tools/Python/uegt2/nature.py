@@ -219,6 +219,15 @@ def _place_species(wd, species, near_road, seed):
     """Return a list of unreal.Transform for one species."""
     rng = _SmallRng(seed)
     extent = wd.extent - 2000.0
+
+    # Newhaven is paved, so the layer weights already thin scatter there, but
+    # not to zero at the edges. An explicit hole stops a jungle tree growing up
+    # through the middle of a tower.
+    city = getattr(wd, "city", None)
+    city_x, city_y, city_r = 0.0, 0.0, -1.0
+    if city:
+        city_x, city_y = city["center"]
+        city_r = float(city["radius_uu"]) * 0.94
     spacing = species.spacing
     steps = int((extent * 2.0) / spacing)
 
@@ -253,6 +262,8 @@ def _place_species(wd, species, near_road, seed):
             if probability <= 0.0 or rng.next() > probability:
                 continue
             if near_road(jx, jy):
+                continue
+            if city_r > 0.0 and (jx - city_x) ** 2 + (jy - city_y) ** 2 < city_r * city_r:
                 continue
 
             name = species.meshes[int(rng.next() * mesh_count) % mesh_count]
