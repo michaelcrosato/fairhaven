@@ -78,6 +78,13 @@ const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
 			TEXT("Town centre looking east toward the harbour"));
 		Add(TEXT("MainStreet"), -6000.0f, -4000.0f, 1.8f, 55.0f, -2.0f,
 			TEXT("Main street approach into town"));
+		// Off the square itself, looking back across it. TownSquare stands the
+		// camera on the well, four metres above everyone's head - a fine shot
+		// of the roofs and a useless one of the people under them. Height is
+		// measured from whatever the downward trace hits, so this sits a little
+		// above the square rather than exactly in it.
+		Add(TEXT("Market"), 2900.0f, 1500.0f, 1.8f, 207.0f, -3.0f,
+			TEXT("The market square and the crowd around the well"));
 		Add(TEXT("Waterfront"), -1200.0f, 26500.0f, 2.2f, 78.0f, -5.0f,
 			TEXT("Shoreline and docks looking out to sea"));
 		Add(TEXT("BeachSouth"), -26000.0f, 21000.0f, 2.0f, 20.0f, -3.0f,

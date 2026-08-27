@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from . import ctx
 from . import gen_city as city
+from . import gen_fauna as fauna
 from . import gen_nature as nat
 from . import gen_town as town
 from . import meshkit
@@ -22,6 +23,7 @@ P_NATURE = ctx.P_MESH + "/Nature"
 P_TOWN = ctx.P_MESH + "/Town"
 P_PROPS = ctx.P_MESH + "/Props"
 P_CITY = ctx.P_MESH + "/City"
+P_FAUNA = ctx.P_MESH + "/Fauna"
 
 
 def _catalog():
@@ -129,11 +131,65 @@ def _catalog():
         ("SM_Fountain_A", P_CITY, lambda: city.fountain(541), "prop", "complex"),
         ("SM_PlanterLong_A", P_CITY, lambda: city.planter_long(547), "prop", "complex"),
 
-        # -- Characters -----------------------------------------------------
-        ("SM_Villager_A", P_TOWN, lambda: town.villager(401), "prop", "complex"),
-        ("SM_Villager_B", P_TOWN, lambda: town.villager(409), "prop", "complex"),
-        ("SM_Villager_C", P_TOWN, lambda: town.villager(419), "prop", "complex"),
-        ("SM_Villager_D", P_TOWN, lambda: town.villager(421), "prop", "complex"),
+        # -- Townsfolk ------------------------------------------------------
+        # Collision is "complex" for the same reason the props are: the
+        # interaction probe traces on Visibility, and a figure with no collision
+        # geometry cannot be looked at or talked to. The NPC actor then narrows
+        # that to query-only so the player walks through a crowd rather than
+        # getting wedged in one.
+        ("SM_Villager_A", P_TOWN, lambda: town.person(401, "plain"), "prop", "complex"),
+        ("SM_Villager_B", P_TOWN, lambda: town.person(409, "plain"), "prop", "complex"),
+        ("SM_Villager_C", P_TOWN, lambda: town.person(419, "plain"), "prop", "complex"),
+        ("SM_Villager_D", P_TOWN, lambda: town.person(421, "plain"), "prop", "complex"),
+        ("SM_Villager_E", P_TOWN, lambda: town.person(431, "plain"), "prop", "complex"),
+        ("SM_Villager_F", P_TOWN, lambda: town.person(433, "hat"), "prop", "complex"),
+        ("SM_Villager_G", P_TOWN, lambda: town.person(439, "coat"), "prop", "complex"),
+        ("SM_Villager_H", P_TOWN, lambda: town.person(443, "pack"), "prop", "complex"),
+        ("SM_Farmer_A", P_TOWN, lambda: town.person(449, "hat"), "prop", "complex"),
+        ("SM_Farmer_B", P_TOWN, lambda: town.person(457, "hat"), "prop", "complex"),
+        ("SM_Fisher_A", P_TOWN, lambda: town.person(461, "coat"), "prop", "complex"),
+        ("SM_Fisher_B", P_TOWN, lambda: town.person(463, "coat"), "prop", "complex"),
+        ("SM_Merchant_A", P_TOWN, lambda: town.person(467, "apron"), "prop", "complex"),
+        ("SM_Merchant_B", P_TOWN, lambda: town.person(479, "apron"), "prop", "complex"),
+        ("SM_Priest_A", P_TOWN, lambda: town.person(487, "robe"), "prop", "complex"),
+        ("SM_Dockhand_A", P_TOWN, lambda: town.person(491, "pack"), "prop", "complex"),
+        ("SM_Elder_A", P_TOWN, lambda: town.person(499, "coat"), "prop", "complex"),
+        ("SM_Elder_B", P_TOWN, lambda: town.person(503, "coat"), "prop", "complex"),
+        # Children are the same figure at 62%, which is the whole reason
+        # person() takes a scale: a separate short mesh would drift out of step.
+        ("SM_Child_A", P_TOWN, lambda: town.person(509, "child", 0.62), "prop", "complex"),
+        ("SM_Child_B", P_TOWN, lambda: town.person(521, "child", 0.58), "prop", "complex"),
+        ("SM_Child_C", P_TOWN, lambda: town.person(523, "child", 0.66), "prop", "complex"),
+
+        # -- Newhaven citizens ----------------------------------------------
+        ("SM_Citizen_A", P_CITY, lambda: town.person(541, "suit"), "prop", "complex"),
+        ("SM_Citizen_B", P_CITY, lambda: town.person(547, "suit"), "prop", "complex"),
+        ("SM_Citizen_C", P_CITY, lambda: town.person(557, "suit"), "prop", "complex"),
+        ("SM_Citizen_D", P_CITY, lambda: town.person(563, "coat"), "prop", "complex"),
+        ("SM_Citizen_E", P_CITY, lambda: town.person(569, "plain"), "prop", "complex"),
+        ("SM_Officer_A", P_CITY, lambda: town.person(571, "uniform"), "prop", "complex"),
+        ("SM_Courier_A", P_CITY, lambda: town.person(577, "hivis"), "prop", "complex"),
+        ("SM_Shopkeeper_A", P_CITY, lambda: town.person(587, "apron"), "prop", "complex"),
+
+        # -- Animals ---------------------------------------------------------
+        ("SM_Dog_A", P_FAUNA, lambda: fauna.dog(601), "prop", "complex"),
+        ("SM_Dog_B", P_FAUNA, lambda: fauna.dog(607), "prop", "complex"),
+        ("SM_Cat_A", P_FAUNA, lambda: fauna.cat(613), "prop", "complex"),
+        ("SM_Cat_B", P_FAUNA, lambda: fauna.cat(617), "prop", "complex"),
+        ("SM_Chicken_A", P_FAUNA, lambda: fauna.chicken(619), "prop", "complex"),
+        ("SM_Chicken_B", P_FAUNA, lambda: fauna.chicken(631), "prop", "complex"),
+        ("SM_Duck_A", P_FAUNA, lambda: fauna.duck(641), "prop", "complex"),
+        ("SM_Duck_B", P_FAUNA, lambda: fauna.duck(643), "prop", "complex"),
+        ("SM_Sheep_A", P_FAUNA, lambda: fauna.sheep(647), "prop", "complex"),
+        ("SM_Sheep_B", P_FAUNA, lambda: fauna.sheep(653), "prop", "complex"),
+        ("SM_Cow_A", P_FAUNA, lambda: fauna.cow(659), "prop", "complex"),
+        ("SM_Cow_B", P_FAUNA, lambda: fauna.cow(661), "prop", "complex"),
+        ("SM_Pig_A", P_FAUNA, lambda: fauna.pig(673), "prop", "complex"),
+        ("SM_Goat_A", P_FAUNA, lambda: fauna.goat(677), "prop", "complex"),
+        ("SM_Horse_A", P_FAUNA, lambda: fauna.horse(683), "prop", "complex"),
+        ("SM_Horse_B", P_FAUNA, lambda: fauna.horse(691), "prop", "complex"),
+        ("SM_Seagull_A", P_FAUNA, lambda: fauna.seagull(701), "prop", "complex"),
+        ("SM_Rabbit_A", P_FAUNA, lambda: fauna.rabbit(709), "prop", "complex"),
     ]
 
 
@@ -144,7 +200,7 @@ def build_all(prop_material, emissive_material, foliage_material, world_data):
         "emissive": emissive_material,
         "foliage": foliage_material,
     }
-    for folder in (P_NATURE, P_TOWN, P_PROPS, P_CITY):
+    for folder in (P_NATURE, P_TOWN, P_PROPS, P_CITY, P_FAUNA):
         ctx.ensure_directory(folder)
 
     built = {}

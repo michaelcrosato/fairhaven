@@ -39,15 +39,17 @@ dependency order regardless of the order given.
 | Stage | Module | Produces |
 |---|---|---|
 | `materials` | `uegt2/materials.py` | 5 master materials, no textures |
-| `meshes` | `uegt2/meshbuild.py` | 68 static meshes from the catalog |
+| `meshes` | `uegt2/meshbuild.py` | 131 static meshes from the catalog |
 | `audio` | `uegt2/audio.py` | sound classes, imported waves, ambience |
 | `level` | `build_content.py` | opens/resets `L_Fairhaven` |
 | `landscape` | `uegt2/landscape.py` | imports heightmap + 7 weightmaps |
 | `water` | `uegt2/water.py` | sea plane, river ribbon, ponds, swim volume |
 | `lighting` | `uegt2/lighting.py` | sun, sky, clouds, fog, post process |
 | `town` | `uegt2/town.py` | buildings, docks, landmarks, farms, fences |
-| `nature` | `uegt2/nature.py` | ~159,000 instanced plants and rocks |
+| `city` | `uegt2/city.py` | Newhaven: blocks, towers, street furniture, wharf |
+| `nature` | `uegt2/nature.py` | ~650,000 instanced plants and rocks |
 | `gameplay` | `uegt2/gameplay.py` | player start and interactables |
+| `npc` | `uegt2/npc.py` | the road graph, ~500 people and ~290 animals |
 | `showcase` | `uegt2/showcase.py` | dev-only grid of every mesh |
 
 `showcase` is excluded from `-Stages all` on purpose.
@@ -69,8 +71,18 @@ World actors:
   AUEGT2SkyController          drives sun/sky/fog from one TimeOfDay value
   AUEGT2ScatterField           hierarchical instanced mesh layers
   AUEGT2InteractableActor      base; Sign, Door, Lamp, Pickup, Landmark
+  AUEGT2NPCActor               one inhabitant, person or animal
+  AUEGT2RouteNetwork           the baked walkable road graph
+  UUEGT2NPCDirector            LOD tiers, schedule slices, the speech budget
   UUEGT2CaptureSubsystem       headless screenshot tours
 ```
+
+**The inhabitants** get their own document: [NPCs.md](NPCs.md). The organising
+idea there is the same one as everywhere else in this project - the interesting
+part is a pure function over plain data. `ResolveActivity` takes an hour, a
+weather, a personality and a distance to the player and returns what somebody
+should be doing, without touching the world, which is why the whole behaviour
+model is covered by unit tests rather than by playing the game and hoping.
 
 **`Source/UEGT2Editor`** — authoring only.
 
@@ -102,7 +114,7 @@ must not be undone:
   the alpha cannot be addressed from script.
 
 **Landscape, not World Partition.** One level, one landscape, no streaming. At
-2 km with instanced scatter this loads in seconds and keeps the content build
+4 km with instanced scatter this loads in seconds and keeps the content build
 simple. Streaming is the obvious next step if the world grows, and nothing here
 prevents it.
 
@@ -121,10 +133,18 @@ of `uegt2/water.py` for the trade-off.
 
 Target: 1920×1080, 60 fps on an RTX 3060-class GPU.
 
-- 68 unique meshes, 7,623 triangles total; the heaviest asset is 392 triangles.
-- ~159,000 scattered instances across 13 species, all in hierarchical instanced
+- 131 unique meshes, 21,043 triangles total; the heaviest asset is 744 triangles.
+- ~650,000 scattered instances across 13 species, all in hierarchical instanced
   components with per-species cull distances (grass 70 m, trees 700–900 m).
+- ~790 inhabitants as movable static mesh actors. Measured cost: **nothing
+  measurable** - 9.9 fps with all 786 present and walking against 9.1 fps with
+  707 of them hidden, in the same view. (Both figures are low because they come
+  through `-RenderOffscreen`; the point is the difference.) Four things buy that:
+  distance tiers, dormant NPCs teleporting along their schedule instead of
+  walking it, the population being walked in six slices per pass, and small
+  animals casting no shadow and culling at 90 m.
 - Only trees, rocks and fences have collision. Grass, crops and ferns have none.
+  NPCs are query-only against the Visibility channel: you walk through people.
 - Lamps are unshadowed point lights.
 - The landscape material samples no textures: it is a 7-layer blend of flat
   colours times two octaves of procedural noise.
@@ -140,6 +160,9 @@ Lumen quality.
    one line in `meshbuild._catalog()`. Placement stages look it up by name.
 3. **Add a usable object** by subclassing `AUEGT2InteractableActor` and
    implementing `OnInteract`. Do not touch the player or the HUD.
+   **Add a kind of inhabitant** by adding an `EUEGT2NPCRole`, a routine in
+   `UEGT2NPCRoutines.cpp` and a `_ROLE_LOOK` row in `npc.py`. The tests will tell
+   you if the routine is malformed before you ever load the map.
 4. **Add a setting** as a `UPROPERTY(Config)` on `UUEGT2GameUserSettings`, a
    getter/setter pair, and a row in the matching tab in `SUEGT2Menu.cpp`.
 5. **Anything that simulates physics needs `collision="simple"`** in the mesh
@@ -154,7 +177,14 @@ Lumen quality.
 - `F3` in game: frame time, position in metres, speed, focused interactable,
   quality levels.
 - `LogUEGT2`, `LogUEGT2Player`, `LogUEGT2Interaction`, `LogUEGT2Settings`,
-  `LogUEGT2UI`, `LogUEGT2World`, `LogUEGT2Diag` — one channel per system.
+  `LogUEGT2UI`, `LogUEGT2World`, `LogUEGT2Diag`, `LogUEGT2Dev`, `LogUEGT2NPC` —
+  one channel per system.
+- **The population report.** Twelve seconds into any run, `LogUEGT2NPC` prints
+  how many inhabitants exist, how many are outdoors, how many are walking, how
+  many are within 100 m and the mean frame rate over the preceding six seconds.
+  It exists because "769 placed, none of them anywhere near the player" is what a
+  movement bug looks like from the outside, and a headless capture would
+  otherwise report it as a perfectly clean run over an empty town.
 - `Saved/Logs/ContentBuild.log` — every content build; the build script echoes
   only the `[UEGT2]` lines and fails on any material that does not compile.
 - `Saved/Screenshots/Tour` and `Saved/Screenshots/Menu` — the visual record.

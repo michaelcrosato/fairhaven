@@ -21,6 +21,7 @@ Stage list:
     city       Newhaven: blocks, towers, street furniture, wharf
     nature     vegetation and rock scatter
     gameplay   player start, interactables, landmarks
+    npc        route network, townsfolk, citizens and animals
 """
 from __future__ import annotations
 
@@ -40,11 +41,11 @@ if _PY_ROOT not in sys.path:
 from uegt2 import ctx                                            # noqa: E402
 
 ALL_STAGES = ["materials", "meshes", "audio", "level", "landscape", "water",
-              "lighting", "town", "city", "nature", "gameplay", "showcase"]
+              "lighting", "town", "city", "nature", "gameplay", "npc", "showcase"]
 
 # Stages that need a level open (and therefore a level save at the end).
 WORLD_STAGES = {"level", "landscape", "water", "lighting", "town", "city",
-                "nature", "gameplay", "showcase", "audio"}
+                "nature", "gameplay", "npc", "showcase", "audio"}
 
 SUCCESS_MARKER = "UEGT2_CONTENT_BUILD_SUCCEEDED"
 
@@ -176,6 +177,13 @@ def main(argv):
     if "gameplay" in stages:
         from uegt2 import gameplay as gameplay_mod
         gameplay_mod.build(world, world_data)
+
+    # npc last of the world stages: it reads the buildings, stalls, docks and
+    # park benches the earlier stages placed and turns them into anchors, so it
+    # has to run after everything it surveys.
+    if "npc" in stages:
+        from uegt2 import npc as npc_mod
+        npc_mod.build(world, world_data)
 
     if "showcase" in stages:
         from uegt2 import showcase as showcase_mod

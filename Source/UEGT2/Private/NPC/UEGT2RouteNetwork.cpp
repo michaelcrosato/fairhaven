@@ -1,0 +1,307 @@
+#include "NPC/UEGT2RouteNetwork.h"
+
+#include "Engine/World.h"
+#include "EngineUtils.h"
+#include "NPC/UEGT2NPCTypes.h"
+#include "UEGT2LogChannels.h"
+
+AUEGT2RouteNetwork::AUEGT2RouteNetwork()
+{
+	PrimaryActorTick.bCanEverTick = false;
+	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	bIsEditorOnlyActor = false;
+}
+
+AUEGT2RouteNetwork* AUEGT2RouteNetwork::Get(const UWorld* World)
+{
+	if (!World)
+	{
+		return nullptr;
+	}
+	for (TActorIterator<AUEGT2RouteNetwork> It(const_cast<UWorld*>(World)); It; ++It)
+	{
+		return *It;
+	}
+	return nullptr;
+}
+
+void AUEGT2RouteNetwork::PostLoad()
+{
+	Super::PostLoad();
+	bIndexBuilt = false;
+}
+
+void AUEGT2RouteNetwork::BeginPlay()
+{
+	Super::BeginPlay();
+	BuildSpatialIndex();
+	UE_LOG(LogUEGT2NPC, Log, TEXT("Route network: %d nodes, %d links."),
+		NodeLocations.Num(), GetLinkCount());
+}
+
+int32 AUEGT2RouteNetwork::AddNode(const FVector& Location)
+{
+	const int32 Index = NodeLocations.Add(Location);
+	NodeLinks.AddDefaulted();
+	bIndexBuilt = false;
+	return Index;
+}
+
+void AUEGT2RouteNetwork::LinkNodes(int32 A, int32 B)
+{
+	if (A == B || !NodeLinks.IsValidIndex(A) || !NodeLinks.IsValidIndex(B))
+	{
+		return;
+	}
+	NodeLinks[A].To.AddUnique(B);
+	NodeLinks[B].To.AddUnique(A);
+}
+
+void AUEGT2RouteNetwork::FinaliseNetwork()
+{
+	// Nodes that ended up with no links are sampling artefacts - a road that
+	// contributed a single point before running off the map. They would only
+	// ever be found as "nearest node" and then fail to path anywhere.
+	int32 Orphans = 0;
+	for (const FUEGT2RouteLinks& Links : NodeLinks)
+	{
+		if (Links.To.Num() == 0)
+		{
+			++Orphans;
+		}
+	}
+
+	bIndexBuilt = false;
+	BuildSpatialIndex();
+
+	UE_LOG(LogUEGT2NPC, Log,
+		TEXT("Route network baked: %d nodes, %d links, %d unlinked, %d grid cells."),
+		NodeLocations.Num(), GetLinkCount(), Orphans, Cells.Num());
+}
+
+int32 AUEGT2RouteNetwork::GetLinkCount() const
+{
+	int32 Total = 0;
+	for (const FUEGT2RouteLinks& Links : NodeLinks)
+	{
+		Total += Links.To.Num();
+	}
+	return Total / 2;                       // stored both ways
+}
+
+FVector AUEGT2RouteNetwork::GetNodeLocation(int32 Index) const
+{
+	return NodeLocations.IsValidIndex(Index) ? NodeLocations[Index] : FVector::ZeroVector;
+}
+
+FIntPoint AUEGT2RouteNetwork::CellOf(const FVector& Location) const
+{
+	return FIntPoint(FMath::FloorToInt(Location.X / CellSize),
+		FMath::FloorToInt(Location.Y / CellSize));
+}
+
+void AUEGT2RouteNetwork::BuildSpatialIndex() const
+{
+	if (bIndexBuilt)
+	{
+		return;
+	}
+	Cells.Reset();
+	Cells.Reserve(NodeLocations.Num());
+	for (int32 Index = 0; Index < NodeLocations.Num(); ++Index)
+	{
+		Cells.FindOrAdd(CellOf(NodeLocations[Index])).Add(Index);
+	}
+	bIndexBuilt = true;
+}
+
+int32 AUEGT2RouteNetwork::FindNearestNode(const FVector& Location, float MaxDistance) const
+{
+	if (NodeLocations.Num() == 0)
+	{
+		return INDEX_NONE;
+	}
+	BuildSpatialIndex();
+
+	const FIntPoint Centre = CellOf(Location);
+	const int32 MaxRing = FMath::Max(1, FMath::CeilToInt(MaxDistance / CellSize));
+	const float MaxSquared = MaxDistance * MaxDistance;
+
+	int32 Best = INDEX_NONE;
+	float BestSquared = MaxSquared;
+
+	for (int32 Ring = 0; Ring <= MaxRing; ++Ring)
+	{
+		for (int32 DX = -Ring; DX <= Ring; ++DX)
+		{
+			for (int32 DY = -Ring; DY <= Ring; ++DY)
+			{
+				// Only the shell of the ring; the interior was done already.
+				if (Ring > 0 && FMath::Abs(DX) != Ring && FMath::Abs(DY) != Ring)
+				{
+					continue;
+				}
+				const TArray<int32>* Bucket = Cells.Find(FIntPoint(Centre.X + DX, Centre.Y + DY));
+				if (!Bucket)
+				{
+					continue;
+				}
+				for (int32 Index : *Bucket)
+				{
+					const float Squared = FVector::DistSquared2D(NodeLocations[Index], Location);
+					if (Squared < BestSquared)
+					{
+						BestSquared = Squared;
+						Best = Index;
+					}
+				}
+			}
+		}
+		// A hit inside this ring can still be beaten by the next ring out only
+		// if that ring can reach closer, which it cannot once the best distance
+		// is within the ring's inner radius.
+		if (Best != INDEX_NONE && BestSquared <= FMath::Square(Ring * CellSize))
+		{
+			break;
+		}
+	}
+	return Best;
+}
+
+bool AUEGT2RouteNetwork::FindPath(const FVector& Start, const FVector& Goal,
+	TArray<FVector>& OutPoints) const
+{
+	OutPoints.Reset();
+	if (NodeLocations.Num() == 0)
+	{
+		return false;
+	}
+
+	// Generous snap radius: an NPC standing in a field or on a plaza is a long
+	// way from the nearest kerb and still wants to use the road once it is on it.
+	const int32 StartNode = FindNearestNode(Start, 9000.0f);
+	const int32 GoalNode = FindNearestNode(Goal, 9000.0f);
+	if (StartNode == INDEX_NONE || GoalNode == INDEX_NONE)
+	{
+		return false;
+	}
+	if (StartNode == GoalNode)
+	{
+		return true;                        // both ends share a node: walk straight
+	}
+
+	++SearchCount;
+
+	// Costs are doubles because FVector is: UE5 world coordinates are double
+	// precision, and taking a float here is a narrowing conversion the compiler
+	// rejects outright inside a braced initialiser.
+	struct FOpen
+	{
+		int32 Node = INDEX_NONE;
+		double Estimate = 0.0;
+		bool operator<(const FOpen& Other) const { return Estimate < Other.Estimate; }
+	};
+
+	TMap<int32, double> BestCost;
+	TMap<int32, int32> CameFrom;
+	TArray<FOpen> Open;
+
+	BestCost.Add(StartNode, 0.0);
+	Open.HeapPush(FOpen{ StartNode, FVector::Dist2D(NodeLocations[StartNode], NodeLocations[GoalNode]) });
+
+	int32 Visited = 0;
+	bool bFound = false;
+
+	while (Open.Num() > 0 && Visited < MaxVisitedNodes)
+	{
+		FOpen Current;
+		Open.HeapPop(Current);
+		++Visited;
+
+		if (Current.Node == GoalNode)
+		{
+			bFound = true;
+			break;
+		}
+
+		const double* CostHere = BestCost.Find(Current.Node);
+		if (!CostHere)
+		{
+			continue;
+		}
+		for (int32 Next : NodeLinks[Current.Node].To)
+		{
+			if (!NodeLocations.IsValidIndex(Next))
+			{
+				continue;
+			}
+			const double Step = FVector::Dist(NodeLocations[Current.Node], NodeLocations[Next]);
+			const double Candidate = *CostHere + Step;
+			const double* Known = BestCost.Find(Next);
+			if (Known && *Known <= Candidate)
+			{
+				continue;
+			}
+			BestCost.Add(Next, Candidate);
+			CameFrom.Add(Next, Current.Node);
+			Open.HeapPush(FOpen{ Next,
+				Candidate + FVector::Dist2D(NodeLocations[Next], NodeLocations[GoalNode]) });
+		}
+	}
+
+	if (!bFound)
+	{
+		return false;
+	}
+
+	// Walk the parents back, then reverse. The start node is included: an NPC
+	// standing off the road needs to be told to get onto it first.
+	TArray<int32> Reversed;
+	for (int32 Node = GoalNode; Node != StartNode; )
+	{
+		Reversed.Add(Node);
+		const int32* Parent = CameFrom.Find(Node);
+		if (!Parent)
+		{
+			return false;
+		}
+		Node = *Parent;
+	}
+	Reversed.Add(StartNode);
+
+	OutPoints.Reserve(Reversed.Num());
+	for (int32 Index = Reversed.Num() - 1; Index >= 0; --Index)
+	{
+		OutPoints.Add(NodeLocations[Reversed[Index]]);
+	}
+	return true;
+}
+
+FVector AUEGT2RouteNetwork::GetWanderTarget(const FVector& Location, float Radius, uint32 Seed) const
+{
+	const int32 Nearest = FindNearestNode(Location, FMath::Max(Radius, 4000.0f));
+	if (Nearest == INDEX_NONE)
+	{
+		return Location;
+	}
+
+	// Two random hops along the network. Far enough to be a walk, close enough
+	// that a wandering animal or an idle villager stays in its own quarter.
+	int32 Node = Nearest;
+	for (int32 Hop = 0; Hop < 3; ++Hop)
+	{
+		const TArray<int32>& Links = NodeLinks[Node].To;
+		if (Links.Num() == 0)
+		{
+			break;
+		}
+		const int32 Pick = (int32)(UEGT2HashSeed(Seed, (uint32)Hop, (uint32)Node) % (uint32)Links.Num());
+		const int32 Candidate = Links[Pick];
+		if (FVector::Dist2D(NodeLocations[Candidate], Location) > Radius)
+		{
+			break;
+		}
+		Node = Candidate;
+	}
+	return NodeLocations[Node];
+}

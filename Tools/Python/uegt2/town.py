@@ -183,7 +183,7 @@ def _place_streets(placer, rng):
 
 
 def _place_plaza(placer, rng):
-    """The town square: a well, market stalls, benches and a few villagers."""
+    """The town square: the well, market stalls, benches and clutter."""
     cx, cy = placer.wd.town["center"]
     placer.place("SM_Well_A", cx, cy, 0.0, "Well", radius=260.0, z_offset=-15.0)
 
@@ -203,15 +203,12 @@ def _place_plaza(placer, rng):
         placer.place("SM_Bench_A", wx, wy, angle + 90.0, "Bench %d" % i,
                      radius=170.0, z_offset=-8.0)
 
-    villagers = ["SM_Villager_A", "SM_Villager_B", "SM_Villager_C", "SM_Villager_D"]
-    for i in range(14):
-        angle = rng.uniform(0.0, 360.0)
-        r = rng.uniform(400.0, 4200.0)
-        wx = cx + math.cos(math.radians(angle)) * r
-        wy = cy + math.sin(math.radians(angle)) * r
-        name = villagers[int(rng.next() * len(villagers)) % len(villagers)]
-        placer.place(name, wx, wy, rng.uniform(0.0, 360.0), "Villager %d" % i,
-                     radius=130.0, z_offset=-4.0)
+    # No villagers here any more. Characters belong to the npc stage, which
+    # spawns inhabitants with routines instead of props; two stages both placing
+    # people would leave a permanent crowd of statues standing among the ones
+    # that move. Dropping the loop shortens this stage's draw on rng, so the
+    # crates and planters below land in different spots than they did in 0.1 -
+    # they are decoration, and the map is a build artifact either way.
 
     for i in range(10):
         wx = cx + rng.uniform(-3800.0, 3800.0)

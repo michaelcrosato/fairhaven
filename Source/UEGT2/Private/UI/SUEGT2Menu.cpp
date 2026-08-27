@@ -821,6 +821,31 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 			[this, S](bool bValue) { S->SetShowInteractPrompts(bValue); ApplyAndSave(); }))
 	];
 
+	List->AddSlot().AutoHeight().Padding(0, 16, 0, 10)
+	[ Label(LOCTEXT("TownHeading", "THE TOWN"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("Bubbles", "Speech Bubbles"), MakeToggle(
+			[S]() { return S->GetShowSpeechBubbles(); },
+			[this, S](bool bValue) { S->SetShowSpeechBubbles(bValue); ApplyAndSave(); }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("BubblesHint", "What the townsfolk are about to go and do."), 11, Muted) ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("Crowd", "Crowd Density"), MakeSlider(
+			[S]() { return S->GetCrowdDensity(); },
+			[this, S](float Value) { S->SetCrowdDensity(Value); ApplyAndSave(); },
+			0.1f, 1.0f,
+			[S]() { return FText::FromString(FString::Printf(TEXT("%.0f%%"), S->GetCrowdDensity() * 100.0f)); }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("CrowdHint", "How many inhabitants are present. Turn it down if the town costs you frames."), 11, Muted) ];
+
 	return List;
 }
 
@@ -842,12 +867,14 @@ TSharedRef<SWidget> SUEGT2Menu::BuildDevMode()
 	};
 	AddDevTab(LOCTEXT("DevTabPlayer", "Player"), EUEGT2DevTab::Player);
 	AddDevTab(LOCTEXT("DevTabWorld", "World"), EUEGT2DevTab::World);
+	AddDevTab(LOCTEXT("DevTabLife", "Life"), EUEGT2DevTab::Life);
 	AddDevTab(LOCTEXT("DevTabDisplay", "Display"), EUEGT2DevTab::Display);
 	AddDevTab(LOCTEXT("DevTabTeleport", "Teleport"), EUEGT2DevTab::Teleport);
 
 	TSharedRef<SWidget> Body =
 		DevTab == EUEGT2DevTab::Player  ? BuildDevPlayerTab() :
 		DevTab == EUEGT2DevTab::World   ? BuildDevWorldTab() :
+		DevTab == EUEGT2DevTab::Life    ? BuildDevLifeTab() :
 		DevTab == EUEGT2DevTab::Display ? BuildDevDisplayTab() :
 		                                  BuildDevTeleportTab();
 
@@ -1060,6 +1087,126 @@ TSharedRef<SWidget> SUEGT2Menu::BuildDevWorldTab()
 				return FText::FromString(FString::Printf(TEXT("%.2fx"), Dev ? Dev->GetGameSpeed() : 1.0f));
 			}))
 	];
+
+	return List;
+}
+
+TSharedRef<SWidget> SUEGT2Menu::BuildDevLifeTab()
+{
+	TSharedRef<SVerticalBox> List = SNew(SVerticalBox);
+	const TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	auto D = [WeakPC]() { return DevOf(WeakPC); };
+
+	if (!D())
+	{
+		List->AddSlot().AutoHeight()
+		[ Label(LOCTEXT("DevNoWorldL", "No world loaded."), 13, Muted) ];
+		return List;
+	}
+
+	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
+	[ Label(LOCTEXT("DevHeadingPopulation", "POPULATION"), 12, Accent, "Bold") ];
+
+	if (!D()->HasPopulation())
+	{
+		List->AddSlot().AutoHeight().Padding(0, 6)
+		[ Label(LOCTEXT("DevNoPopulation",
+			"Nobody is home. Run Build-Content.ps1 -Stages npc to populate the map."),
+			12, Muted) ];
+		return List;
+	}
+
+	// Live text rather than a snapshot: the counts move while the menu is open,
+	// which is the quickest way to see the schedule actually doing something.
+	List->AddSlot().AutoHeight().Padding(0, 4)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([D]()
+		{
+			UUEGT2DevModeSubsystem* Dev = D();
+			if (!Dev) { return FText::GetEmpty(); }
+			return FText::FromString(FString::Printf(TEXT("%d people    %d animals    %d out    %d talking"),
+				Dev->GetPeopleCount(), Dev->GetAnimalCount(),
+				Dev->GetActiveNPCCount(), Dev->GetSpeakingCount()));
+		})
+		.Font(Font("Regular", 13))
+		.ColorAndOpacity(FSlateColor(Ink))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([D]()
+		{
+			UUEGT2DevModeSubsystem* Dev = D();
+			if (!Dev) { return FText::GetEmpty(); }
+			const FString DayLabel = Dev->GetDayLabel().ToString();
+			return FText::FromString(FString::Printf(TEXT("day %d%s    %s"),
+				Dev->GetDayIndex() + 1,
+				DayLabel.IsEmpty() ? TEXT("") : *FString::Printf(TEXT("  -  %s"), *DayLabel),
+				*HourText(Dev->GetTimeOfDay()).ToString()));
+		})
+		.Font(Font("Regular", 12))
+		.ColorAndOpacity(FSlateColor(Muted))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevCrowd", "Crowd Density"), MakeSlider(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev ? Dev->GetCrowdDensity() : 1.0f; },
+			[D](float Value) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetCrowdDensity(Value); } },
+			0.1f, 1.0f,
+			[D]()
+			{
+				UUEGT2DevModeSubsystem* Dev = D();
+				return FText::FromString(FString::Printf(TEXT("%.0f%%"),
+					(Dev ? Dev->GetCrowdDensity() : 1.0f) * 100.0f));
+			}))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 12, 0, 10)
+	[ Label(LOCTEXT("DevHeadingBehaviour", "BEHAVIOUR"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevFreeze", "Freeze Schedules"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->AreSchedulesPaused(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetSchedulesPaused(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("DevFreezeHint",
+		"Stops everyone re-deciding. They finish walking to wherever they were going."),
+		11, Muted) ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("DevNPCDebug", "Show Plans"), MakeToggle(
+			[D]() { UUEGT2DevModeSubsystem* Dev = D(); return Dev && Dev->IsNPCDebugVisible(); },
+			[D](bool bValue) { if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetNPCDebugVisible(bValue); } }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("DevNPCDebugHint",
+		"Draws each nearby inhabitant's activity and destination. The label colour is why: "
+		"grey routine, blue weather, amber you, red a need, green the day, violet a detour."),
+		11, Muted) ];
+
+	List->AddSlot().AutoHeight().Padding(0, 12)
+	[
+		SNew(SBox).WidthOverride(200.0f).HeightOverride(38.0f).HAlign(HAlign_Left)
+		[
+			MenuButton(LOCTEXT("DevChatter", "Everyone Speak"), FOnClicked::CreateLambda([D]()
+			{
+				if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->TriggerChatter(); }
+				return FReply::Handled();
+			}), 12)
+		]
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("DevChatterHint",
+		"Every inhabitant within earshot announces what they are about to do."), 11, Muted) ];
 
 	return List;
 }

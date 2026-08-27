@@ -17,6 +17,7 @@
 class AUEGT2Character;
 class AUEGT2PlayerController;
 class AUEGT2SkyController;
+class UUEGT2NPCDirector;
 
 /** Engine view mode exposed on the Display tab. */
 UENUM(BlueprintType)
@@ -97,6 +98,35 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Dev") void SetDrawInteractionProbe(bool bVisible);
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") bool IsDrawInteractionProbe() const { return bDrawInteractionProbe; }
 
+	// ---- Life -------------------------------------------------------------
+	// Thin proxies onto UUEGT2NPCDirector, for the same reason the world
+	// controls proxy onto the sky: the menu should only ever talk to this.
+
+	/** Freeze re-decisions. Everyone finishes walking where they were going. */
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Dev") void SetSchedulesPaused(bool bPaused);
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") bool AreSchedulesPaused() const;
+
+	/** Draw every nearby inhabitant's activity, reason and destination. */
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Dev") void SetNPCDebugVisible(bool bVisible);
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") bool IsNPCDebugVisible() const;
+
+	/** 0.1-1. Also the player-facing Crowd Density setting. */
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Dev") void SetCrowdDensity(float Density);
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") float GetCrowdDensity() const;
+
+	/** Make everyone nearby announce what they are about to do. */
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Dev") int32 TriggerChatter();
+
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") int32 GetPeopleCount() const;
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") int32 GetAnimalCount() const;
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") int32 GetActiveNPCCount() const;
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") int32 GetSpeakingCount() const;
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") int32 GetDayIndex() const;
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") FText GetDayLabel() const;
+
+	/** False before the world has a population, so the menu can say so. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") bool HasPopulation() const;
+
 	// ---- Teleport ---------------------------------------------------------
 	/** Teleport to a tour viewpoint by index into UUEGT2CaptureSubsystem::GetTour(). */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Dev") bool TeleportToViewpoint(int32 Index);
@@ -118,6 +148,7 @@ private:
 	AUEGT2Character* GetCharacter() const;
 	AUEGT2PlayerController* GetPC() const;
 	AUEGT2SkyController* GetSky() const;
+	UUEGT2NPCDirector* GetNPCs() const;
 	void RunConsole(const TCHAR* Command) const;
 	void RegisterConsoleCommands();
 	/** Drop to the ground under a world XY and put the player HeightMetres above it. */

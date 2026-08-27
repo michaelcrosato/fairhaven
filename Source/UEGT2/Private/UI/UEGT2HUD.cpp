@@ -6,6 +6,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Dev/UEGT2DevModeSubsystem.h"
 #include "Interaction/UEGT2InteractionComponent.h"
+#include "NPC/UEGT2NPCDirector.h"
 #include "Player/UEGT2Character.h"
 #include "Player/UEGT2InputConfig.h"
 #include "Player/UEGT2PlayerController.h"
@@ -23,6 +24,11 @@ namespace UEGT2Hud
 	const FLinearColor Muted(0.72f, 0.75f, 0.79f, 1.0f);
 	const FLinearColor Accent(0.45f, 0.82f, 0.84f, 1.0f);
 	const FLinearColor Shade(0.0f, 0.0f, 0.0f, 0.55f);
+
+	/** Bubbles stop being readable well before they stop being drawn. */
+	const float BubbleFadeStart = 3000.0f;
+	const float BubbleFadeEnd = 4600.0f;
+	const float BubbleMaxWidth = 300.0f;
 }
 
 AUEGT2HUD::AUEGT2HUD()
@@ -71,6 +77,10 @@ void AUEGT2HUD::DrawHUD()
 		DrawPrompt(CentreX, CentreY);
 	}
 	DrawMessage(CentreX, Canvas->ClipY);
+	if (!Settings || Settings->GetShowSpeechBubbles())
+	{
+		DrawSpeechBubbles();
+	}
 
 	if (PC && PC->IsDiagnosticsVisible())
 	{
@@ -217,6 +227,17 @@ void AUEGT2HUD::DrawDiagnostics(AUEGT2Character* Explorer)
 		}
 	}
 
+	if (const UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(World))
+	{
+		const FString DayLabel = Director->GetDayLabel().ToString();
+		Lines.Add(FString::Printf(TEXT("town  %d people  %d animals  %d out"),
+			Director->GetPeopleCount(), Director->GetAnimalCount(), Director->GetActiveCount()));
+		Lines.Add(FString::Printf(TEXT("      near %d  talking %d  density %.0f%%%s"),
+			Director->GetNearCount(), Director->GetSpeakingCount(),
+			Director->GetCrowdDensity() * 100.0f,
+			DayLabel.IsEmpty() ? TEXT("") : *FString::Printf(TEXT("  (%s)"), *DayLabel)));
+	}
+
 	if (const UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get())
 	{
 		Lines.Add(FString::Printf(TEXT("quality  view %d  shadow %d  gi %d  refl %d"),
@@ -237,6 +258,248 @@ void AUEGT2HUD::DrawDiagnostics(AUEGT2Character* Explorer)
 	for (int32 Index = 0; Index < Lines.Num(); ++Index)
 	{
 		DrawText(Lines[Index], Index == 0 ? UEGT2Hud::Accent : UEGT2Hud::Muted, 28.0f, Y, Font, 1.0f, false);
+		Y += LineHeight;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Speech bubbles
+// ---------------------------------------------------------------------------
+void AUEGT2HUD::WrapText(const FString& Text, UFont* Font, float Scale, float MaxWidth,
+	TArray<FString>& OutLines, float& OutWidth) const
+{
+	OutLines.Reset();
+	OutWidth = 0.0f;
+
+	TArray<FString> Words;
+	Text.ParseIntoArray(Words, TEXT(" "), true);
+	if (Words.Num() == 0)
+	{
+		return;
+	}
+
+	FString Line;
+	for (const FString& Word : Words)
+	{
+		const FString Candidate = Line.IsEmpty() ? Word : Line + TEXT(" ") + Word;
+		float Width = 0.0f, Height = 0.0f;
+		const_cast<AUEGT2HUD*>(this)->GetTextSize(Candidate, Width, Height, Font, Scale);
+		if (Width > MaxWidth && !Line.IsEmpty())
+		{
+			OutLines.Add(Line);
+			Line = Word;
+		}
+		else
+		{
+			Line = Candidate;
+		}
+	}
+	if (!Line.IsEmpty())
+	{
+		OutLines.Add(Line);
+	}
+
+	for (const FString& Row : OutLines)
+	{
+		float Width = 0.0f, Height = 0.0f;
+		const_cast<AUEGT2HUD*>(this)->GetTextSize(Row, Width, Height, Font, Scale);
+		OutWidth = FMath::Max(OutWidth, Width);
+	}
+}
+
+void AUEGT2HUD::DrawRoundedRect(const FLinearColor& Colour, float X, float Y, float W, float H,
+	float Corner)
+{
+	// Canvas has no rounded rectangle, and a material-based one would mean a
+	// binary asset. Three overlapping rectangles produce the same silhouette at
+	// this size: a body, plus a wider band and a taller band that between them
+	// knock the corners off.
+	const float C = FMath::Clamp(Corner, 0.0f, FMath::Min(W, H) * 0.5f);
+	DrawRect(Colour, X + C, Y, W - C * 2.0f, H);
+	DrawRect(Colour, X, Y + C, W, H - C * 2.0f);
+	DrawRect(Colour, X + C * 0.4f, Y + C * 0.4f, W - C * 0.8f, H - C * 0.8f);
+}
+
+void AUEGT2HUD::DrawSpeechBubbles()
+{
+	const UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(GetWorld());
+	if (!Director || !PlayerOwner || !Canvas)
+	{
+		return;
+	}
+
+	FVector ViewLocation = FVector::ZeroVector;
+	FRotator ViewRotation = FRotator::ZeroRotator;
+	PlayerOwner->GetPlayerViewPoint(ViewLocation, ViewRotation);
+
+	TArray<FUEGT2SpeechBubble> Bubbles;
+	Director->GatherBubbles(ViewLocation, Bubbles);
+
+	// Farthest first, so a near bubble that has to move ends up above the far
+	// one rather than the other way round.
+	TArray<FBox2D> Placed;
+	Placed.Reserve(Bubbles.Num());
+	for (const FUEGT2SpeechBubble& Bubble : Bubbles)
+	{
+		DrawOneBubble(Bubble, Placed);
+	}
+
+	// Under -UEGT2LiveNPCs, say where each bubble was laid out. A screenshot
+	// with no bubbles in it cannot distinguish "nobody was speaking" from
+	// "they were all projected off the top of the screen", and the round trip
+	// to find out is a repackage.
+	const float Now = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+	if (Director->IsLoggingSpeech() && Bubbles.Num() > 0 && Now >= NextBubbleLogTime)
+	{
+		NextBubbleLogTime = Now + 1.0f;
+		for (const FUEGT2SpeechBubble& Bubble : Bubbles)
+		{
+			const FVector Screen = Project(Bubble.WorldLocation, false);
+			UE_LOG(LogUEGT2UI, Log,
+				TEXT("Bubble '%s' world %s -> screen (%.0f, %.0f, depth %.4f) alpha %.2f"),
+				*Bubble.Line.ToString(), *Bubble.WorldLocation.ToCompactString(),
+				Screen.X, Screen.Y, Screen.Z, Bubble.Alpha);
+		}
+	}
+}
+
+void AUEGT2HUD::DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& Placed)
+{
+	// bClampToZeroPlane must be off: with it on, a speaker behind the camera
+	// projects onto the screen edge and their bubble hovers over nothing.
+	const FVector Screen = Project(Bubble.WorldLocation, false);
+	if (Screen.Z <= 0.0f)
+	{
+		return;
+	}
+
+	const float DistanceFade = 1.0f - FMath::Clamp(
+		(Bubble.Distance - UEGT2Hud::BubbleFadeStart)
+		/ (UEGT2Hud::BubbleFadeEnd - UEGT2Hud::BubbleFadeStart), 0.0f, 1.0f);
+	const float Alpha = Bubble.Alpha * DistanceFade;
+	if (Alpha <= 0.02f)
+	{
+		return;
+	}
+
+	UFont* BodyFont = GEngine->GetMediumFont();
+	UFont* NameFont = GEngine->GetSmallFont();
+
+	// While "typing", the bubble is a short one with animated dots. It is the
+	// same trick every messaging app uses and it does the same job here: it
+	// tells you someone is about to say something and gives you time to look.
+	FString BodyText;
+	if (Bubble.bTyping)
+	{
+		const float Time = GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0f;
+		const int32 Dots = 1 + (int32)(Time * 3.0f) % 3;
+		BodyText = FString::ChrN(Dots, TEXT('.'));
+	}
+	else
+	{
+		BodyText = Bubble.Line.ToString();
+	}
+
+	TArray<FString> Lines;
+	float TextWidth = 0.0f;
+	WrapText(BodyText, BodyFont, 1.0f, UEGT2Hud::BubbleMaxWidth, Lines, TextWidth);
+	if (Lines.Num() == 0)
+	{
+		return;
+	}
+
+	const FString Speaker = Bubble.Speaker.ToString();
+	float NameWidth = 0.0f, NameHeight = 0.0f;
+	if (!Speaker.IsEmpty())
+	{
+		GetTextSize(Speaker, NameWidth, NameHeight, NameFont, 1.0f);
+	}
+
+	float SampleWidth = 0.0f, LineHeight = 0.0f;
+	GetTextSize(TEXT("Ag"), SampleWidth, LineHeight, BodyFont, 1.0f);
+
+	const float PadX = 11.0f;
+	const float PadY = 8.0f;
+	const float HeaderHeight = Speaker.IsEmpty() ? 0.0f : NameHeight + 3.0f;
+	const float BoxWidth = FMath::Max(TextWidth, NameWidth) + PadX * 2.0f;
+	const float BoxHeight = HeaderHeight + LineHeight * Lines.Num() + PadY * 2.0f;
+
+	const float TailHeight = 9.0f;
+	float BoxX = Screen.X - BoxWidth * 0.5f;
+	float BoxY = Screen.Y - BoxHeight - TailHeight;
+
+	// Keep the whole bubble on screen; the tail still points at the speaker.
+	const float Margin = 8.0f;
+	BoxX = FMath::Clamp(BoxX, Margin, FMath::Max(Margin, Canvas->ClipX - BoxWidth - Margin));
+	BoxY = FMath::Max(BoxY, Margin);
+
+	// Push up out of anything already drawn. Bounded: after a few tries the
+	// screen is simply too crowded, and one more unreadable overlap helps
+	// nobody, so the bubble is dropped instead.
+	for (int32 Attempt = 0; Attempt < 8; ++Attempt)
+	{
+		bool bClear = true;
+		for (const FBox2D& Taken : Placed)
+		{
+			if (BoxX < Taken.Max.X && BoxX + BoxWidth > Taken.Min.X
+				&& BoxY < Taken.Max.Y && BoxY + BoxHeight > Taken.Min.Y)
+			{
+				BoxY = Taken.Min.Y - BoxHeight - 6.0f;
+				bClear = false;
+				break;
+			}
+		}
+		if (bClear)
+		{
+			break;
+		}
+	}
+	if (BoxY < Margin)
+	{
+		return;
+	}
+	Placed.Emplace(FVector2D(BoxX, BoxY), FVector2D(BoxX + BoxWidth, BoxY + BoxHeight + TailHeight));
+
+	auto WithAlpha = [Alpha](const FLinearColor& Colour, float Scale)
+	{
+		return FLinearColor(Colour.R, Colour.G, Colour.B, Colour.A * Alpha * Scale);
+	};
+
+	// Dark and fairly opaque. The bubbles sit over grass, sand and sky in the
+	// same frame, and anything lighter than this stops being readable over one
+	// of the three.
+	const FLinearColor Body(Bubble.Tint.R * 0.30f, Bubble.Tint.G * 0.30f, Bubble.Tint.B * 0.30f, 0.93f);
+	const FLinearColor Shadow(0.0f, 0.0f, 0.0f, 0.5f);
+
+	DrawRoundedRect(WithAlpha(Shadow, 1.0f), BoxX + 2.0f, BoxY + 3.0f, BoxWidth, BoxHeight, 7.0f);
+	DrawRoundedRect(WithAlpha(Body, 1.0f), BoxX, BoxY, BoxWidth, BoxHeight, 7.0f);
+
+	// The tail: a stack of narrowing rows, which is a triangle at this size.
+	const float TailX = FMath::Clamp(Screen.X, BoxX + 10.0f, BoxX + BoxWidth - 10.0f);
+	for (int32 Row = 0; Row < 7; ++Row)
+	{
+		const float RowWidth = 14.0f * (1.0f - Row / 7.0f);
+		DrawRect(WithAlpha(Body, 1.0f), TailX - RowWidth * 0.5f,
+			BoxY + BoxHeight + Row * (TailHeight / 7.0f), RowWidth, TailHeight / 7.0f + 0.6f);
+	}
+
+	float Y = BoxY + PadY;
+	if (!Speaker.IsEmpty())
+	{
+		const FLinearColor NameColour(
+			FMath::Min(Bubble.Tint.R * 1.9f + 0.3f, 1.0f),
+			FMath::Min(Bubble.Tint.G * 1.9f + 0.3f, 1.0f),
+			FMath::Min(Bubble.Tint.B * 1.9f + 0.3f, 1.0f), 1.0f);
+		DrawText(Speaker, WithAlpha(NameColour, 0.95f), BoxX + PadX, Y, NameFont, 1.0f, false);
+		Y += HeaderHeight;
+	}
+
+	// Animals get their sounds in the muted colour: it reads as a stage
+	// direction rather than as speech, which is what it is.
+	const FLinearColor TextColour = Bubble.bAnimal ? UEGT2Hud::Muted : UEGT2Hud::Ink;
+	for (const FString& Line : Lines)
+	{
+		DrawText(Line, WithAlpha(TextColour, 1.0f), BoxX + PadX, Y, BodyFont, 1.0f, false);
 		Y += LineHeight;
 	}
 }

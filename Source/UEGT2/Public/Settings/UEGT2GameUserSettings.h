@@ -89,6 +89,20 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowInteractPrompts() const { return bShowInteractPrompts; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowInteractPrompts(bool bValue);
 
+	/** The text-message bubbles NPCs put over their heads. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowSpeechBubbles() const { return bShowSpeechBubbles; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowSpeechBubbles(bool bValue);
+
+	/**
+	 * How much of the town's population is present, 0.1 to 1.
+	 *
+	 * A performance dial, not a taste one: the map ships with enough people to
+	 * fill it on the target GPU, and this is what a weaker machine turns down.
+	 * The same inhabitants are hidden at the same setting every run.
+	 */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") float GetCrowdDensity() const { return CrowdDensity; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetCrowdDensity(float Value);
+
 	// ---- Control rebinds --------------------------------------------------
 	/** Key override for an input action, or an invalid key when unbound. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Controls")
@@ -126,6 +140,8 @@ private:
 	UPROPERTY(Config) bool bToggleSprint = false;
 	UPROPERTY(Config) bool bShowCrosshair = true;
 	UPROPERTY(Config) bool bShowInteractPrompts = true;
+	UPROPERTY(Config) bool bShowSpeechBubbles = true;
+	UPROPERTY(Config) float CrowdDensity = 1.0f;
 
 	// Controls
 	UPROPERTY(Config) TMap<FName, FKey> KeyOverrides;

@@ -15,7 +15,8 @@ so a `Build-Content.ps1` run cannot destroy it.
 | Menu | Escape -> **Dev Mode** (also on the main menu) |
 | Console | `uegt2.Dev 1` |
 
-The menu page has four tabs: **Player**, **World**, **Display**, **Teleport**.
+The menu page has five tabs: **Player**, **World**, **Life**, **Display**,
+**Teleport**.
 
 Turning Dev Mode off restores normal walking, collision, jump count and game
 speed. It deliberately leaves the time of day and weather where you left them —
@@ -63,6 +64,34 @@ Flight follows the full camera rotation, so looking up and holding W climbs.
 | Weather | Clear, Cloudy, Overcast, Foggy, Storm |
 | Fog Density | Manual override on top of the weather preset |
 | Game Speed | 0.1x - 5x global time dilation (slomo) |
+
+## Life tab
+
+The town's five hundred people and three hundred animals. See
+[NPCs.md](NPCs.md) for what they are actually doing.
+
+| Control | Effect |
+|---|---|
+| (readout) | people, animals, how many are outdoors, how many are talking |
+| (readout) | the day number, whether it is market day or the rest day, the hour |
+| Crowd Density | 10% - 100%. Hides a deterministic slice of the population |
+| Freeze Schedules | Stop re-deciding. Everyone finishes walking where they were going |
+| Show Plans | Draw every nearby inhabitant's activity and destination in the world |
+| Everyone Speak | Every inhabitant within earshot announces what they are about to do |
+
+**Show Plans** colours each label by *why* somebody is doing what they are doing:
+
+| Colour | Reason |
+|---|---|
+| grey | the routine |
+| blue | the weather drove them inside |
+| amber | you are standing there |
+| red | a need - hungry, tired, lonely |
+| green | market day or the rest day |
+| violet | a curiosity detour |
+
+That is the fastest way to tell "the schedule is working" from "the schedule is
+stuck". A line is drawn from each inhabitant to where they are heading.
 
 ## Display tab
 
@@ -163,6 +192,10 @@ a storm sky, not like falling rain.
 | `uegt2.Weather Storm` | Clear / Cloudy / Overcast / Foggy / Storm |
 | `uegt2.Time 18.5` | Time of day in hours (existing) |
 | `uegt2.TimeSpeed 20` | Real minutes per day, 0 freezes (existing) |
+| `uegt2.NPC.Stats` | Population, how many are out, how many are talking |
+| `uegt2.NPC.Chatter` | Everyone nearby announces what they are about to do |
+| `uegt2.NPC.Debug 1` | Draw every nearby inhabitant's plan |
+| `uegt2.NPC.Density 0.4` | How much of the population is present, 0.1-1 |
 
 ## Rendering a specific sky headlessly
 
@@ -179,6 +212,21 @@ keeps the image reproducible.
 |---|---|
 | `-UEGT2Time=<hours>` | Force the hour, 0-24, and freeze the sun |
 | `-UEGT2Weather=<name>` | Force the weather preset |
+| `-UEGT2LiveNPCs` | Let the inhabitants keep moving and talking through a capture |
+
+A capture normally **freezes the inhabitants**, for the same reason it freezes
+the sun: a town full of people walking about produces a different image every
+run. Everyone is placed where the clock says they should be, and then stopped.
+`-UEGT2LiveNPCs` opts out - the only way to photograph a speech bubble - and
+logs every line spoken and every bubble the HUD lays out, because a screenshot
+with no bubbles in it cannot tell you whether nobody was speaking or whether
+they were all projected off the top of the screen. It is not reproducible, which
+is why it is not the default.
+
+```powershell
+./Scripts/Screenshot-Tour.ps1 -Only Market -Hold 8 `
+    -ExtraArgs '-UEGT2LiveNPCs -UEGT2Time=17.3'
+```
 
 ## Where the code lives
 
@@ -191,6 +239,9 @@ Private/World/UEGT2Weather.cpp
 
 Public/World/UEGT2SkyController.h    sun, moon, sky, fog, clouds, day/night
 Private/World/UEGT2SkyController.cpp
+
+NPC/UEGT2NPCDirector.*               population, schedules, the speech budget
+NPC/UEGT2NPCRoutines.*               the routines and the rules that bend them
 
 Player/UEGT2Character.*              fly, noclip, speed multiplier, god mode
 UI/SUEGT2Menu.*                      the Dev Mode page
