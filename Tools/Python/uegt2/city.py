@@ -133,48 +133,64 @@ def _fill_block(placer, rng, block, index):
     return placed
 
 
-def _place_blocks(placer, rng, blocks, plaza_index, park_indices):
+def _place_blocks(placer, rng, blocks, reserved):
     buildings = 0
     for index, block in enumerate(blocks):
-        if index == plaza_index or index in park_indices:
+        if index in reserved:
             continue
         buildings += _fill_block(placer, rng, block, index)
     ctx.log("city: %d buildings across %d blocks" % (buildings, len(blocks)))
     return buildings
 
 
-def _place_plaza(placer, block):
-    """Civic centre: the city hall behind a fountain, benches and planters."""
-    cx, cy = block.center
+def _place_civic(placer, hall_block, square_block):
+    """The city hall on one block, the civic square on the one facing it.
+
+    The hall's footprint is 6000 x 3410 and every block in Newhaven is at most
+    4680 x 3680, so the hall does not fit on a block with anything else - it
+    does not quite fit on a block at all. Putting the fountain on the same
+    block meant putting it inside the building, which is why overlap rejection
+    threw it away and left the civic centre as an empty rectangle. A square
+    across the street from the city hall is what a city would have done.
+    """
+    hx, hy = hall_block.center
     hall_depth = CITY_BUILDINGS["SM_CityHall_A"][1]
-    hall_x, hall_y = block.to_world(0.0, block.half_v - hall_depth * 0.5 - 60.0)
-    out_x, out_y = block.dir_world(0.0, 1.0)
+    hall_x, hall_y = hall_block.to_world(0.0, hall_block.half_v - hall_depth * 0.5 - 60.0)
+    out_x, out_y = hall_block.dir_world(0.0, 1.0)
     placer.place("SM_CityHall_A", hall_x, hall_y, _face_out(out_x, out_y),
-                 "CityHall", radius=2600.0, z_offset=-45.0, footprint=1400.0)
+                 "CityHall", radius=2600.0, z_offset=-45.0, footprint=1400.0,
+                 check=False)
 
-    fx, fy = block.to_world(0.0, -block.half_v * 0.25)
-    placer.place("SM_Fountain_A", fx, fy, 0.0, "Fountain", radius=700.0, z_offset=-20.0)
+    # The square. check=False throughout: these are laid out from the block's
+    # own geometry and are meant to sit inside it, not to compete for space.
+    fx, fy = square_block.center
+    placer.place("SM_Fountain_A", fx, fy, 0.0, "Fountain", radius=700.0,
+                 z_offset=-20.0, check=False)
 
-    for i in range(8):
-        angle = 45.0 * i + 22.5
-        r = 1500.0
-        wx = fx + math.cos(math.radians(angle)) * r
-        wy = fy + math.sin(math.radians(angle)) * r
-        placer.place("SM_Bench_A", wx, wy, angle + 90.0, "PlazaBench %d" % i,
-                     radius=180.0, z_offset=-10.0)
+    benches = 0
+    for ring_radius, count, offset in ((1150.0, 8, 22.5), (1900.0, 10, 18.0)):
+        for i in range(count):
+            angle = 360.0 / count * i + offset
+            wx = fx + math.cos(math.radians(angle)) * ring_radius
+            wy = fy + math.sin(math.radians(angle)) * ring_radius
+            placer.place("SM_Bench_A", wx, wy, angle + 90.0, "PlazaBench %d" % benches,
+                         radius=180.0, z_offset=-10.0, check=False)
+            benches += 1
 
-    for i in range(6):
-        angle = 60.0 * i
-        r = 2300.0
-        wx = fx + math.cos(math.radians(angle)) * r
-        wy = fy + math.sin(math.radians(angle)) * r
-        placer.place("SM_PlanterLong_A", wx, wy, angle, "PlazaPlanter %d" % i,
-                     radius=520.0, z_offset=-10.0)
+    planters = 0
+    for ring_radius, count, offset in ((1550.0, 6, 0.0), (2300.0, 8, 22.0)):
+        for i in range(count):
+            angle = 360.0 / count * i + offset
+            wx = fx + math.cos(math.radians(angle)) * ring_radius
+            wy = fy + math.sin(math.radians(angle)) * ring_radius
+            placer.place("SM_PlanterLong_A", wx, wy, angle, "PlazaPlanter %d" % planters,
+                         radius=520.0, z_offset=-10.0, check=False)
+            planters += 1
 
-    # Citizens are spawned by the npc stage, which gives them somewhere to be
-    # at each hour rather than standing them in the plaza forever.
-
-    ctx.log("city: civic plaza at (%.0f, %.0f)" % (cx, cy))
+    ctx.log("city: city hall at (%.0f, %.0f), civic square at (%.0f, %.0f) "
+            "with a fountain, %d benches and %d planters"
+            % (hall_x, hall_y, fx, fy, benches, planters))
+    return (fx, fy)
 
 
 def _place_parks(placer, rng, blocks, park_indices):
@@ -329,17 +345,26 @@ def build(world, world_data, meshes=None):
         ctx.warn("city: no blocks in world_features.json")
         return 0
 
-    # The block closest to the centre becomes the civic plaza; a scattering of
-    # the rest become parks so the grid is not wall to wall masonry.
-    plaza_index = min(range(len(blocks)), key=lambda i: blocks[i].distance)
+    # The block closest to the centre takes the city hall; the block facing it
+    # takes the civic square. Two blocks, because the hall does not fit on one
+    # with anything else. A scattering of the rest become parks so the grid is
+    # not wall to wall masonry.
+    hall_index = min(range(len(blocks)), key=lambda i: blocks[i].distance)
+    hall_centre = blocks[hall_index].center
+    square_index = min((i for i in range(len(blocks)) if i != hall_index),
+                       key=lambda i: ((blocks[i].center[0] - hall_centre[0]) ** 2
+                                      + (blocks[i].center[1] - hall_centre[1]) ** 2))
     park_indices = set(i for i, b in enumerate(blocks)
                        if b.ring >= 1 and i % 9 == 4)
+    park_indices.discard(hall_index)
+    park_indices.discard(square_index)
 
     streets = [r for r in world_data.roads
                if r.get("is_city") and r.get("is_street")]
 
-    _place_plaza(placer, blocks[plaza_index])
-    _place_blocks(placer, rng, blocks, plaza_index, park_indices)
+    _place_civic(placer, blocks[hall_index], blocks[square_index])
+    _place_blocks(placer, rng, blocks,
+                  park_indices | {hall_index, square_index})
     _place_parks(placer, rng, blocks, park_indices)
     _place_street_furniture(placer, rng, streets)
     _place_corners(placer, rng, blocks)

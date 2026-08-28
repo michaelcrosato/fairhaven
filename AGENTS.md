@@ -24,7 +24,7 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Build-Content.ps1 -Stages npc         # re-roll the population + road graph
 ./Scripts/Test.ps1                              # automation tests
 ./Scripts/Package.ps1                           # playable build
-./Scripts/Screenshot-Tour.ps1                   # 19 viewpoints -> PNG
+./Scripts/Screenshot-Tour.ps1                   # 20 viewpoints -> PNG
 ./Scripts/Screenshot-Tour.ps1 -Menu             # menu + settings -> PNG
 ./Scripts/Preview.ps1 -Stages lighting          # build + package + screenshot
 python Tools/Terrain/generate_terrain.py        # re-roll terrain (+ PNG previews)
@@ -104,6 +104,26 @@ Do not undo these without understanding why they are there.
   has to filter on `not is_city` too, or it will lay cottages down city avenues.
 - **Fixed attempt counts do not survive a bigger map.** Scatter loops written as
   `range(900)` quarter in density when the extent doubles. Scale by area.
+- **An NPC ground trace starts at +90 cm, below knee height.** A market awning
+  is 250 cm up, a stall counter 154, a kiosk body 260, a bus shelter bench 230.
+  A trace that starts above those finds the awning first and snaps the villager
+  onto it; they walk off the edge, drop, come back under and pop up again. That
+  is what "floating in the sky" and "bouncing" look like.
+- **NPC destinations are ground-sampled in `RepathTo` and nowhere else.** An
+  anchor is one point and a crowd is spread around it horizontally, so
+  inheriting the anchor's height leaves most of the crowd in the air on any
+  ground that is not flat.
+- **A crowd's capacity is the number of distinct anchor points, not the spread
+  radius.** Five market stalls served ninety villagers and produced one writhing
+  mass; thirteen stalls and twelve benches produce a market.
+- **A missing city landmark must never fall back to a town one.** Newhaven's
+  fountain silently failed to place, so every city routine pointing at "Plaza"
+  resolved to the *town* square and the city's couriers and constables walked
+  130 km. From inside the city that reads as "the city is empty".
+- **`Placer.place` rejects silently.** It returns None on overlap and the
+  calling stage usually ignores the result, so a stage can log success and place
+  nothing. The npc stage now warns about empty anchor sets and unclaimed actor
+  labels for exactly this reason.
 - **An NPC's mesh must not be its root component.** The walk cycle is a relative
   offset applied to the mesh every frame, and a relative move on the *root* is a
   world move: every NPC inside LOD range teleports to the world origin, which is

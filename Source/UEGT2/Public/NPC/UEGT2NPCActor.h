@@ -164,9 +164,24 @@ public:
 
 protected:
 	void RepathTo(const FVector& Goal);
+	/** Record where the current leg starts, for the height interpolation. */
+	void BeginSegment();
 	void AdvanceMovement(float DeltaSeconds);
 	void AdvanceCosmetics(float DeltaSeconds);
 	void UpdateGroundHeight();
+
+	/**
+	 * The height of the walkable surface at Point's XY, near Point's Z.
+	 *
+	 * Two stages, and both are needed. The first traces from knee height above
+	 * Point downward, which finds the floor and cannot find a roof - a market
+	 * awning is 2.5 m up and a stall counter 1.5 m, and a trace that starts
+	 * above those lands the villager on top of one. The second only runs when
+	 * the first found nothing, which means Point is buried inside a hillside:
+	 * it drops from well overhead and takes the *lowest* hit, which is the
+	 * terrain under whatever else is there.
+	 */
+	float GroundZAt(const FVector& Point) const;
 	void PickArrivalTarget();
 	void ApplyIndoors(bool bNewIndoors);
 	FVector ResolveDestinationFor(const FUEGT2ActivityDecision& InDecision) const;
@@ -213,8 +228,22 @@ private:
 	TArray<FVector> PathPoints;
 	int32 PathIndex = 0;
 
-	/** Ground Z the body is standing on, interpolated between path nodes. */
+	/** Ground Z the body is standing on, interpolated along the current leg. */
 	float GroundZ = 0.0f;
+
+	/**
+	 * Where the current leg started, so height can be interpolated by *progress
+	 * along it* rather than by a time constant.
+	 *
+	 * Easing toward the next waypoint's height lags behind on a slope, and at
+	 * the start of a leg - where the next waypoint can be fifteen metres and a
+	 * couple of metres of hill away - the lag is a visibly airborne villager
+	 * for about a second. Lerping by distance covered makes the walk follow the
+	 * ground exactly, and costs a subtraction.
+	 */
+	float SegmentStartZ = 0.0f;
+	float SegmentLength = 0.0f;
+	/** Seconds until the next ground correction. Near and Mid tiers only. */
 	float GroundTraceCountdown = 0.0f;
 
 	/** Distance walked, in centimetres; drives the whole walk cycle. */

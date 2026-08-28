@@ -183,25 +183,40 @@ def _place_streets(placer, rng):
 
 
 def _place_plaza(placer, rng):
-    """The town square: the well, market stalls, benches and clutter."""
+    """The town square: the well, the market, benches and clutter.
+
+    The stall and bench counts matter beyond decoration: the npc stage uses
+    them as the anchor points the town's crowd spreads across.
+    """
     cx, cy = placer.wd.town["center"]
     placer.place("SM_Well_A", cx, cy, 0.0, "Well", radius=260.0, z_offset=-15.0)
 
-    for i in range(5):
-        angle = 72.0 * i + 18.0
-        r = 1150.0
-        wx = cx + math.cos(math.radians(angle)) * r
-        wy = cy + math.sin(math.radians(angle)) * r
-        placer.place("SM_MarketStall_A", wx, wy, angle + 180.0,
-                     "Stall %d" % i, radius=300.0, z_offset=-10.0)
+    # A market of two rings rather than one.
+    #
+    # Five stalls was enough to read as a market and nowhere near enough to
+    # hold one: every villager in town picks a stall to stand at, and with five
+    # of them in a twelve metre circle the square became one solid mass of
+    # people. Stalls are the anchor points the crowd spreads across, so the
+    # market needs to be the size of the crowd it serves.
+    stalls = 0
+    for ring_radius, count, offset in ((1250.0, 7, 12.0), (2150.0, 6, 40.0)):
+        for i in range(count):
+            angle = 360.0 / count * i + offset
+            wx = cx + math.cos(math.radians(angle)) * ring_radius
+            wy = cy + math.sin(math.radians(angle)) * ring_radius
+            if placer.place("SM_MarketStall_A", wx, wy, angle + 180.0,
+                            "Stall %d" % stalls, radius=300.0, z_offset=-10.0):
+                stalls += 1
 
-    for i in range(6):
-        angle = 60.0 * i + 30.0
-        r = 700.0
-        wx = cx + math.cos(math.radians(angle)) * r
-        wy = cy + math.sin(math.radians(angle)) * r
-        placer.place("SM_Bench_A", wx, wy, angle + 90.0, "Bench %d" % i,
-                     radius=170.0, z_offset=-8.0)
+    benches = 0
+    for ring_radius, count, offset in ((760.0, 6, 30.0), (1800.0, 9, 20.0)):
+        for i in range(count):
+            angle = 360.0 / count * i + offset
+            wx = cx + math.cos(math.radians(angle)) * ring_radius
+            wy = cy + math.sin(math.radians(angle)) * ring_radius
+            if placer.place("SM_Bench_A", wx, wy, angle + 90.0,
+                            "Bench %d" % benches, radius=170.0, z_offset=-8.0):
+                benches += 1
 
     # No villagers here any more. Characters belong to the npc stage, which
     # spawns inhabitants with routines instead of props; two stages both placing
@@ -222,6 +237,8 @@ def _place_plaza(placer, rng):
         wy = cy + rng.uniform(-2600.0, 2600.0)
         placer.place("SM_Planter_A", wx, wy, rng.uniform(0.0, 360.0),
                      "Planter %d" % i, radius=130.0, z_offset=-6.0)
+
+    ctx.log("town: plaza with %d market stalls and %d benches" % (stalls, benches))
 
 
 def _coast_y_at(world_data, wx):

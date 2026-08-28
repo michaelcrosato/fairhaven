@@ -50,11 +50,14 @@ namespace UEGT2NPCActorLocal
 		case EUEGT2Anchor::Pasture:
 		case EUEGT2Anchor::Field:   return 1800.0f;
 		case EUEGT2Anchor::Shore:   return 1200.0f;
-		case EUEGT2Anchor::Dock:    return 1000.0f;
-		case EUEGT2Anchor::Church:  return 600.0f;
+		// A pier is 2.6 m wide. Spreading a crew of dockhands over ten metres
+		// of it puts most of them on the water, where there is nothing to
+		// stand on - they each pick their own dock section instead.
+		case EUEGT2Anchor::Dock:    return 150.0f;
+		case EUEGT2Anchor::Church:  return 1100.0f;
 		case EUEGT2Anchor::Tavern:  return 550.0f;
 		case EUEGT2Anchor::Home:    return 260.0f;
-		case EUEGT2Anchor::Work:    return 340.0f;
+		case EUEGT2Anchor::Work:    return 520.0f;
 		default:                    return 600.0f;
 		}
 	}
@@ -447,8 +450,8 @@ void AUEGT2NPCActor::EvaluateSchedule(const FUEGT2NPCContext& Context, bool bFor
 			// Straight to the doorstep and out of sight: there are no interiors,
 			// so "inside" is the honest way to spend the night.
 			const FVector Home = GetAnchorLocation(EUEGT2Anchor::Home);
-			SetActorLocation(FVector(Home.X, Home.Y, Home.Z));
-			GroundZ = Home.Z;
+			GroundZ = GroundZAt(Home);
+			SetActorLocation(FVector(Home.X, Home.Y, GroundZ));
 			PathPoints.Reset();
 			Destination = Home;
 			bArrived = true;
@@ -460,12 +463,12 @@ void AUEGT2NPCActor::EvaluateSchedule(const FUEGT2NPCContext& Context, bool bFor
 			// journey no one can see, and skipping the move entirely would
 			// leave the far side of the map frozen at whatever hour the player
 			// last visited. So it simply arrives.
-			Destination = NewDestination;
+			Destination = FVector(NewDestination.X, NewDestination.Y, GroundZAt(NewDestination));
 			PathPoints.Reset();
 			PathIndex = 0;
 			bArrived = true;
-			SetActorLocation(NewDestination);
-			GroundZ = NewDestination.Z;
+			SetActorLocation(Destination);
+			GroundZ = (float)Destination.Z;
 		}
 		else
 		{
@@ -489,10 +492,12 @@ void AUEGT2NPCActor::SnapToSchedule(const FUEGT2NPCContext& Context)
 	EvaluateSchedule(Context, true);
 	if (!bIndoors)
 	{
+		// Settle onto the ground, rather than merely working out where it is.
+		// A frozen capture never ticks, so this is the only chance these actors
+		// get to stand on anything.
 		const FVector Target = Destination;
-		SetActorLocation(FVector(Target.X, Target.Y, Target.Z));
-		GroundZ = Target.Z;
-		UpdateGroundHeight();
+		GroundZ = GroundZAt(Target);
+		SetActorLocation(FVector(Target.X, Target.Y, GroundZ));
 	}
 	PathPoints.Reset();
 	PathIndex = 0;
@@ -510,7 +515,14 @@ void AUEGT2NPCActor::AdvanceNeeds(float WorldHours)
 
 void AUEGT2NPCActor::RepathTo(const FVector& Goal)
 {
-	Destination = Goal;
+	// Every destination is ground-sampled here, and only here.
+	//
+	// An anchor is one point; the crowd around it is spread over fifteen
+	// metres, and the offsets that spread it are horizontal. Inheriting the
+	// anchor's height meant that on any ground that is not flat, most of the
+	// crowd stood in the air - 343 of 786 of them, at the last count, which is
+	// what "floating" looked like.
+	Destination = FVector(Goal.X, Goal.Y, GroundZAt(Goal));
 	PathPoints.Reset();
 	PathIndex = 0;
 	bArrived = false;
@@ -534,7 +546,15 @@ void AUEGT2NPCActor::RepathTo(const FVector& Goal)
 		}
 	}
 
+	BeginSegment();
 	DriftCountdown = 3.0f + UEGT2HashUnit((uint32)Seed, 0xD11Fu) * 7.0f;
+}
+
+void AUEGT2NPCActor::BeginSegment()
+{
+	const FVector Target = PathPoints.IsValidIndex(PathIndex) ? PathPoints[PathIndex] : Destination;
+	SegmentStartZ = GroundZ;
+	SegmentLength = FVector::Dist2D(GetActorLocation(), Target);
 }
 
 void AUEGT2NPCActor::PickArrivalTarget()
@@ -553,7 +573,13 @@ void AUEGT2NPCActor::PickArrivalTarget()
 		return;
 	}
 
-	const float Spread = UEGT2NPCActorLocal::AnchorSpread(Decision.Anchor) * 0.6f + WanderRadius * 0.4f;
+	// The anchor's own spread, and nothing else.
+	//
+	// This used to mix in WanderRadius, which is the radius for *roaming* - and
+	// roaming radii are large. A dockhand with a 9 m roam drifted 4.5 m around
+	// a pier 2.6 m wide, which put him on the sea. WanderRadius belongs to the
+	// Wander anchor, which has its own branch above.
+	const float Spread = UEGT2NPCActorLocal::AnchorSpread(Decision.Anchor) * 0.8f;
 	const float Angle = UEGT2HashUnit((uint32)Seed, Tick, 0xE11Fu) * 360.0f;
 	const float Radius = Spread * FMath::Sqrt(UEGT2HashUnit((uint32)Seed, Tick, 0xF11Fu));
 	const FVector Base = AnchorCentre.IsNearlyZero() ? SpawnLocation : AnchorCentre;
@@ -723,12 +749,14 @@ void AUEGT2NPCActor::Tick(float DeltaSeconds)
 		AdvanceCosmetics(DeltaSeconds);
 	}
 
-	if (LOD == EUEGT2NPCLOD::Near)
+	// Mid tier corrects too, just less often. A hundred and sixty metres away is
+	// still close enough to notice somebody standing a metre off the ground.
+	if (LOD == EUEGT2NPCLOD::Near || LOD == EUEGT2NPCLOD::Mid)
 	{
 		GroundTraceCountdown -= DeltaSeconds;
 		if (GroundTraceCountdown <= 0.0f)
 		{
-			GroundTraceCountdown = 0.5f;
+			GroundTraceCountdown = (LOD == EUEGT2NPCLOD::Near) ? 0.5f : 1.5f;
 			UpdateGroundHeight();
 		}
 	}
@@ -752,6 +780,7 @@ void AUEGT2NPCActor::AdvanceMovement(float DeltaSeconds)
 		if (bOnPath)
 		{
 			++PathIndex;
+			BeginSegment();
 			return;
 		}
 		if (!bArrived)
@@ -779,9 +808,13 @@ void AUEGT2NPCActor::AdvanceMovement(float DeltaSeconds)
 	const FVector Direction = ToTarget / Distance;
 	const float Step = FMath::Min(Speed * DeltaSeconds, Distance);
 
-	// The target's Z is the baked ground height there; easing toward it is what
-	// keeps an NPC on a slope without a trace per frame.
-	GroundZ = FMath::FInterpTo(GroundZ, Target.Z, DeltaSeconds, 2.2f);
+	// Height by progress along the leg, not by a time constant. Both ends of
+	// the leg carry a real ground height - path nodes are baked from the
+	// heightmap and destinations are traced - so walking the straight line
+	// between them in 3D follows the ground exactly.
+	const float Progress = (SegmentLength > 1.0f)
+		? FMath::Clamp(1.0f - Distance / SegmentLength, 0.0f, 1.0f) : 1.0f;
+	GroundZ = FMath::Lerp(SegmentStartZ, (float)Target.Z, Progress);
 
 	FVector Next = Current + Direction * Step;
 	Next.Z = GroundZ;
@@ -880,29 +913,55 @@ void AUEGT2NPCActor::AdvanceCosmetics(float DeltaSeconds)
 	}
 }
 
-void AUEGT2NPCActor::UpdateGroundHeight()
+float AUEGT2NPCActor::GroundZAt(const FVector& Point) const
 {
-	UWorld* World = GetWorld();
+	const UWorld* World = GetWorld();
 	if (!World)
 	{
-		return;
+		return (float)Point.Z;
 	}
-	const FVector Location = GetActorLocation();
 
 	// Object-type query rather than the Visibility channel: every NPC blocks
 	// Visibility so the interaction probe can find them, and a channel trace
 	// would happily land one NPC on another's head.
 	FCollisionObjectQueryParams ObjectParams;
 	ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
-
 	FCollisionQueryParams Params(SCENE_QUERY_STAT(UEGT2NPCGround), false, this);
+
+	// Stage one: down from knee height. This finds the floor, the pier deck or
+	// the doorstep, and cannot find a roof, because every roof in this world is
+	// higher off its own floor than a knee is.
 	FHitResult Hit;
 	if (World->LineTraceSingleByObjectType(Hit,
-		Location + FVector(0.0f, 0.0f, 260.0f),
-		Location - FVector(0.0f, 0.0f, 900.0f), ObjectParams, Params))
+		Point + FVector(0.0f, 0.0f, 90.0f),
+		Point - FVector(0.0f, 0.0f, 2000.0f), ObjectParams, Params))
 	{
-		GroundZ = Hit.ImpactPoint.Z;
+		return (float)Hit.ImpactPoint.Z;
 	}
+
+	// Stage two only happens when stage one started underground, which means
+	// Point is inside a hillside. Drop from overhead and take the lowest hit:
+	// under an awning that is the ground, and under a building it is the ground
+	// the building stands on.
+	TArray<FHitResult> Hits;
+	if (World->LineTraceMultiByObjectType(Hits,
+		Point + FVector(0.0f, 0.0f, 4000.0f),
+		Point - FVector(0.0f, 0.0f, 2000.0f), ObjectParams, Params))
+	{
+		double Lowest = Point.Z + 4000.0;
+		for (const FHitResult& Found : Hits)
+		{
+			Lowest = FMath::Min(Lowest, Found.ImpactPoint.Z);
+		}
+		return (float)Lowest;
+	}
+
+	return (float)Point.Z;
+}
+
+void AUEGT2NPCActor::UpdateGroundHeight()
+{
+	GroundZ = GroundZAt(GetActorLocation());
 }
 
 #undef LOCTEXT_NAMESPACE

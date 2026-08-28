@@ -49,7 +49,7 @@ dependency order regardless of the order given.
 | `city` | `uegt2/city.py` | Newhaven: blocks, towers, street furniture, wharf |
 | `nature` | `uegt2/nature.py` | ~650,000 instanced plants and rocks |
 | `gameplay` | `uegt2/gameplay.py` | player start and interactables |
-| `npc` | `uegt2/npc.py` | the road graph, ~500 people and ~290 animals |
+| `npc` | `uegt2/npc.py` | the road graph, ~930 people and ~285 animals |
 | `showcase` | `uegt2/showcase.py` | dev-only grid of every mesh |
 
 `showcase` is excluded from `-Stages all` on purpose.
@@ -136,9 +136,9 @@ Target: 1920×1080, 60 fps on an RTX 3060-class GPU.
 - 131 unique meshes, 21,043 triangles total; the heaviest asset is 744 triangles.
 - ~650,000 scattered instances across 13 species, all in hierarchical instanced
   components with per-species cull distances (grass 70 m, trees 700–900 m).
-- ~790 inhabitants as movable static mesh actors. Measured cost: **nothing
-  measurable** - 9.9 fps with all 786 present and walking against 9.1 fps with
-  707 of them hidden, in the same view. (Both figures are low because they come
+- ~1,215 inhabitants as movable static mesh actors. Measured cost: **nothing
+  measurable** - 9.9 fps with the whole population present and walking against
+  9.1 fps with 707 of them hidden, in the same view. (Both figures are low because they come
   through `-RenderOffscreen`; the point is the difference.) Four things buy that:
   distance tiers, dormant NPCs teleporting along their schedule instead of
   walking it, the population being walked in six slices per pass, and small

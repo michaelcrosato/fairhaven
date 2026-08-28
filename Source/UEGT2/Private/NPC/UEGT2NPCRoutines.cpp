@@ -34,7 +34,10 @@ namespace UEGT2Routines
 				{ 6.50f, EA::Wake,      EN::Home },
 				{ 7.00f, EA::Breakfast, EN::Home },
 				{ 7.75f, EA::Stroll,    EN::Square },
-				{ 9.00f, EA::Work,      EN::Work },
+				{ 8.75f, EA::Commute,   EN::Work },
+				{ 9.25f, EA::Work,      EN::Work },
+				{11.00f, EA::Errand,    EN::Wander },
+				{11.75f, EA::Work,      EN::Work },
 				{12.50f, EA::Lunch,     EN::Market },
 				{13.50f, EA::Work,      EN::Work },
 				{17.00f, EA::Market,    EN::Market },
@@ -184,7 +187,8 @@ namespace UEGT2Routines
 				{ 6.00f, EA::Wake,      EN::Home },
 				{ 6.50f, EA::Breakfast, EN::Home },
 				{ 7.50f, EA::Stroll,    EN::Square },
-				{ 9.00f, EA::Rest,      EN::Square },
+				{ 9.00f, EA::Stroll,    EN::Wander },
+				{10.00f, EA::Rest,      EN::Square },
 				{11.00f, EA::Market,    EN::Market },
 				{12.50f, EA::Lunch,     EN::Home },
 				{13.50f, EA::Rest,      EN::Square },
@@ -197,14 +201,22 @@ namespace UEGT2Routines
 			});
 
 			// --- Newhaven ---------------------------------------------------
+			// The two Wander legs are what put anybody on a Newhaven avenue
+			// between nine and five. Without them the city's whole working
+			// population is standing at building frontages, which reads as an
+			// architectural render rather than a place.
 			Result[(int32)EUEGT2NPCRole::Clerk] = Make(TEXT("Clerk"), {
 				{ 0.00f, EA::Sleep,     EN::Home },
 				{ 6.75f, EA::Wake,      EN::Home },
 				{ 7.25f, EA::Breakfast, EN::Home },
 				{ 8.00f, EA::Commute,   EN::Work },
 				{ 8.75f, EA::Work,      EN::Work },
+				{10.75f, EA::Errand,    EN::Wander },
+				{11.50f, EA::Work,      EN::Work },
 				{12.50f, EA::Lunch,     EN::Plaza },
 				{13.50f, EA::Work,      EN::Work },
+				{15.25f, EA::Errand,    EN::Wander },
+				{16.00f, EA::Work,      EN::Work },
 				{17.50f, EA::HomeTime,  EN::Home },
 				{18.50f, EA::Dinner,    EN::Home },
 				{19.50f, EA::Stroll,    EN::Plaza },
@@ -221,6 +233,8 @@ namespace UEGT2Routines
 				{ 7.75f, EA::Work,      EN::Work },
 				{13.00f, EA::Lunch,     EN::Work },
 				{13.75f, EA::Work,      EN::Work },
+				{16.25f, EA::Errand,    EN::Wander },
+				{17.00f, EA::Work,      EN::Work },
 				{20.00f, EA::HomeTime,  EN::Home },
 				{20.75f, EA::Dinner,    EN::Home },
 				{21.75f, EA::Stroll,    EN::Plaza },
@@ -229,17 +243,24 @@ namespace UEGT2Routines
 
 			// Never in the same place twice, which is the whole point: a city
 			// with only commuters in it reads as a diagram of a city.
+			// Half these legs are Wander on purpose. A courier is the one
+			// trade whose whole job is being between places, and Wander is the
+			// only anchor that puts an NPC on the road network rather than at
+			// a fixed point - which is what a city street needs on it if it is
+			// not going to read as a diagram of a city.
 			Result[(int32)EUEGT2NPCRole::Courier] = Make(TEXT("Courier"), {
 				{ 0.00f, EA::Sleep,     EN::Home },
 				{ 5.50f, EA::Wake,      EN::Home },
 				{ 6.00f, EA::Commute,   EN::Plaza },
 				{ 6.50f, EA::Errand,    EN::Work },
-				{ 9.00f, EA::Errand,    EN::Plaza },
-				{11.00f, EA::Errand,    EN::Market },
+				{ 8.00f, EA::Errand,    EN::Wander },
+				{10.00f, EA::Errand,    EN::Market },
+				{11.00f, EA::Errand,    EN::Wander },
 				{12.75f, EA::Lunch,     EN::Plaza },
 				{13.50f, EA::Errand,    EN::Work },
-				{16.00f, EA::Errand,    EN::Dock },
-				{18.00f, EA::Errand,    EN::Plaza },
+				{15.00f, EA::Errand,    EN::Wander },
+				{16.50f, EA::Errand,    EN::Dock },
+				{17.50f, EA::Errand,    EN::Wander },
 				{19.00f, EA::HomeTime,  EN::Home },
 				{19.75f, EA::Dinner,    EN::Home },
 				{20.75f, EA::Tavern,    EN::Tavern },
@@ -255,11 +276,12 @@ namespace UEGT2Routines
 				{ 6.75f, EA::Sleep,     EN::Home },
 				{13.00f, EA::Wake,      EN::Home },
 				{13.50f, EA::Breakfast, EN::Home },
-				{14.50f, EA::Stroll,    EN::Plaza },
+				{14.50f, EA::Patrol,    EN::Wander },
 				{16.00f, EA::Rest,      EN::Home },
 				{18.00f, EA::Dinner,    EN::Home },
 				{19.00f, EA::Commute,   EN::Plaza },
-				{19.75f, EA::Patrol,    EN::Plaza },
+				{19.75f, EA::Patrol,    EN::Wander },
+				{22.00f, EA::Patrol,    EN::Plaza },
 			});
 
 			Result[(int32)EUEGT2NPCRole::Busker] = Make(TEXT("Busker"), {
@@ -482,7 +504,10 @@ float GetFleeRadius(EUEGT2NPCSpecies Species)
 
 float GetEffectiveHour(float Hour, const FUEGT2Personality& Personality)
 {
-	return Hour + (FMath::Clamp(Personality.Punctuality, 0.0f, 1.0f) - 0.5f) * 0.6f;
+	// +/- 36 minutes. It was +/- 18, which was not enough: a market that
+	// eleven routines point at fills in a single quarter hour and reads as a
+	// crowd teleporting in rather than gathering.
+	return Hour + (FMath::Clamp(Personality.Punctuality, 0.0f, 1.0f) - 0.5f) * 1.2f;
 }
 
 FUEGT2ActivityDecision ResolveActivity(EUEGT2NPCRole Role, EUEGT2NPCSpecies Species,

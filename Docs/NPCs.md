@@ -1,8 +1,8 @@
 # The inhabitants
 
-Fairhaven has about **five hundred people and three hundred animals** in it, and
-each of them has somewhere to be. This document is how that works and where to
-change it.
+Fairhaven and Newhaven have about **nine hundred people and three hundred
+animals** between them, and each of them has somewhere to be. This document is
+how that works and where to change it.
 
 ![The market square, and what people are about to go and do](Images/life.png)
 
@@ -18,7 +18,7 @@ graph to walk on, and a director that keeps the whole thing affordable.
 ```
 Tools/Python/uegt2/npc.py            the content stage
     bakes  ->  AUEGT2RouteNetwork    ~2100 nodes sampled off the street splines
-    spawns ->  AUEGT2NPCActor x786   role, seed, and the places its routine needs
+    spawns ->  AUEGT2NPCActor x1200  role, seed, and the places its routine needs
 
 Source/UEGT2/*/NPC/
     UEGT2NPCTypes         enums, personality, needs - pure data
@@ -183,11 +183,11 @@ a handful of float operations.
 
 ## What makes it affordable
 
-786 actors is a lot of actors. Measured on the packaged build, the whole
-population costs **nothing measurable**: 9.9 fps with all 786 present and
-walking, 9.1 fps with 707 of them hidden, in the same view. (Both numbers are
-low because they were taken through `-RenderOffscreen`, which is not the frame
-rate the game runs at - the point is the difference, which is noise.)
+Twelve hundred actors is a lot of actors. Measured on the packaged build, the
+whole population costs **nothing measurable**: 9.9 fps with all of them present
+and walking against 9.1 fps with 707 of them hidden, in the same view. (Both
+numbers are low because they were taken through `-RenderOffscreen`, which is not
+the frame rate the game runs at - the point is the difference, which is noise.)
 
 Four things do that:
 
@@ -250,6 +250,32 @@ nobody was speaking or whether they were all projected off the top of the screen
 
 ## Changing it
 
+## Where everybody is
+
+Twelve seconds into any run, `LogUEGT2NPC` prints where the population actually
+is - counts by tour viewpoint, and what the crowd near the player is heading
+for. Those two lines are how the distribution problems below were found and how
+the fixes were checked, because "the market is too crowded" and "the city feels
+empty" are unfalsifiable until they are numbers:
+
+```
+Within 60 m of each viewpoint: TownSquare 62, MainStreet 16, Market 50,
+    Waterfront 60, ... Newhaven 25, NewhavenWharf 67, NewhavenPlaza 81
+Within 100 m of the player, heading for: Church 25, Market 18, Work 13, ...
+Everybody has their feet on the ground.
+```
+
+It also counts anyone standing on nothing, and anyone standing more than two
+metres above the deepest surface below them, broken down by destination -
+because "24 at the Dock" is piers doing their job and "24 at the Market" is a
+crowd standing on the awnings.
+
+**Crowding is a content problem, not a behaviour one.** An anchor is one point
+and a crowd is spread around it, so the number of *distinct* anchors is the
+capacity of a place. The town square holds thirteen market stalls and twelve
+benches; the civic square holds eighteen benches and fourteen planters. When
+the market held five stalls, a hundred and forty people shared them.
+
 | To change | Do this |
 |---|---|
 | What a trade does all day | its row in `UEGT2Routines::RoleTable()` |
@@ -260,7 +286,9 @@ nobody was speaking or whether they were all projected off the top of the screen
 | A trade's own voice | `UEGT2Speech::RoleWorkTable()` |
 | When the routine gets overridden | `ResolveActivity` in `UEGT2NPCRoutines.cpp` |
 | How many people there are | the occupancy fractions at the top of `npc.py` |
+| How many can stand in a square | the bench and stall counts in `town.py` / `city.py` |
 | Where a crowd stands | `UEGT2NPCActorLocal::AnchorSpread` |
+| How far a wanderer roams | the `wander` argument in `npc.py`, and the hop count in `GetWanderTarget` |
 | How often anyone speaks | the budget constants on `UUEGT2NPCDirector` |
 
 Population is expressed as **fractions of the available anchors**, never as fixed
@@ -289,3 +317,23 @@ villagers would have quietly become a ghost town when it did.
   same thing to within eye height in play, and completely different during a
   screenshot tour, which parks the pawn at the player start and flies a separate
   camera around.
+- **The ground trace starts below knee height, at +90 cm.** A market awning is
+  250 cm up, a stall counter 154, a kiosk body 260, a bus shelter bench 230.
+  Starting the trace above those found the awning first and snapped the villager
+  onto it; they then walked off the edge, dropped, came back under and popped up
+  again. That is what "floating in the sky" and "bouncing" were.
+- **Destinations are ground-sampled, in `RepathTo` and nowhere else.** An anchor
+  is one point and the crowd around it is spread horizontally, so inheriting the
+  anchor's height left most of a crowd in the air on any ground that is not
+  flat - 343 of 786, at the worst.
+- **Height along a leg is interpolated by distance covered, not by a time
+  constant.** Easing toward the next waypoint's height lags on a slope, and at
+  the start of a leg the lag is a visibly airborne villager for about a second.
+- **`WanderRadius` belongs to the Wander anchor only.** Mixing it into the
+  arrival drift gave a dockhand with a nine metre roam a 4.5 m drift around a
+  pier 2.6 m wide, and put him on the sea.
+- **A missing city landmark must never fall back to a town one.** When
+  Newhaven's fountain failed to place, every city routine pointing at "Plaza"
+  resolved to the town square, and the city's couriers, buskers and constables
+  set off on a 130 km walk. From inside the city that reads as "the city is
+  empty" and is almost impossible to see.

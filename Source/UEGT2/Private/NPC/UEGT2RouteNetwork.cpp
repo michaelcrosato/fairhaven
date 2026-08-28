@@ -285,10 +285,13 @@ FVector AUEGT2RouteNetwork::GetWanderTarget(const FVector& Location, float Radiu
 		return Location;
 	}
 
-	// Two random hops along the network. Far enough to be a walk, close enough
-	// that a wandering animal or an idle villager stays in its own quarter.
+	// A walk along the network rather than a step off it. Three hops kept a
+	// wanderer within about twenty-five metres of where it started, which meant
+	// Newhaven's avenues stayed empty however many people were told to wander -
+	// they were all circling their own doorway. The radius still bounds it, so
+	// an animal stays in its field and a villager stays in their quarter.
 	int32 Node = Nearest;
-	for (int32 Hop = 0; Hop < 3; ++Hop)
+	for (int32 Hop = 0; Hop < 6; ++Hop)
 	{
 		const TArray<int32>& Links = NodeLinks[Node].To;
 		if (Links.Num() == 0)

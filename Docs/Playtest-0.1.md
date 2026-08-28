@@ -78,6 +78,11 @@ constable and a light in the bakery. Does it read as a town keeping hours, or as
 actors hitting marks? Dev Mode → Life → **Show Plans** tells you what each of
 them thinks it is doing, and why.
 
+**Crowds.** Does the market read as a market rather than a queue? Is anybody
+standing on a roof or in the air? (`F3`, or the `LogUEGT2NPC` population report
+in the log, will say.) Newhaven's civic square fills at lunchtime and its
+avenues are quieter - that is intended, but say if the balance feels wrong.
+
 **The bubbles.** Do they arrive often enough to notice and rarely enough to be
 worth reading? Do people say what they then visibly go and do? Settings →
 Gameplay turns them off if they are too much.

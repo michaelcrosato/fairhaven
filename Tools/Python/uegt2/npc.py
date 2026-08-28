@@ -57,8 +57,12 @@ ROUTE_Z_LIFT = 8.0
 TOWN_HOME_OCCUPANCY = 0.86        # homes that have anyone in them at all
 TOWN_SECOND_RESIDENT = 0.34       # of those, how many hold a second adult
 TOWN_CHILD_CHANCE = 0.26          # of occupied homes, how many have a child
-CITY_HOME_OCCUPANCY = 0.88
-CITY_SECOND_RESIDENT = 0.30
+# Newhaven is the bigger settlement and was reading as the emptier one: 17
+# inhabitants within sixty metres of the downtown viewpoint against 140 in the
+# town square. A city block holds more people than a cottage does.
+CITY_HOME_OCCUPANCY = 1.0
+CITY_SECOND_RESIDENT = 0.85
+CITY_THIRD_RESIDENT = 0.9
 FARMERS_PER_FARM = 2
 
 # --- Names ------------------------------------------------------------------
@@ -269,6 +273,23 @@ class _Survey(object):
         self.town_farms = []          # barns and sheds out in the fields
         self.town_church = None
         self.town_shelters = []
+        # Everywhere it is reasonable to stand "in the square": the benches, the
+        # stall fronts and the well. A single square anchor put seventy-five
+        # people on one coordinate.
+        self.town_square_spots = []
+        self.city_plaza_spots = []
+        # Labels the classifier did not recognise. A stage that renames an
+        # actor silently empties an anchor set, and the only symptom is a part
+        # of the world that stops being visited.
+        self.unclassified = {}
+        # The fallback for every city anchor. Never the town square: a missing
+        # city landmark used to send couriers and buskers on a 130 km walk to
+        # Fairhaven, which reads as "the city is empty" and is very hard to see
+        # from inside the city.
+        city = getattr(world_data, "city", None)
+        self.city_centre = ((city["center"][0], city["center"][1],
+                             world_data.height_uu(city["center"][0], city["center"][1]))
+                            if city else None)
         self.city_homes = []
         self.city_work = []
         self.city_shops = []
@@ -296,6 +317,12 @@ class _Survey(object):
             radius = float(pond.get("radius_uu", 2000.0))
             self.water.append((px + radius * 0.8, py, world_data.height_uu(px + radius * 0.8, py)))
         self.water.append(self.town_shore)
+
+        # The square itself is always a valid place to stand, and is the
+        # fallback when the town stage placed no furniture at all.
+        self.town_square_spots.append(self.town_square)
+        if self.city_plaza:
+            self.city_plaza_spots.append(self.city_plaza)
 
         # One building becomes the inn. Derived, not hard-coded: it is whichever
         # town house stands closest to the square, which is where an inn would be.
@@ -330,10 +357,13 @@ class _Survey(object):
             self.town_work.append(_front_of(location, yaw, 900.0, 260.0))
             self.town_shelters.append(point)
         elif label.startswith("Town Stall "):
-            self.town_stalls.append(_front_of(location, yaw, 300.0, 170.0))
+            front = _front_of(location, yaw, 300.0, 170.0)
+            self.town_stalls.append(front)
+            self.town_square_spots.append(front)
             self.town_shelters.append(point)
         elif label.startswith("Town Bench "):
             self.town_benches.append(point)
+            self.town_square_spots.append(point)
         elif label.startswith("Town Dock "):
             self.town_docks.append(point)
         elif label == "Town Church":
@@ -353,17 +383,41 @@ class _Survey(object):
             self.city_plaza = point
         elif label.startswith("City ParkBench ") or label.startswith("City ParkTree "):
             self.city_parks.append(point)
+        elif label.startswith("City PlazaBench ") or label.startswith("City PlazaPlanter "):
+            self.city_plaza_spots.append(point)
         elif label.startswith("City Corner ") or label.startswith("City Warehouse "):
             self.city_shelters.append(point)
         elif label.startswith("City Quay "):
             self.city_docks.append(point)
+        else:
+            key = label.rstrip("0123456789 -")
+            self.unclassified[key] = self.unclassified.get(key, 0) + 1
+
+    def warn_gaps(self):
+        """Shout about anchor sets that came out empty, and labels nobody claimed."""
+        for name, values in (("town homes", self.town_homes),
+                             ("town stalls", self.town_stalls),
+                             ("square spots", self.town_square_spots),
+                             ("town docks", self.town_docks),
+                             ("city homes", self.city_homes),
+                             ("city workplaces", self.city_work),
+                             ("plaza spots", self.city_plaza_spots)):
+            if not values:
+                ctx.warn("npc: no %s found - the stage that places them may not have run"
+                         % name)
+        if self.unclassified:
+            top = sorted(self.unclassified.items(), key=lambda kv: -kv[1])[:8]
+            ctx.log("npc: unclaimed labels - %s"
+                    % ", ".join("'%s' x%d" % (k, v) for k, v in top))
 
     def summary(self):
         return ("npc: survey - %d town homes, %d farms, %d stalls, %d docks, "
-                "%d city homes, %d city workplaces, %d parks"
+                "%d square spots, %d city homes, %d city workplaces, %d parks, "
+                "%d plaza spots"
                 % (len(self.town_homes), len(self.town_farms), len(self.town_stalls),
-                   len(self.town_docks), len(self.city_homes), len(self.city_work),
-                   len(self.city_parks)))
+                   len(self.town_docks), len(self.town_square_spots),
+                   len(self.city_homes), len(self.city_work),
+                   len(self.city_parks), len(self.city_plaza_spots)))
 
 
 # ---------------------------------------------------------------------------
@@ -435,14 +489,17 @@ class _Populator(object):
         return [
             (a["Home"], home),
             (a["Work"], work or _nearest(s.town_work, hx, hy, square)),
-            (a["Market"], _pick_near(s.town_stalls, hx, hy, seed, 5, square)),
-            (a["Square"], square),
+            (a["Market"], _pick_near(s.town_stalls, hx, hy, seed, 13, square)),
+            (a["Square"], _pick_near(s.town_square_spots, hx, hy, seed, 16, square)),
             (a["Church"], s.town_church or square),
-            (a["Dock"], _pick_near(s.town_docks, hx, hy, seed, 8, shore)),
+            (a["Dock"], _pick_near(s.town_docks, hx, hy, seed, 14, shore)),
             (a["Field"], _pick_near(s.town_farms, hx, hy, seed, 3, square)),
             (a["Tavern"], s.town_tavern or square),
-            (a["Park"], _pick_near(s.town_benches, hx, hy, seed, 6, square)),
-            (a["Plaza"], square),
+            (a["Park"], _pick_near(s.town_benches, hx, hy, seed, 15, square)),
+            # A different salt from Square: in the town the two mean the same
+            # place, and resolving them to the same spot would waste half the
+            # square's capacity.
+            (a["Plaza"], _pick_near(s.town_square_spots, hx, hy, seed + 7, 16, square)),
             (a["Shore"], shore),
             (a["Shelter"], _pick_near(s.town_shelters, hx, hy, seed, 3, home)),
         ]
@@ -451,18 +508,18 @@ class _Populator(object):
         s = self.survey
         a = self.e.anchor
         hx, hy = home[0], home[1]
-        plaza = s.city_plaza or s.town_square
+        plaza = s.city_plaza or s.city_centre or s.town_square
         return [
             (a["Home"], home),
             (a["Work"], work or _pick_near(s.city_work, hx, hy, seed, 3, plaza)),
-            (a["Market"], _pick_near(s.city_shops, hx, hy, seed, 5, plaza)),
-            (a["Square"], plaza),
+            (a["Market"], _pick_near(s.city_shops, hx, hy, seed, 6, plaza)),
+            (a["Square"], _pick_near(s.city_plaza_spots, hx, hy, seed, 14, plaza)),
             (a["Church"], plaza),
-            (a["Dock"], _pick_near(s.city_docks, hx, hy, seed, 8, plaza)),
+            (a["Dock"], _pick_near(s.city_docks, hx, hy, seed, 30, plaza)),
             (a["Field"], _pick_near(s.city_parks, hx, hy, seed, 6, plaza)),
             (a["Tavern"], s.city_tavern or plaza),
-            (a["Park"], _pick_near(s.city_parks, hx, hy, seed, 6, plaza)),
-            (a["Plaza"], plaza),
+            (a["Park"], _pick_near(s.city_parks, hx, hy, seed, 8, plaza)),
+            (a["Plaza"], _pick_near(s.city_plaza_spots, hx, hy, seed + 7, 14, plaza)),
             (a["Shore"], _pick_near(s.city_docks, hx, hy, seed, 8, plaza)),
             (a["Shelter"], _pick_near(s.city_shelters, hx, hy, seed, 3, home)),
         ]
@@ -488,10 +545,13 @@ _TOWN_ROLES_COASTAL = (
     ("Fisher", 16), ("Dockhand", 12), ("Sailor", 8), ("Villager", 16),
     ("Merchant", 5), ("Elder", 4),
 )
+# Weighted toward the trades that spend the day on the pavement rather than
+# inside a tower. A city of nothing but clerks is empty between nine and five,
+# which is exactly when you are most likely to be walking through it.
 _CITY_ROLES = (
-    ("Clerk", 26), ("Shopkeeper", 10), ("Courier", 6), ("Officer", 3),
-    ("Villager", 8), ("Elder", 6), ("Gardener", 3), ("Busker", 2),
-    ("Sailor", 2), ("Dockhand", 3),
+    ("Clerk", 17), ("Shopkeeper", 15), ("Courier", 10), ("Officer", 5),
+    ("Villager", 12), ("Elder", 8), ("Gardener", 5), ("Busker", 4),
+    ("Sailor", 3), ("Dockhand", 4),
 )
 
 
@@ -615,7 +675,7 @@ def _populate_town(pop, rng, world_data):
             pop.spawn(mesh, home[0], home[1], home[2],
                       e.role[role_name], e.species["Person"],
                       "Villager %d" % index, seed,
-                      pop.town_anchors(home, work, seed), speed=speed, wander=460.0,
+                      pop.town_anchors(home, work, seed), speed=speed, wander=900.0,
                       display_name=_name_for(index, world_data.seed))
             pop.note(role_name=role_name)
             index += 1
@@ -696,7 +756,11 @@ def _populate_city(pop, rng, world_data, start_index):
     for home in s.city_homes:
         if rng.next() > CITY_HOME_OCCUPANCY:
             continue
-        residents = 1 + (1 if rng.next() < CITY_SECOND_RESIDENT else 0)
+        residents = 1
+        if rng.next() < CITY_SECOND_RESIDENT:
+            residents += 1
+        if rng.next() < CITY_THIRD_RESIDENT:
+            residents += 1
         for _ in range(residents):
             role_name = _weighted(rng, _CITY_ROLES)
             mesh, speed = _look_for(rng, role_name)
@@ -705,7 +769,7 @@ def _populate_city(pop, rng, world_data, start_index):
             pop.spawn(mesh, home[0], home[1], home[2],
                       e.role[role_name], e.species["Person"],
                       "Citizen %d" % index, seed,
-                      pop.city_anchors(home, work, seed), speed=speed, wander=520.0,
+                      pop.city_anchors(home, work, seed), speed=speed, wander=1700.0,
                       display_name=_name_for(index, world_data.seed))
             pop.note(role_name=role_name)
             index += 1
@@ -878,6 +942,7 @@ def build(world, world_data, meshes=None):
 
     survey = _Survey(world_data, subsystem)
     ctx.log(survey.summary())
+    survey.warn_gaps()
     if not survey.town_homes:
         ctx.fail("npc: no town houses found; run the 'town' stage first")
 

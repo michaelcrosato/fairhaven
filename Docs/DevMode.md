@@ -67,7 +67,7 @@ Flight follows the full camera rotation, so looking up and holding W climbs.
 
 ## Life tab
 
-The town's five hundred people and three hundred animals. See
+The world's nine hundred people and three hundred animals. See
 [NPCs.md](NPCs.md) for what they are actually doing.
 
 | Control | Effect |
