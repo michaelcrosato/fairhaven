@@ -114,6 +114,17 @@ const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
 			TEXT("The Newhaven skyline from the southern approach"));
 		Add(TEXT("NewhavenWharf"), -125000.0f, 44000.0f, 4.0f, -90.0f, -2.0f,
 			TEXT("The container wharf looking back at the city"));
+		// The civic plaza: city hall behind the fountain. Worth its own
+		// viewpoint because it is where the city's street life collects, and
+		// because it spent a while being an empty rectangle - see the note on
+		// check=False in city._place_plaza.
+		// On the far side of the civic square, looking across the fountain to
+		// the city hall on the block opposite. Note the height: the capture
+		// traces down for the ground, so a point inside a building's footprint
+		// puts the camera on its roof - which is where this viewpoint spent its
+		// first attempt.
+		Add(TEXT("NewhavenPlaza"), -128155.0f, 20238.0f, 1.8f, -81.0f, -1.0f,
+			TEXT("Newhaven's civic square, looking across the fountain to the city hall"));
 		Add(TEXT("NewhavenAerial"), -120220.0f, -12617.0f, 260.0f, 99.0f, -30.0f,
 			TEXT("Newhaven street grid from above"));
 

@@ -1,6 +1,7 @@
 #include "NPC/UEGT2NPCDirector.h"
 
 #include "Diagnostics/UEGT2CaptureSubsystem.h"
+#include "Engine/EngineTypes.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -750,6 +751,73 @@ void UUEGT2NPCDirector::LogPopulationReport()
 		}
 	}
 
+	// Two different ways to be in the wrong place, and they need telling apart.
+	//
+	// *Airborne* is unambiguous: nothing solid under the feet at all. That is
+	// always a bug.
+	//
+	// *Raised* is more than two metres above the deepest surface below - which
+	// catches a villager perched on a market awning, and also catches a
+	// perfectly correct dockhand standing on a pier over a sloping seabed. So
+	// it is counted per destination: "24 at the Dock" is the piers doing their
+	// job, and "24 at the Market" is a bug.
+	int32 Airborne = 0;
+	int32 Raised = 0;
+	TMap<FString, int32> AirborneBy;
+	float WorstPerch = 0.0f;
+	const AUEGT2NPCActor* HighestPerched = nullptr;
+	TMap<EUEGT2Anchor, int32> RaisedByAnchor;
+
+	if (UWorld* World = GetWorld())
+	{
+		FCollisionObjectQueryParams ObjectParams;
+		ObjectParams.AddObjectTypesToQuery(ECC_WorldStatic);
+
+		for (const AUEGT2NPCActor* NPC : Population)
+		{
+			if (!NPC || NPC->IsIndoors() || NPC->IsSuppressed())
+			{
+				continue;
+			}
+			const FVector Location = NPC->GetActorLocation();
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(UEGT2NPCPerch), false, NPC);
+
+			FHitResult Underfoot;
+			if (!World->LineTraceSingleByObjectType(Underfoot, Location + FVector(0.0f, 0.0f, 30.0f),
+				Location - FVector(0.0f, 0.0f, 60.0f), ObjectParams, Params))
+			{
+				++Airborne;
+				AirborneBy.FindOrAdd(FString::Printf(TEXT("%s/%s"),
+					*GetSpeciesDisplayName(NPC->GetSpecies()).ToString(),
+					GetAnchorName(NPC->GetTargetAnchor()))) += 1;
+			}
+
+			TArray<FHitResult> Hits;
+			if (!World->LineTraceMultiByObjectType(Hits, Location + FVector(0.0f, 0.0f, 200.0f),
+				Location - FVector(0.0f, 0.0f, 3000.0f), ObjectParams, Params))
+			{
+				continue;              // over water, or off the landscape
+			}
+
+			double Deepest = Location.Z;
+			for (const FHitResult& Found : Hits)
+			{
+				Deepest = FMath::Min(Deepest, Found.ImpactPoint.Z);
+			}
+			const float Height = (float)(Location.Z - Deepest);
+			if (Height > 200.0f)
+			{
+				++Raised;
+				RaisedByAnchor.FindOrAdd(NPC->GetTargetAnchor()) += 1;
+				if (Height > WorstPerch)
+				{
+					WorstPerch = Height;
+					HighestPerched = NPC;
+				}
+			}
+		}
+	}
+
 	const float MeanFps = (ReportSeconds > KINDA_SMALL_NUMBER)
 		? ReportFrames / ReportSeconds : 0.0f;
 
@@ -764,6 +832,96 @@ void UUEGT2NPCDirector::LogPopulationReport()
 			*Closest->GetDisplayName().ToString(), Nearest / 100.0f,
 			*GetActivityDisplayName(Closest->GetActivity()).ToString(),
 			GetAnchorName(Closest->GetTargetAnchor()));
+	}
+
+	if (Airborne > 0)
+	{
+		TArray<FString> Parts;
+		for (const TPair<FString, int32>& Pair : AirborneBy)
+		{
+			Parts.Add(FString::Printf(TEXT("%s %d"), *Pair.Key, Pair.Value));
+		}
+		UE_LOG(LogUEGT2NPC, Warning, TEXT("%d inhabitant(s) standing on nothing at all: %s"),
+			Airborne, *FString::Join(Parts, TEXT(", ")));
+	}
+
+	// How busy is each of the places we actually photograph?
+	//
+	// "The city feels empty" is a real report and an unmeasurable one until it
+	// is a number per location. The tour viewpoints are exactly the spots a
+	// player stands and looks around, so counting the inhabitants within sixty
+	// metres of each one says which parts of the world are alive and which are
+	// a diagram of a place.
+	{
+		TArray<FString> Busy;
+		for (const FUEGT2Viewpoint& Point : UUEGT2CaptureSubsystem::GetTour())
+		{
+			int32 Here = 0;
+			for (const AUEGT2NPCActor* NPC : Population)
+			{
+				if (!NPC || NPC->IsSuppressed())
+				{
+					continue;
+				}
+				const FVector Location = NPC->GetActorLocation();
+				if (FVector2D::DistSquared(FVector2D(Location.X, Location.Y), Point.Location)
+					< 6000.0f * 6000.0f)
+				{
+					++Here;
+				}
+			}
+			Busy.Add(FString::Printf(TEXT("%s %d"), *Point.Name.ToString(), Here));
+		}
+		UE_LOG(LogUEGT2NPC, Log, TEXT("Within 60 m of each viewpoint: %s"),
+			*FString::Join(Busy, TEXT(", ")));
+	}
+
+	// And what is the crowd near the player actually doing? A hundred and fifty
+	// people all heading for the Market is the difference between a town and a
+	// queue.
+	if (bHasPlayer)
+	{
+		TMap<EUEGT2Anchor, int32> NearbyByAnchor;
+		for (const AUEGT2NPCActor* NPC : Population)
+		{
+			if (!NPC || NPC->IsSuppressed() || NPC->IsIndoors())
+			{
+				continue;
+			}
+			if (FVector::Dist(NPC->GetActorLocation(), PlayerLocation) < 10000.0f)
+			{
+				NearbyByAnchor.FindOrAdd(NPC->GetTargetAnchor()) += 1;
+			}
+		}
+		NearbyByAnchor.ValueSort([](int32 A, int32 B) { return A > B; });
+
+		TArray<FString> Parts;
+		for (const TPair<EUEGT2Anchor, int32>& Pair : NearbyByAnchor)
+		{
+			Parts.Add(FString::Printf(TEXT("%s %d"), GetAnchorName(Pair.Key), Pair.Value));
+		}
+		UE_LOG(LogUEGT2NPC, Log, TEXT("Within 100 m of the player, heading for: %s"),
+			*FString::Join(Parts, TEXT(", ")));
+	}
+
+	if (Raised > 0)
+	{
+		TArray<FString> Parts;
+		for (const TPair<EUEGT2Anchor, int32>& Pair : RaisedByAnchor)
+		{
+			Parts.Add(FString::Printf(TEXT("%s %d"), GetAnchorName(Pair.Key), Pair.Value));
+		}
+		UE_LOG(LogUEGT2NPC, Log,
+			TEXT("%d standing over 2 m up (%s). Highest: %s at %.1f m, %s, heading for the %s."),
+			Raised, *FString::Join(Parts, TEXT(", ")),
+			HighestPerched ? *HighestPerched->GetDisplayName().ToString() : TEXT("?"),
+			WorstPerch / 100.0f,
+			HighestPerched ? *GetActivityDisplayName(HighestPerched->GetActivity()).ToString() : TEXT("?"),
+			HighestPerched ? GetAnchorName(HighestPerched->GetTargetAnchor()) : TEXT("?"));
+	}
+	else
+	{
+		UE_LOG(LogUEGT2NPC, Log, TEXT("Everybody has their feet on the ground."));
 	}
 }
 
