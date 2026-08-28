@@ -87,6 +87,25 @@ What to judge:
 Dev Mode -> Teleport has four buttons that put you straight inside one:
 HouseInterior, HouseUpstairs, CottageInterior and HouseHearth.
 
+**Newhaven's ground floors.** Every building in the city opens, and every one
+of them is a business. There are twenty-seven trades in the city and at least
+one of each: a grocer, a baker, a pharmacy, a hardware shop, a clothier, a
+bookshop, a furniture showroom, an electrical shop, a restaurant, a coffee
+house, a tavern, a barber, an optometrist, a post office, a gymnasium, a bank,
+a solicitor, a doctor, a dentist, a police station, a library, a school, a
+museum, a chapel, offices, apartment lobbies and a civic hall.
+
+Walk a shophouse street and go into three or four in a row. What to judge:
+
+- Can you tell what a shop is from the inside without being told?
+- Does the mix feel like a city, or like the same shop repeated?
+- Retail is on the outer ring, professional services on the office blocks
+  downtown, lobbies in the towers and apartments. Does that read on foot?
+- The city hall on the civic square opens too.
+
+**Windows.** Every window in the world is real glass now, inside and out. Look
+through one from the street and from a room.
+
 **The town's day.** This is the main new question. Escape → Dev Mode → World →
 Time of Day, and drag it. Half four in the morning should be a fisher walking to
 the boats and nobody else; nine should be a working town; six in the evening
@@ -146,13 +165,16 @@ These are known. Reporting them again costs you time.
   vanishing. Now that you can follow them in and see the room they are supposed
   to be in, that reads worse than it used to. Walking them through the door and
   sitting them at their own table is the obvious next job.
-- **Only the town houses have interiors.** Newhaven's towers, offices and
-  apartment blocks are still solid, and so are the barn, the church and the
-  warehouses. Their doors do open onto a wall.
-- **Interiors are lit by their own lamps, day and night.** The window panes are
-  opaque - one material per mesh, and this project has no translucent one - so
-  no daylight comes through the glass. Each room has a point light hung in its
-  ceiling lamp instead, which is why a house is as bright at noon as at midnight.
+- **You can only walk into the ground floor of a big building.** Newhaven's
+  towers, offices and apartment blocks open onto a lobby or a shop; the storeys
+  above them are solid. The town houses are the exception - those you can walk
+  all the way up.
+- **Interiors are lit by their own lamps, day and night.** Daylight does come
+  through the windows now that they are real glass, but a room is still mostly
+  lit by the point light hanging in its ceiling lamp, which is why it is about
+  as bright at noon as at midnight.
+- **The kiosks, bus shelters and market stalls are not buildings** and have no
+  inside. Neither do the lighthouse or the windmill.
 - **Vegetation pops** at its cull distance rather than fading.
 - **The town is one density everywhere** — no separate districts, and building
   placement is a simple street-side rule with overlap rejection.

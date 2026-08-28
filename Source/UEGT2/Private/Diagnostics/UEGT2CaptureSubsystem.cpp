@@ -157,6 +157,19 @@ const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
 		AddIndoor(TEXT("HouseHearth"), 1515.0f, -2056.3f, 1747.7f, -89.9f, -3.0f,
 			TEXT("Looking back at the front door and windows from the far wall"));
 
+		// Inside Newhaven. Every ground floor in the city is a business now,
+		// so these are five different trades in five different archetypes.
+		AddIndoor(TEXT("NewhavenShop"), -128884.6f, -3987.9f, 1210.6f, -80.8f, -4.0f,
+			TEXT("A Newhaven grocery, from behind the counter"));
+		AddIndoor(TEXT("NewhavenBarber"), -140842.0f, 4888.0f, 1214.4f, 98.8f, -4.0f,
+			TEXT("A barber shop on the outer ring"));
+		AddIndoor(TEXT("NewhavenSurgery"), -124467.3f, 5523.6f, 1244.1f, -81.0f, -4.0f,
+			TEXT("A dental surgery on an office block ground floor"));
+		AddIndoor(TEXT("NewhavenLobby"), -124749.5f, 9426.7f, 1255.0f, 9.3f, -4.0f,
+			TEXT("The lobby of a downtown tower"));
+		AddIndoor(TEXT("NewhavenDiner"), -124372.1f, -1054.4f, 1225.3f, 99.7f, -4.0f,
+			TEXT("A restaurant off the avenue"));
+
 		// Development-only: the asset showcase grid (see Tools/Python/uegt2/showcase.py).
 		Add(TEXT("ShowcaseA"), 27200.0f, -57500.0f, 3.4f, 90.0f, -3.0f,
 			TEXT("Asset showcase, front row"));

@@ -95,8 +95,15 @@ UEGT2ContentTests         automation tests over the generated content
 
 ## Decisions worth knowing
 
-**One material for everything.** Props, buildings and characters all use
-`M_Prop`, driven by vertex colour. The whole palette lives in
+**One material for everything, and one exception.** Props, buildings and
+characters all use `M_Prop`, driven by vertex colour. The exception is
+`M_Glass`, which is translucent, and it earns the exception twice: a window that
+is an opaque painted panel reads as a blank canvas from inside a room, and it
+seals the building against daylight. Because a static mesh carries exactly one
+material, every glazed building is generated as *two* meshes from one call - the
+shell and its panes - and `town.Placer._glaze` hangs the panes on the shell's
+transform automatically, so no call site has to remember. The panes cast no
+shadow, which is what lets the sun through them. The whole palette lives in
 `Tools/Python/uegt2/palette.py`. This keeps draw calls low, removes every
 texture dependency, and means a colour change is a one-line edit.
 
@@ -146,6 +153,24 @@ because exposure is one global setting shared with the outdoors and floored at
 EV 7 so that night still reads as night; a room has to reach about EV 10 to be
 visible at all under that floor.
 
+**Every building in the world opens.** The town's houses have a full
+multi-storey fit-out; every other building - the barn, the church, the
+warehouse, the shed, and all 334 blocks of Newhaven plus the city hall - has a
+walkable ground floor. Above that, a tower stays solid: you can walk into a
+building, not up it. That is the same bargain the roof makes with the attic, and
+it keeps a 31 storey tower from costing 31 storeys of furniture.
+
+Newhaven's ground floors are **trades**. `meshbuild.CITY_INTERIORS` names the
+businesses each archetype can host and `city._venue_for` deals them out, one
+mesh per trade rather than one per building, so a city with a dentist in it
+costs one extra asset and not one per block. The count is kept per archetype:
+on a single global counter an archetype with four trades and an unlucky
+placement order skips one entirely, which is how the city first came out with no
+dentist in it. `gen_interior.VENUE_RECIPES` is the furniture, and `BACK_OF_HOUSE`
+is what sits behind the shop floor - a kitchen behind a restaurant, a stock room
+behind a grocer - because four identical shop floors in a row read as a
+warehouse.
+
 **Landscape, not World Partition.** One level, one landscape, no streaming. At
 4 km with instanced scatter this loads in seconds and keeps the content build
 simple. Streaming is the obvious next step if the world grows, and nothing here
@@ -166,18 +191,17 @@ of `uegt2/water.py` for the trade-off.
 
 Target: 1920×1080, 60 fps on an RTX 3060-class GPU.
 
-- 155 unique meshes, 45,483 triangles total; the heaviest asset is 2,204
-  triangles (`SM_Int_HouseB_1`, a two storey house's fit-out). The 24 interior
-  meshes are 20,648 of that total - as much geometry as the whole catalog was
-  before them - which is why they are separate actors on a 90 m draw distance
-  rather than being baked into the shells they sit in.
-- 114 house interiors, each two actors (the fit-out and its emissive fires and
-  bulbs) plus one point light per room, about 325 lights in all. The lights are
-  movable and cast shadows, because a shadowless light inside a house lights the
-  street through the wall; they are affordable because `max_draw_distance` is
-  42 m, so two or three are ever submitted. Interior collision is *not* culled
-  with the drawing, which is what lets the floor stay solid under an NPC upstairs
-  in a house nobody is looking at.
+- 256 unique meshes, 158,131 triangles total; the heaviest asset is 4,288
+  triangles (`SM_Int_Office_A_library`). Interiors are 123,272 of that - four
+  fifths of the catalog - which is why every one of them is a separate actor on
+  a 90 m draw distance rather than baked into the shell it sits in. Collision is
+  not culled with the drawing, so a floor stays solid under an NPC in a building
+  nobody is looking at.
+- About 6,000 actors in the level: 1,400 in the town, 3,370 in Newhaven, 1,214
+  inhabitants. Roughly 1,700 of those are interior point lights, one per room.
+  They are movable and cast shadows - a shadowless light inside a building lights
+  the street through the wall - and they are affordable only because
+  `max_draw_distance` is 42 m, so a handful are ever submitted.
 - ~650,000 scattered instances across 13 species, all in hierarchical instanced
   components with per-species cull distances (grass 70 m, trees 700–900 m).
 - ~1,215 inhabitants as movable static mesh actors. Measured cost: **nothing

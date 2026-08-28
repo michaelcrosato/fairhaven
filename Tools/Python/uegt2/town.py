@@ -61,6 +61,13 @@ HOUSE_INTERIOR = {
 INTERIOR_CULL = 9000.0
 GLOW_CULL = 14000.0
 
+# Window panes are their own asset on M_Glass, because translucency is the one
+# thing the shared opaque material cannot do. They are a few dozen triangles and
+# they are part of how a building reads from across a street, so they are drawn
+# much further out than an interior - but they cast no shadow, which is the
+# whole point: it is what lets daylight through a window and into a room.
+GLASS_CULL = 30000.0
+
 # A room with no lamp in it is a black box. There is no static lighting here,
 # the window panes are opaque, and Lumen has nothing to carry through a sealed
 # shell, so every room gets a real point light hung where its emissive bulb is.
@@ -104,6 +111,18 @@ HOUSE_WIDTH = {
 # Small on purpose: it is the step up through the front door on level ground,
 # and the pawn steps 45 cm without noticing.
 FLOOR_CLEAR = 12.0
+
+
+# Outbuildings whose interior is named after their shell, so place() can attach
+# it without a call site knowing anything about it.
+_EXTRA_INTERIOR = None
+
+
+def _extra_interiors():
+    from . import meshbuild
+    return {"SM_" + name: (width, depth, height, base, wall)
+            for (name, width, depth, height, base, wall, _kind)
+            in meshbuild.EXTRA_INTERIORS}
 
 
 class Placer(object):
@@ -236,7 +255,55 @@ class Placer(object):
         if radius > 0.0:
             self.reserve(wx, wy, radius)
         self.count += 1
+        self._glaze(actor, mesh_name, label)
+        self._fit_out(actor, mesh_name, label)
         return actor
+
+    def _fit_out(self, actor, mesh_name, label):
+        """Attach an outbuilding's interior, if it has one of its own.
+
+        Houses and city blocks pick an interior by variant or by trade and are
+        handled at their call sites. A barn only ever has one inside, so it can
+        be found by name and hung here, which means nothing has to remember to
+        do it.
+        """
+        global _EXTRA_INTERIOR
+        if _EXTRA_INTERIOR is None:
+            _EXTRA_INTERIOR = _extra_interiors()
+        entry = _EXTRA_INTERIOR.get(mesh_name)
+        if entry is None:
+            return
+        width, depth, height, base, wall = entry
+        location = actor.get_actor_location()
+        yaw = actor.get_actor_rotation().yaw
+        # The companion's label goes in FRONT of the building's, never after it.
+        # npc.py classifies actors by label prefix, so "Town House 3 Glass" is
+        # another house as far as the survey is concerned - which quietly
+        # doubled the population of the town and put two families in every
+        # building.
+        self.place_at("SM_Int_" + mesh_name[3:], location, yaw,
+                      "Fitout " + label, cull=INTERIOR_CULL)
+        self.place_at("SM_Glow_" + mesh_name[3:], location, yaw,
+                      "FitoutGlow " + label, cull=GLOW_CULL,
+                      shadow=False, collision=False)
+        place_room_lights(self, location, yaw, width, depth, 1,
+                          8300 + len(mesh_name[3:]) * 29, "FitoutLight " + label,
+                          base_z=base, wall_t=wall, storey_h=height)
+
+    def _glaze(self, actor, mesh_name, label):
+        """Hang a building's window panes on the transform it just landed on.
+
+        Done here rather than at each call site so that every glazed building in
+        the world gets its glass without anybody having to remember - the town's
+        houses, the barn, the church, and every block in Newhaven go through
+        this one function.
+        """
+        glass_name = "SM_Glass_" + mesh_name[3:]
+        if glass_name not in self.meshes:
+            return
+        self.place_at(glass_name, actor.get_actor_location(),
+                      actor.get_actor_rotation().yaw, "Glass " + label,
+                      cull=GLASS_CULL, shadow=False)
 
 
 def _face_yaw(normal_x, normal_y):
@@ -363,20 +430,27 @@ def _place_interior(placer, house_actor, mesh_name, index):
     return placed
 
 
-def _place_interior_lights(placer, location, yaw, plan, variant, index):
-    """A point light in every room, at the lamp the fit-out already hung there."""
-    from . import meshbuild
+def place_room_lights(placer, location, yaw, width, depth, storeys, seed, label,
+                      base_z=gen_town.PLINTH_H, wall_t=None, storey_h=None):
+    """A point light in every room of a fit-out, at the lamp hanging there.
 
-    size = _INTERIOR_SIZE.get(plan)
-    if size is None:
-        return 0
-    width, depth, storeys = size
+    Shared by the town and the city because the reason is the same in both: no
+    static lighting, opaque interiors, and Lumen with nothing to carry in. The
+    room layout is recomputed from the seed rather than passed in, which is safe
+    because plan() is a pure function of it - the same call the fit-out itself
+    made.
+    """
+    kwargs = {"base_z": base_z}
+    if wall_t is not None:
+        kwargs["wall_t"] = wall_t
+    if storey_h is not None:
+        kwargs["storey_h"] = storey_h
+
     radians = math.radians(yaw)
     cos_y, sin_y = math.cos(radians), math.sin(radians)
-
     placed = 0
     for (lx, ly, lz, _storey) in gen_interior.lamp_points(
-            width, depth, storeys, 9001 + variant * 131):
+            width, depth, storeys, seed, **kwargs):
         actor = placer.subsystem.spawn_actor_from_class(
             unreal.PointLight,
             unreal.Vector(location.x + lx * cos_y - ly * sin_y,
@@ -398,10 +472,20 @@ def _place_interior_lights(placer, location, yaw, plan, variant, index):
         ctx.set_prop(component, "max_draw_distance", INTERIOR_LIGHT_CULL)
         ctx.set_prop(component, "max_distance_fade_range", INTERIOR_LIGHT_FADE)
         ctx.set_prop(component, "volumetric_scattering_intensity", 0.0)
-        actor.set_actor_label("%sInteriorLight %d.%d" % (placer.prefix, index, placed))
+        actor.set_actor_label("%s%s.%d" % (placer.prefix, label, placed))
         placer.count += 1
         placed += 1
     return placed
+
+
+def _place_interior_lights(placer, location, yaw, plan, variant, index):
+    """A point light in every room, at the lamp the fit-out already hung there."""
+    size = _INTERIOR_SIZE.get(plan)
+    if size is None:
+        return 0
+    width, depth, storeys = size
+    return place_room_lights(placer, location, yaw, width, depth, storeys,
+                             9001 + variant * 131, "InteriorLight %d" % index)
 
 
 def _place_plaza(placer, rng):

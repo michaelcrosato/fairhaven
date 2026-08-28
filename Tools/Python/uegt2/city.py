@@ -18,6 +18,7 @@ import math
 import unreal
 
 from . import ctx
+from . import town as town_mod
 from .meshkit import _SmallRng
 from .town import Placer, _coast_y_at, _face_yaw, _walk
 
@@ -53,6 +54,84 @@ RING_CHOICES = {
     2: ["SM_Shophouse_A", "SM_Shophouse_B", "SM_Apartment_C", "SM_Apartment_A",
         "SM_Shophouse_A", "SM_Shophouse_B"],
 }
+
+
+# ---------------------------------------------------------------------------
+# Trades
+# ---------------------------------------------------------------------------
+# Which archetype hosts which business, and the mesh footprints their fit-outs
+# were built to. Read straight off meshbuild.CITY_INTERIORS so the two cannot
+# drift: if a trade is added there it appears in the city here, with no edit.
+def _venue_table():
+    from . import meshbuild
+    table = {}
+    for (arch, width, depth, height, venues) in meshbuild.CITY_INTERIORS:
+        table["SM_" + arch] = (width, depth, height, list(venues))
+    return table
+
+
+_VENUES = None
+
+# What the sign outside says. The player has no way to know a room full of
+# filing cabinets is a solicitor until something says so.
+VENUE_NAMES = {
+    "grocer": "Newhaven Grocery", "clothier": "Tailor and Outfitter",
+    "baker": "Bakery", "pharmacy": "Pharmacy", "bookshop": "Bookshop",
+    "hardware": "Hardware and Ironmonger", "furniture": "Furniture Showroom",
+    "electronics": "Electrical Goods", "restaurant": "Restaurant",
+    "cafe": "Coffee House", "bar": "Tavern", "barber": "Barber and Hairdresser",
+    "optician": "Optometrist", "post": "Post Office", "gym": "Gymnasium",
+    "office_lobby": "Offices", "lawyer": "Solicitors", "doctor": "Doctors Surgery",
+    "dentist": "Dental Surgery", "bank": "Bank", "police": "Police Station",
+    "library": "Public Library", "museum": "Museum", "school": "School",
+    "civic_hall": "Civic Hall", "apartment_lobby": "Apartments",
+    "workshop": "Workshop",
+}
+
+
+_ARCH_TURN = {}
+
+
+def _venue_for(mesh_name):
+    """The trade this particular building carries on.
+
+    The count is kept per archetype, not across the city. On a global counter an
+    archetype with four trades and an unlucky placement order can skip one
+    entirely - which is how Newhaven ended up with no dentist in it, in a build
+    whose whole point was that it should have one.
+    """
+    entry = _VENUES.get(mesh_name)
+    if entry is None:
+        return None
+    venues = entry[3]
+    turn = _ARCH_TURN.get(mesh_name, 0)
+    _ARCH_TURN[mesh_name] = turn + 1
+    return venues[turn % len(venues)]
+
+
+def _place_interior(placer, actor, mesh_name, index, seeds):
+    """The fit-out, its fires and bulbs, and a light in every room."""
+    entry = _VENUES.get(mesh_name)
+    if entry is None:
+        return 0
+    width, depth, height, _venues = entry
+    venue = _venue_for(mesh_name)
+    arch = mesh_name[3:]
+
+    location = actor.get_actor_location()
+    yaw = actor.get_actor_rotation().yaw
+    placed = 0
+    if placer.place_at("SM_Int_%s_%s" % (arch, venue), location, yaw,
+                       "Interior %d" % index, cull=town_mod.INTERIOR_CULL):
+        placed += 1
+    if placer.place_at("SM_Glow_%s_%s" % (arch, venue), location, yaw,
+                       "InteriorGlow %d" % index, cull=town_mod.GLOW_CULL,
+                       shadow=False, collision=False):
+        placed += 1
+    placed += town_mod.place_room_lights(
+        placer, location, yaw, width, depth, 1, seeds[(arch, venue)],
+        "InteriorLight %d" % index, base_z=0.0, wall_t=34.0, storey_h=height)
+    return placed
 
 
 def _face_out(out_x, out_y):
@@ -96,6 +175,25 @@ def _edges(block):
     ]
 
 
+_COUNTER = [0]
+_INTERIORS = [0]
+_SEEDS = {}
+
+
+def _reset_venues():
+    """Bind the venue table and the seeds the mesh catalog actually used."""
+    global _VENUES
+    from . import meshbuild
+    _VENUES = _venue_table()
+    _SEEDS.clear()
+    for (arch, _w, _d, _h, venues) in meshbuild.CITY_INTERIORS:
+        for i, venue in enumerate(venues):
+            _SEEDS[(arch, venue)] = 7100 + i * 97 + len(arch) * 13
+    _ARCH_TURN.clear()
+    _COUNTER[0] = 0
+    _INTERIORS[0] = 0
+
+
 def _fill_block(placer, rng, block, index):
     """Buildings around one block, facing out. Returns how many landed."""
     choices = RING_CHOICES.get(block.ring, RING_CHOICES[2])
@@ -125,15 +223,27 @@ def _fill_block(placer, rng, block, index):
                 lu, lv = sign * (block.half_u - setback), along
 
             wx, wy = block.to_world(lu, lv)
-            if placer.place(name, wx, wy, yaw_base + rng.uniform(-0.6, 0.6),
-                            "B%03d %s" % (index, name[3:]), radius=radius,
-                            z_offset=-40.0, footprint=radius * 0.7):
+            yaw = yaw_base + rng.uniform(-0.6, 0.6)
+            # Same rule as the town: the floor clears the highest ground under
+            # the footprint, and the buried skirt in gen_city._shopfront takes
+            # up the slack downhill. A city ground floor you can walk into has
+            # the same intolerance for a hillside coming through it.
+            _low, high = placer.ground_range(wx, wy, yaw, width * 0.5, depth * 0.5)
+            lift = high + town_mod.FLOOR_CLEAR - placer.wd.height_uu(wx, wy)
+            built = placer.place(name, wx, wy, yaw,
+                                 "B%03d %s" % (index, name[3:]), radius=radius,
+                                 z_offset=lift, footprint=0.0)
+            if built:
+                _INTERIORS[0] += _place_interior(placer, built, name,
+                                                 _COUNTER[0], _SEEDS)
+                _COUNTER[0] += 1
                 placed += 1
 
     return placed
 
 
 def _place_blocks(placer, rng, blocks, reserved):
+    _reset_venues()
     buildings = 0
     for index, block in enumerate(blocks):
         if index in reserved:

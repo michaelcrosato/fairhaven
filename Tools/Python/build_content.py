@@ -135,6 +135,7 @@ def main(argv):
             material("prop", materials_mod.M_PROP),
             material("emissive", materials_mod.M_PROP_EMISSIVE),
             material("foliage", materials_mod.M_FOLIAGE),
+            material("glass", materials_mod.M_GLASS),
             world_data)
 
     world = None

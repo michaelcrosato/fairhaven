@@ -45,6 +45,145 @@ INTERIOR_PLANS = [
 ]
 INTERIOR_VARIANTS = 2
 
+# Buildings whose windows are real, see-through glass. Each row makes TWO
+# assets: the shell on M_Prop, and its panes on M_Glass. They come from one
+# table and one call rather than two, because the panes only line up with the
+# openings if both halves were generated from the same invocation - the same
+# seed, the same dimensions, the same random wall colour.
+GLAZED = [
+    ("SM_House_A", P_TOWN, lambda g: town.house(211, 760.0, 580.0, 1, porch=True, glass=g)),
+    ("SM_House_B", P_TOWN, lambda g: town.house(223, 700.0, 620.0, 2, glass=g)),
+    ("SM_House_C", P_TOWN, lambda g: town.house(227, 900.0, 560.0, 1, glass=g)),
+    ("SM_House_D", P_TOWN, lambda g: town.house(229, 640.0, 640.0, 2, porch=True, glass=g)),
+    ("SM_House_E", P_TOWN, lambda g: town.house(233, 820.0, 700.0, 1, glass=g)),
+    ("SM_Cottage_A", P_TOWN, lambda g: town.house(239, 560.0, 460.0, 1, chimney=True, glass=g)),
+    ("SM_Barn_A", P_TOWN, lambda g: town.barn(241, glass=g)),
+    ("SM_Church_A", P_TOWN, lambda g: town.church(251, glass=g)),
+    ("SM_Warehouse_A", P_TOWN, lambda g: town.warehouse(269, glass=g)),
+    ("SM_Tower_A", P_CITY, lambda g: city.tower(431, 1800.0, 1600.0, 20, glass=g)),
+    ("SM_Tower_B", P_CITY, lambda g: city.tower(433, 2000.0, 1750.0, 26, glass=g)),
+    ("SM_Tower_C", P_CITY, lambda g: city.tower(439, 1600.0, 1500.0, 15, glass=g)),
+    ("SM_Tower_D", P_CITY, lambda g: city.tower(443, 2200.0, 1500.0, 31, glass=g)),
+    ("SM_Office_A", P_CITY, lambda g: city.office_block(449, 2100.0, 1700.0, 9, glass=g)),
+    ("SM_Office_B", P_CITY, lambda g: city.office_block(457, 2400.0, 1600.0, 12, glass=g)),
+    ("SM_Apartment_A", P_CITY, lambda g: city.apartment(461, 1700.0, 1500.0, 6, glass=g)),
+    ("SM_Apartment_B", P_CITY, lambda g: city.apartment(463, 1900.0, 1400.0, 8, glass=g)),
+    ("SM_Apartment_C", P_CITY, lambda g: city.apartment(467, 1500.0, 1300.0, 4, glass=g)),
+    ("SM_Shophouse_A", P_CITY, lambda g: city.shophouse(479, 1050.0, 1250.0, 3, glass=g)),
+    ("SM_Shophouse_B", P_CITY, lambda g: city.shophouse(487, 950.0, 1150.0, 2, glass=g)),
+    ("SM_CityHall_A", P_CITY, lambda g: city.city_hall(499, glass=g)),
+    ("SM_Kiosk_A", P_CITY, lambda g: city.kiosk(503, glass=g)),
+    ("SM_BusShelter_A", P_CITY, lambda g: city.bus_shelter(521, glass=g)),
+]
+
+# Newhaven's ground floors. Each row is one building archetype - the room inside
+# its shopfront, not the building - and the trades that archetype can host.
+#
+# The trades are split across the two shophouse sizes rather than duplicated in
+# both, so every business in VENUE_RECIPES exists somewhere in the city exactly
+# once as an asset and many times over as a building. That is what makes the
+# guarantee cheap: a city with a dentist in it costs one more mesh, not one more
+# mesh per block.
+#
+# Width and depth are the shopfront footprint from gen_city, which for a tower
+# is the podium and not the shaft. Height is its ceiling.
+CITY_INTERIORS = [
+    ("Shophouse_A", 1050.0, 1250.0, 330.0,
+     ["grocer", "clothier", "baker", "pharmacy", "bookshop", "hardware",
+      "restaurant", "cafe"]),
+    ("Shophouse_B", 950.0, 1150.0, 330.0,
+     ["furniture", "electronics", "bar", "barber", "optician", "post", "gym"]),
+    ("Apartment_A", 1790.0, 1590.0, 360.0, ["apartment_lobby"]),
+    ("Apartment_B", 1990.0, 1490.0, 360.0, ["apartment_lobby"]),
+    ("Apartment_C", 1590.0, 1390.0, 360.0, ["apartment_lobby"]),
+    ("Tower_A", 2060.0, 1860.0, 380.0, ["office_lobby", "bank"]),
+    ("Tower_B", 2260.0, 2010.0, 380.0, ["office_lobby", "lawyer"]),
+    ("Tower_C", 1860.0, 1760.0, 380.0, ["office_lobby", "restaurant"]),
+    ("Tower_D", 2460.0, 1760.0, 380.0, ["office_lobby", "museum"]),
+    ("Office_A", 2220.0, 1820.0, 380.0,
+     ["office_lobby", "doctor", "dentist", "library"]),
+    ("Office_B", 2520.0, 1720.0, 380.0,
+     ["office_lobby", "police", "school", "lawyer"]),
+]
+
+
+def _city_interior_entries():
+    """Catalog rows for every Newhaven ground floor, one per trade."""
+    rows = []
+    for (arch, width, depth, height, venues) in CITY_INTERIORS:
+        for index, venue in enumerate(venues):
+            seed = 7100 + index * 97 + len(arch) * 13
+            rows.append(("SM_Int_%s_%s" % (arch, venue), P_INTERIOR,
+                         (lambda w=width, d=depth, h=height, v=venue, sd=seed:
+                          interior.fit_out(w, d, 1, sd, base_z=0.0,
+                                           ground_kind=v, wall_t=34.0,
+                                           storey_h=h, ceiling=False)[0]),
+                         "prop", "complex"))
+            rows.append(("SM_Glow_%s_%s" % (arch, venue), P_INTERIOR,
+                         (lambda w=width, d=depth, h=height, v=venue, sd=seed:
+                          interior.fit_out(w, d, 1, sd, base_z=0.0,
+                                           ground_kind=v, wall_t=34.0,
+                                           storey_h=h, ceiling=False)[1]),
+                         "emissive", "none"))
+    return rows
+
+
+# The town's outbuildings. Unlike the houses these have one interior each, named
+# after the shell so town.Placer can attach it without being told - the same
+# trick the glass uses. (name, width, depth, ceiling, floor z, wall, trade)
+EXTRA_INTERIORS = [
+    ("Barn_A", 1150.0, 820.0, 430.0, 28.0, 22.0, "barn"),
+    ("Warehouse_A", 1000.0, 700.0, 420.0, 32.0, 22.0, "store"),
+    ("Shed_A", 380.0, 320.0, 250.0, 0.0, 16.0, "workshop"),
+    ("Church_A", 700.0, 1350.0, 520.0, 40.0, 40.0, "chapel"),
+    ("CityHall_A", 3200.0, 1900.0, 460.0, 130.0, 34.0, "civic_hall"),
+]
+
+
+def _extra_interior_entries():
+    rows = []
+    for (name, width, depth, height, base, wall, kind) in EXTRA_INTERIORS:
+        seed = 8300 + len(name) * 29
+        rows.append(("SM_Int_%s" % name, P_INTERIOR,
+                     (lambda w=width, d=depth, h=height, b=base, t=wall,
+                      k=kind, sd=seed:
+                      interior.fit_out(w, d, 1, sd, base_z=b, ground_kind=k,
+                                       wall_t=t, storey_h=h)[0]),
+                     "prop", "complex"))
+        rows.append(("SM_Glow_%s" % name, P_INTERIOR,
+                     (lambda w=width, d=depth, h=height, b=base, t=wall,
+                      k=kind, sd=seed:
+                      interior.fit_out(w, d, 1, sd, base_z=b, ground_kind=k,
+                                       wall_t=t, storey_h=h)[1]),
+                     "emissive", "none"))
+    return rows
+
+
+_SPLIT = {}
+
+
+def _split(name, factory):
+    """Build a glazed building once and keep both halves.
+
+    The catalog asks for the shell and the panes as two separate assets, so
+    without this the generator runs twice for every glazed building - and a
+    generator that draws from an rng would not even agree with itself.
+    """
+    if name not in _SPLIT:
+        glass = meshkit.MeshBuilder()
+        _SPLIT[name] = (factory(glass), glass)
+    return _SPLIT[name]
+
+
+def _glazed_entries():
+    rows = []
+    for (name, folder, factory) in GLAZED:
+        rows.append((name, folder,
+                     (lambda n=name, f=factory: _split(n, f)[0]), "prop", "complex"))
+        rows.append(("SM_Glass_" + name[3:], folder,
+                     (lambda n=name, f=factory: _split(n, f)[1]), "glass", "complex"))
+    return rows
+
 
 def _interior_entries():
     """Catalog rows for the interiors, generated rather than written out.
@@ -109,18 +248,9 @@ def _catalog():
         ("SM_Driftwood_A", P_NATURE, lambda: nat.driftwood(181, 190.0), "prop", "complex"),
 
         # -- Buildings ------------------------------------------------------
-        ("SM_House_A", P_TOWN, lambda: town.house(211, 760.0, 580.0, 1, porch=True), "prop", "complex"),
-        ("SM_House_B", P_TOWN, lambda: town.house(223, 700.0, 620.0, 2), "prop", "complex"),
-        ("SM_House_C", P_TOWN, lambda: town.house(227, 900.0, 560.0, 1), "prop", "complex"),
-        ("SM_House_D", P_TOWN, lambda: town.house(229, 640.0, 640.0, 2, porch=True), "prop", "complex"),
-        ("SM_House_E", P_TOWN, lambda: town.house(233, 820.0, 700.0, 1), "prop", "complex"),
-        ("SM_Cottage_A", P_TOWN, lambda: town.house(239, 560.0, 460.0, 1, chimney=True), "prop", "complex"),
-        ("SM_Barn_A", P_TOWN, lambda: town.barn(241), "prop", "complex"),
-        ("SM_Church_A", P_TOWN, lambda: town.church(251), "prop", "complex"),
         ("SM_Lighthouse_A", P_TOWN, lambda: town.lighthouse(257), "prop", "complex"),
         ("SM_Lighthouse_Glow", P_TOWN, lambda: town.lighthouse_glow(257), "emissive", "none"),
         ("SM_Windmill_A", P_TOWN, lambda: town.windmill(263), "prop", "complex"),
-        ("SM_Warehouse_A", P_TOWN, lambda: town.warehouse(269), "prop", "complex"),
         ("SM_Shed_A", P_TOWN, lambda: town.shed(271), "prop", "complex"),
         ("SM_MarketStall_A", P_TOWN, lambda: town.market_stall(277), "prop", "complex"),
         ("SM_Door_A", P_TOWN, lambda: town.door_leaf(279, width=116.0, height=210.0), "prop", "complex"),
@@ -150,26 +280,12 @@ def _catalog():
         # -- Newhaven -------------------------------------------------------
         # Floor counts are what set the skyline: towers downtown, offices and
         # apartments in the middle ring, shophouses on the edge.
-        ("SM_Tower_A", P_CITY, lambda: city.tower(431, 1800.0, 1600.0, 20), "prop", "complex"),
-        ("SM_Tower_B", P_CITY, lambda: city.tower(433, 2000.0, 1750.0, 26), "prop", "complex"),
-        ("SM_Tower_C", P_CITY, lambda: city.tower(439, 1600.0, 1500.0, 15), "prop", "complex"),
-        ("SM_Tower_D", P_CITY, lambda: city.tower(443, 2200.0, 1500.0, 31), "prop", "complex"),
-        ("SM_Office_A", P_CITY, lambda: city.office_block(449, 2100.0, 1700.0, 9), "prop", "complex"),
-        ("SM_Office_B", P_CITY, lambda: city.office_block(457, 2400.0, 1600.0, 12), "prop", "complex"),
-        ("SM_Apartment_A", P_CITY, lambda: city.apartment(461, 1700.0, 1500.0, 6), "prop", "complex"),
-        ("SM_Apartment_B", P_CITY, lambda: city.apartment(463, 1900.0, 1400.0, 8), "prop", "complex"),
-        ("SM_Apartment_C", P_CITY, lambda: city.apartment(467, 1500.0, 1300.0, 4), "prop", "complex"),
-        ("SM_Shophouse_A", P_CITY, lambda: city.shophouse(479, 1050.0, 1250.0, 3), "prop", "complex"),
-        ("SM_Shophouse_B", P_CITY, lambda: city.shophouse(487, 950.0, 1150.0, 2), "prop", "complex"),
         ("SM_ParkingDeck_A", P_CITY, lambda: city.parking_deck(491, 2200.0, 1800.0, 4), "prop", "complex"),
-        ("SM_CityHall_A", P_CITY, lambda: city.city_hall(499), "prop", "complex"),
 
         # -- City street furniture ------------------------------------------
         ("SM_TrafficLight_A", P_CITY, lambda: city.traffic_light(503), "prop", "complex"),
         ("SM_CityLamp_A", P_CITY, lambda: city.city_lamp(509), "prop", "complex"),
         ("SM_CityLamp_Glow", P_CITY, lambda: city.city_lamp_glow(509), "emissive", "none"),
-        ("SM_Kiosk_A", P_CITY, lambda: city.kiosk(521), "prop", "complex"),
-        ("SM_BusShelter_A", P_CITY, lambda: city.bus_shelter(523), "prop", "complex"),
         ("SM_Fountain_A", P_CITY, lambda: city.fountain(541), "prop", "complex"),
         ("SM_PlanterLong_A", P_CITY, lambda: city.planter_long(547), "prop", "complex"),
 
@@ -232,14 +348,16 @@ def _catalog():
         ("SM_Horse_B", P_FAUNA, lambda: fauna.horse(691), "prop", "complex"),
         ("SM_Seagull_A", P_FAUNA, lambda: fauna.seagull(701), "prop", "complex"),
         ("SM_Rabbit_A", P_FAUNA, lambda: fauna.rabbit(709), "prop", "complex"),
-    ] + _interior_entries()
+    ] + _glazed_entries() + _interior_entries() + _city_interior_entries() + _extra_interior_entries()
 
 
-def build_all(prop_material, emissive_material, foliage_material, world_data):
+def build_all(prop_material, emissive_material, foliage_material, glass_material,
+              world_data):
     """Generate every mesh asset. Returns {name: UStaticMesh}."""
     materials = {
         "prop": prop_material,
         "emissive": emissive_material,
+        "glass": glass_material,
         "foliage": foliage_material,
     }
     for folder in (P_NATURE, P_TOWN, P_PROPS, P_CITY, P_FAUNA, P_INTERIOR):

@@ -18,6 +18,7 @@ M_PROP_EMISSIVE = ctx.P_MATERIAL + "/M_PropEmissive"
 M_FOLIAGE = ctx.P_MATERIAL + "/M_Foliage"
 M_LANDSCAPE = ctx.P_MATERIAL + "/M_Landscape"
 M_WATER = ctx.P_MATERIAL + "/M_WaterStylised"
+M_GLASS = ctx.P_MATERIAL + "/M_Glass"
 
 _WIND_FUNCTION = "/Engine/Functions/Engine_MaterialFunctions01/WorldPositionOffset/SimpleGrassWind"
 
@@ -298,11 +299,48 @@ def build_water_material():
     return mat
 
 
+def build_glass_material():
+    """Window glass you can see through, and light can get through.
+
+    The one exception to the opaque-master rule, and it earns it twice over.
+    Windows used to be opaque panels painted the colour of glass, which read as
+    a blank canvas from inside a room and sealed the building against daylight.
+    A translucent material is see-through *and* absent from the Lumen scene, so
+    the sun reaches an interior through a window the way it should.
+
+    Vertex colour still drives the tint, so a shopfront and a cottage casement
+    can be different colours out of the same palette.
+    """
+    mat = _material(ctx.P_MATERIAL, "M_Glass")
+    mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_TRANSLUCENT)
+    # Seen from inside as often as from outside, and a pane has no back.
+    mat.set_editor_property("two_sided", True)
+    for mode_name in ("TLM_SURFACE_PER_PIXEL_LIGHTING", "TLM_SURFACE"):
+        mode = getattr(unreal.TranslucencyLightingMode, mode_name, None)
+        if mode is not None:
+            mat.set_editor_property("translucency_lighting_mode", mode)
+            break
+
+    vc = _node(mat, unreal.MaterialExpressionVertexColor, -620, 0)
+    opacity = _scalar_param(mat, "Opacity", 0.30, -620, 240, "Glass")
+    rough = _scalar_param(mat, "Roughness", 0.08, -620, 360, "Glass")
+    spec = _const(mat, 1.0, -620, 480)
+
+    _to(mat, vc, "", MP.MP_BASE_COLOR)
+    _to(mat, opacity, "", MP.MP_OPACITY)
+    _to(mat, rough, "", MP.MP_ROUGHNESS)
+    _to(mat, spec, "", MP.MP_SPECULAR)
+    _finish(mat)
+    ctx.log("material: M_Glass")
+    return mat
+
+
 def build_all(layers):
     ctx.ensure_directory(ctx.P_MATERIAL)
     built = {
         "prop": build_prop_material(),
         "emissive": build_prop_emissive_material(),
+        "glass": build_glass_material(),
         "foliage": build_foliage_material(),
         "landscape": build_landscape_material(layers),
         "water": build_water_material(),

@@ -74,12 +74,122 @@ def _ground_floor(mesh, centre, width, depth, glass, frame, height=300.0):
 
 
 # ---------------------------------------------------------------------------
+# Ground floors you can walk into
+# ---------------------------------------------------------------------------
+# Newhaven used to draw a solid glazed block at the base of every building and
+# call it a shopfront. It read well from the pavement and it meant the whole
+# city was a set of painted boxes. These are the numbers that turn that base
+# into a room, and they are the city's half of the same contract gen_town owns
+# for the houses.
+CITY_WALL_T = 34.0        # a city wall is thicker than a cottage wall
+CITY_DOOR_W = 170.0       # a shop door is wider than a front door
+CITY_DOOR_H = 270.0
+CITY_FOUNDATION = 300.0   # buried skirt, as deep as the worst city slope
+GROUND_CLEAR = 12.0       # floor above the highest ground under the footprint
+
+
+def _pane(mesh, glass, centre, size, colour):
+    """A window pane. Goes to the glass mesh when there is one to go to."""
+    (glass if glass is not None else mesh).box(centre, size, colour)
+
+
+def _shopfront(mesh, width, depth, height, wall, frame, pane, glass=None,
+               door=pal.DOOR_WOOD, base_z=0.0, sides=True):
+    """A walkable ground floor: foundation, four walls, a door and a ceiling.
+
+    The frontage is divided into bays; the middle one is the door and the rest
+    are glazing. Panes go to ``glass`` so they end up on M_Glass and you can see
+    both through them and, more to the point, so daylight can get past them.
+
+    Returns the ceiling height in local Z, which is where the solid mass of the
+    building above has to start.
+    """
+    half_w, half_d = width * 0.5, depth * 0.5
+    top = base_z + height
+
+    # Foundation. Solid, and its top is the floor, exactly as in a house.
+    mesh.box((0.0, 0.0, base_z - CITY_FOUNDATION * 0.5),
+             (width + 40.0, depth + 40.0, CITY_FOUNDATION), pal.CONCRETE_DARK)
+
+    span = width - CITY_WALL_T * 2.0
+    bays = max(3, int(span / 620.0))
+    if bays % 2 == 0:
+        bays += 1
+    bay = span / bays
+    win_w = max(160.0, bay - 110.0)
+    sill = 95.0
+    glass_h = max(120.0, height - sill - 95.0)
+
+    front = [(0.0, CITY_DOOR_W, 0.0, CITY_DOOR_H)]
+    for i in range(bays):
+        offset = -span * 0.5 + bay * (i + 0.5)
+        if abs(offset) < (CITY_DOOR_W + win_w) * 0.5 + 40.0:
+            continue
+        front.append((offset, win_w, sill, glass_h))
+
+    back = [(o, w, s, h) for (o, w, s, h) in front[1:]]
+    ends = []
+    if sides:
+        run = depth - CITY_WALL_T * 2.0
+        lanes = max(1, int(run / 700.0))
+        for i in range(lanes):
+            ends.append((-run * 0.5 + run * (i + 0.5) / lanes,
+                         min(win_w, run / lanes - 120.0), sill, glass_h))
+
+    mesh.wall((0.0, -half_d + CITY_WALL_T * 0.5, base_z), "x", width, height,
+              CITY_WALL_T, wall, openings=front)
+    mesh.wall((0.0, half_d - CITY_WALL_T * 0.5, base_z), "x", width, height,
+              CITY_WALL_T, wall, openings=back)
+    for sx in (-1.0, 1.0):
+        mesh.wall((sx * (half_w - CITY_WALL_T * 0.5), 0.0, base_z), "y",
+                  depth - CITY_WALL_T * 2.0, height, CITY_WALL_T, wall,
+                  openings=ends)
+
+    target = glass if glass is not None else mesh
+    for (offset, opening_w, s, h) in front[1:]:
+        target.box((offset, -half_d + CITY_WALL_T * 0.5, base_z + s + h * 0.5),
+                   (opening_w, 10.0, h), pane)
+    for (offset, opening_w, s, h) in back:
+        target.box((offset, half_d - CITY_WALL_T * 0.5, base_z + s + h * 0.5),
+                   (opening_w, 10.0, h), pane)
+    for (offset, opening_w, s, h) in ends:
+        for sx in (-1.0, 1.0):
+            target.box((sx * (half_w - CITY_WALL_T * 0.5), offset,
+                        base_z + s + h * 0.5), (10.0, opening_w, h), pane)
+
+    # Door reveal, threshold and a fascia over the frontage.
+    for sx in (-1.0, 1.0):
+        mesh.box((sx * (CITY_DOOR_W * 0.5 + 9.0), -half_d + CITY_WALL_T * 0.5,
+                  base_z + CITY_DOOR_H * 0.5),
+                 (18.0, CITY_WALL_T + 12.0, CITY_DOOR_H + 18.0), frame)
+    mesh.box((0.0, -half_d + CITY_WALL_T * 0.5, base_z + CITY_DOOR_H + 9.0),
+             (CITY_DOOR_W + 36.0, CITY_WALL_T + 12.0, 18.0), frame)
+    mesh.box((0.0, -half_d + CITY_WALL_T * 0.5, base_z + 6.0),
+             (CITY_DOOR_W + 24.0, CITY_WALL_T + 16.0, 14.0), frame)
+    mesh.box((0.0, 0.0, top + 26.0), (width + 30.0, depth + 30.0, 52.0), frame)
+
+    # Steps down to the pavement, buried on the flat like the town's.
+    for step in range(1, 8):
+        tread = base_z - 30.0 * step
+        mesh.box((0.0, -half_d - 34.0 * (step - 0.5),
+                  (tread + base_z - CITY_FOUNDATION) * 0.5),
+                 (CITY_DOOR_W + 160.0, 34.0, tread - base_z + CITY_FOUNDATION),
+                 pal.CONCRETE_DARK)
+
+    # Ceiling slab. The mass above starts on top of this.
+    mesh.box((0.0, 0.0, top - 9.0), (width, depth, 18.0), pal.CONCRETE_PALE)
+    return top
+
+
+# ---------------------------------------------------------------------------
 # Buildings
 # ---------------------------------------------------------------------------
-def tower(seed=1, width=1800.0, depth=1600.0, floors=20, setback=True):
+def tower(seed=1, width=1800.0, depth=1600.0, floors=20, setback=True,
+          glass=None):
     """Downtown high rise: glazed shaft, a setback near the top, roof plant."""
     rng = _SmallRng(seed)
-    glass = _pick(rng, [pal.GLASS_BLUE, pal.GLASS_TEAL, pal.GLASS_DARK, pal.CURTAIN_WALL])
+    glazing = _pick(rng, [pal.GLASS_BLUE, pal.GLASS_TEAL, pal.GLASS_DARK,
+                          pal.CURTAIN_WALL])
     band = _pick(rng, [pal.CONCRETE_PALE, pal.CONCRETE_GREY])
 
     mesh = MeshBuilder()
@@ -87,20 +197,19 @@ def tower(seed=1, width=1800.0, depth=1600.0, floors=20, setback=True):
     # Podium: wider than the shaft, which is what stops a tower looking like a
     # rod stuck in the ground.
     podium_h = 380.0
-    mesh.box((0.0, 0.0, podium_h * 0.5), (width + 260.0, depth + 260.0, podium_h),
-             pal.CONCRETE_GREY)
-    _ground_floor(mesh, (0.0, 0.0, 30.0), width + 160.0, depth + 160.0,
-                  pal.GLASS_DARK, pal.CONCRETE_DARK, height=300.0)
+    _shopfront(mesh, width + 260.0, depth + 260.0, podium_h, pal.CONCRETE_GREY,
+               pal.CONCRETE_DARK, pal.GLASS_DARK, glass=glass)
 
     lower_floors = floors if not setback else int(floors * 0.68)
-    _banded_shaft(mesh, (0.0, 0.0, podium_h), width, depth, lower_floors, glass, band)
+    _banded_shaft(mesh, (0.0, 0.0, podium_h), width, depth, lower_floors,
+                  glazing, band)
     top_z = podium_h + lower_floors * FLOOR_H
 
     if setback:
         upper_floors = max(floors - lower_floors, 2)
         uw, ud = width * 0.68, depth * 0.68
         _parapet(mesh, (0.0, 0.0, top_z), width, depth, band, height=70.0)
-        _banded_shaft(mesh, (0.0, 0.0, top_z), uw, ud, upper_floors, glass, band)
+        _banded_shaft(mesh, (0.0, 0.0, top_z), uw, ud, upper_floors, glazing, band)
         top_z = top_z + upper_floors * FLOOR_H
         _parapet(mesh, (0.0, 0.0, top_z), uw, ud, band)
         _rooftop_clutter(mesh, (0.0, 0.0, top_z), uw, ud, rng)
@@ -111,18 +220,16 @@ def tower(seed=1, width=1800.0, depth=1600.0, floors=20, setback=True):
     return mesh
 
 
-def office_block(seed=1, width=2100.0, depth=1700.0, floors=9):
+def office_block(seed=1, width=2100.0, depth=1700.0, floors=9, glass=None):
     """Mid-rise slab: solid facade with punched window bands."""
     rng = _SmallRng(seed)
     facade = _pick(rng, [pal.CONCRETE_PALE, pal.FACADE_SAND, pal.CONCRETE_GREY])
-    glass = _pick(rng, [pal.GLASS_BLUE, pal.GLASS_TEAL])
+    glazing = _pick(rng, [pal.GLASS_BLUE, pal.GLASS_TEAL])
 
     mesh = MeshBuilder()
-    base_h = 320.0
-    mesh.box((0.0, 0.0, base_h * 0.5), (width + 120.0, depth + 120.0, base_h),
-             pal.CONCRETE_DARK)
-    _ground_floor(mesh, (0.0, 0.0, 20.0), width, depth, pal.GLASS_DARK, pal.CONCRETE_DARK,
-                  height=260.0)
+    base_h = 380.0
+    _shopfront(mesh, width + 120.0, depth + 120.0, base_h, pal.CONCRETE_PALE,
+               pal.CONCRETE_DARK, pal.GLASS_DARK, glass=glass)
 
     body_h = floors * FLOOR_H
     mesh.box((0.0, 0.0, base_h + body_h * 0.5), (width, depth, body_h), facade)
@@ -131,9 +238,11 @@ def office_block(seed=1, width=2100.0, depth=1700.0, floors=9):
     for i in range(floors):
         z = base_h + i * FLOOR_H + FLOOR_H * 0.58
         for sy in (-1.0, 1.0):
-            mesh.box((0.0, sy * depth * 0.5, z), (width * 0.86, 34.0, FLOOR_H * 0.44), glass)
+            _pane(mesh, glass, (0.0, sy * depth * 0.5, z),
+                  (width * 0.86, 34.0, FLOOR_H * 0.44), glazing)
         for sx in (-1.0, 1.0):
-            mesh.box((sx * width * 0.5, 0.0, z), (34.0, depth * 0.8, FLOOR_H * 0.44), glass)
+            _pane(mesh, glass, (sx * width * 0.5, 0.0, z),
+                  (34.0, depth * 0.8, FLOOR_H * 0.44), glazing)
 
     top_z = base_h + body_h
     _parapet(mesh, (0.0, 0.0, top_z), width, depth, facade, height=80.0)
@@ -141,16 +250,20 @@ def office_block(seed=1, width=2100.0, depth=1700.0, floors=9):
     return mesh
 
 
-def apartment(seed=1, width=1700.0, depth=1500.0, floors=6):
+def apartment(seed=1, width=1700.0, depth=1500.0, floors=6, glass=None):
     """Residential block: brick or render, with balconies down the long faces."""
     rng = _SmallRng(seed)
     facade = _pick(rng, [pal.FACADE_BRICK, pal.FACADE_TERRA, pal.FACADE_SAND,
                          pal.WALL_CREAM, pal.CONCRETE_PALE])
 
     mesh = MeshBuilder()
-    plinth = 120.0
-    mesh.box((0.0, 0.0, plinth * 0.5), (width + 90.0, depth + 90.0, plinth), pal.CONCRETE_DARK)
+    # The bottom storey is a lobby you can walk into, so the brick mass starts
+    # on top of it rather than at the pavement.
+    plinth = _shopfront(mesh, width + 90.0, depth + 90.0, FLOOR_H, facade,
+                        pal.CONCRETE_DARK, pal.WINDOW_GLASS, glass=glass,
+                        door=pal.DOOR_WOOD)
 
+    floors = max(1, floors - 1)
     body_h = floors * FLOOR_H
     mesh.box((0.0, 0.0, plinth + body_h * 0.5), (width, depth, body_h), facade)
 
@@ -164,11 +277,11 @@ def apartment(seed=1, width=1700.0, depth=1500.0, floors=6):
                          (width * 0.62, 220.0, 26.0), pal.CONCRETE_PALE)
                 mesh.box((0.0, sy * (depth * 0.5 + 210.0), z - FLOOR_H * 0.15),
                          (width * 0.62, 22.0, 130.0), pal.METAL_IRON)
-            mesh.box((0.0, sy * depth * 0.5, z), (width * 0.72, 30.0, FLOOR_H * 0.34),
-                     pal.WINDOW_GLASS)
+            _pane(mesh, glass, (0.0, sy * depth * 0.5, z),
+                  (width * 0.72, 30.0, FLOOR_H * 0.34), pal.WINDOW_GLASS)
         for sx in (-1.0, 1.0):
-            mesh.box((sx * width * 0.5, 0.0, z), (30.0, depth * 0.5, FLOOR_H * 0.34),
-                     pal.WINDOW_GLASS)
+            _pane(mesh, glass, (sx * width * 0.5, 0.0, z),
+                  (30.0, depth * 0.5, FLOOR_H * 0.34), pal.WINDOW_GLASS)
 
     top_z = plinth + body_h
     _parapet(mesh, (0.0, 0.0, top_z), width, depth, facade, height=70.0)
@@ -176,7 +289,7 @@ def apartment(seed=1, width=1700.0, depth=1500.0, floors=6):
     return mesh
 
 
-def shophouse(seed=1, width=1050.0, depth=1250.0, floors=3):
+def shophouse(seed=1, width=1050.0, depth=1250.0, floors=3, glass=None):
     """Two or three storey street frontage: shop below, windows above, awning."""
     rng = _SmallRng(seed)
     facade = _pick(rng, [pal.WALL_OCHRE, pal.WALL_SAGE, pal.WALL_CREAM,
@@ -188,8 +301,8 @@ def shophouse(seed=1, width=1050.0, depth=1250.0, floors=3):
     body_h = (floors - 1) * FLOOR_H
 
     mesh.box((0.0, 0.0, shop_h + body_h * 0.5), (width, depth, body_h), facade)
-    _ground_floor(mesh, (0.0, 0.0, 0.0), width, depth, pal.GLASS_DARK, pal.WOOD_DARK,
-                  height=shop_h)
+    _shopfront(mesh, width, depth, shop_h, facade, pal.WOOD_DARK,
+               pal.GLASS_DARK, glass=glass)
 
     # Awning over the -Y frontage, which is the side facing the street.
     mesh.box((0.0, -depth * 0.5 - 150.0, shop_h + 40.0), (width * 0.9, 300.0, 26.0), awning)
@@ -198,19 +311,17 @@ def shophouse(seed=1, width=1050.0, depth=1250.0, floors=3):
     for i in range(floors - 1):
         z = shop_h + i * FLOOR_H + FLOOR_H * 0.52
         for sy in (-1.0, 1.0):
-            mesh.box((0.0, sy * depth * 0.5, z), (width * 0.68, 26.0, FLOOR_H * 0.4),
-                     pal.WINDOW_GLASS)
-            mesh.box((0.0, sy * (depth * 0.5 + 8.0), z), (width * 0.72, 22.0, FLOOR_H * 0.44),
-                     pal.WINDOW_FRAME)
-            mesh.box((0.0, sy * depth * 0.5, z), (width * 0.68, 30.0, FLOOR_H * 0.4),
-                     pal.WINDOW_GLASS)
+            mesh.box((0.0, sy * (depth * 0.5 + 8.0), z),
+                     (width * 0.72, 22.0, FLOOR_H * 0.44), pal.WINDOW_FRAME)
+            _pane(mesh, glass, (0.0, sy * depth * 0.5, z),
+                  (width * 0.68, 30.0, FLOOR_H * 0.4), pal.WINDOW_GLASS)
 
     top_z = shop_h + body_h
     mesh.box((0.0, 0.0, top_z + 45.0), (width + 110.0, depth + 110.0, 90.0), pal.CONCRETE_PALE)
     return mesh
 
 
-def city_hall(seed=1):
+def city_hall(seed=1, glass=None):
     """The civic landmark on the central plaza: portico, wings and a dome."""
     rng = _SmallRng(seed)
     stone = pal.STONE_PALE
@@ -224,7 +335,15 @@ def city_hall(seed=1):
                  (width * 0.7 - inset, 340.0 - i * 100.0, steps_h / 3.0), pal.STONE_DARK)
 
     body_h = 3.0 * FLOOR_H
-    mesh.box((0.0, 0.0, steps_h + body_h * 0.5), (width, depth, body_h), stone)
+    # The ground floor is the public hall. The two storeys of offices above it
+    # stay solid, which is the same bargain the towers make: you can walk into
+    # the building, not up it.
+    hall_h = 460.0
+    _shopfront(mesh, width, depth, hall_h, stone, pal.TRIM_WHITE,
+               pal.WINDOW_GLASS, glass=glass, door=pal.DOOR_WOOD,
+               base_z=steps_h)
+    mesh.box((0.0, 0.0, steps_h + hall_h + (body_h - hall_h) * 0.5),
+             (width, depth, body_h - hall_h), stone)
 
     # Wings, lower than the centre so the massing steps down.
     for sx in (-1.0, 1.0):
@@ -252,7 +371,7 @@ def city_hall(seed=1):
     return mesh
 
 
-def parking_deck(seed=1, width=2200.0, depth=1800.0, floors=4):
+def parking_deck(seed=1, width=2200.0, depth=1800.0, floors=4, glass=None):
     """Open-sided parking structure: cheap block filler that is clearly not housing."""
     mesh = MeshBuilder()
     plinth = 90.0
@@ -309,22 +428,24 @@ def city_lamp_glow(seed=1):
     return mesh
 
 
-def kiosk(seed=1):
+def kiosk(seed=1, glass=None):
     rng = _SmallRng(seed)
     roof = _pick(rng, [pal.AWNING_RED, pal.AWNING_GREEN, pal.CLOTH_BLUE])
     mesh = MeshBuilder()
     mesh.box((0.0, 0.0, 130.0), (420.0, 380.0, 260.0), pal.WOOD_DARK)
-    mesh.box((0.0, -190.0, 300.0), (360.0, 40.0, 200.0), pal.GLASS_DARK)
+    (glass if glass is not None else mesh).box(
+        (0.0, -190.0, 300.0), (360.0, 40.0, 200.0), pal.GLASS_DARK)
     mesh.box((0.0, 0.0, 420.0), (460.0, 420.0, 40.0), roof)
     mesh.box((0.0, -250.0, 400.0), (440.0, 140.0, 26.0), roof, pitch=8.0)
     return mesh
 
 
-def bus_shelter(seed=1):
+def bus_shelter(seed=1, glass=None):
     mesh = MeshBuilder()
     for sx in (-1.0, 1.0):
         mesh.cylinder((sx * 480.0, 130.0, 0.0), 22.0, 500.0, pal.METAL_IRON, sides=6)
-    mesh.box((0.0, 130.0, 200.0), (1020.0, 30.0, 400.0), pal.GLASS_DARK)
+    (glass if glass is not None else mesh).box(
+        (0.0, 130.0, 200.0), (1020.0, 30.0, 400.0), pal.GLASS_DARK)
     mesh.box((0.0, 0.0, 520.0), (1080.0, 320.0, 34.0), pal.METAL_IRON)
     mesh.box((0.0, -110.0, 210.0), (900.0, 190.0, 40.0), pal.WOOD_PLANK)
     for sx in (-1.0, 1.0):

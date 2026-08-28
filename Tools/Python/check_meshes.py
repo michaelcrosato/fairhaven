@@ -238,6 +238,67 @@ def check_interiors(report, interior, builder_cls):
     print("  ..    %-30s heaviest fit-out, %d tris" % (heaviest[1], heaviest[0]))
 
 
+def check_city_interiors(report, interior, builder_cls):
+    """Every Newhaven trade and every outbuilding, against its own shell.
+
+    Same test as the houses and the same reason: the fit-out and the shell agree
+    only by arithmetic, and the arithmetic is different for each - a shopfront
+    has 34 cm walls and a 3.8 m ceiling, a church has 40 and 5.2. One number
+    wrong and a bookcase stands in the street.
+    """
+    from uegt2 import meshbuild
+
+    print("")
+    print("newhaven and outbuilding interiors")
+    plans = [(arch, w, d, h, 0.0, 34.0, v, 7100 + i * 97 + len(arch) * 13)
+             for (arch, w, d, h, venues) in meshbuild.CITY_INTERIORS
+             for i, v in enumerate(venues)]
+    plans += [(name, w, d, h, b, t, k, 8300 + len(name) * 29)
+              for (name, w, d, h, b, t, k) in meshbuild.EXTRA_INTERIORS]
+
+    worst_all = -1e9
+    heaviest = (0, "")
+    for (name, width, depth, height, base, wall, kind, seed) in plans:
+        inner_hx = width * 0.5 - wall + interior.TUCK
+        inner_hy = depth * 0.5 - wall + interior.TUCK
+        solid, glow = interior.fit_out(width, depth, 1, seed, base_z=base,
+                                       ground_kind=kind, wall_t=wall,
+                                       storey_h=height, ceiling=False)
+        report.checked += 1
+        report.triangles += solid.triangle_count + glow.triangle_count
+        if solid.triangle_count > heaviest[0]:
+            heaviest = (solid.triangle_count, "%s/%s" % (name, kind))
+
+        problems = []
+        if not solid.vertices:
+            problems.append("built nothing")
+        else:
+            worst = max(max(abs(v[0]) - inner_hx, abs(v[1]) - inner_hy)
+                        for v in solid.vertices)
+            worst_all = max(worst_all, worst)
+            if worst > 1.0:
+                problems.append("escapes its shell by %.1f cm" % worst)
+            top = max(v[2] for v in solid.vertices)
+            if top > base + height + 1.0:
+                problems.append("reaches z=%.0f, ceiling is %.0f"
+                                % (top, base + height))
+            # The way in has to stay open, exactly as for a house.
+            half_d = depth * 0.5 - wall
+            blocked = _blocking(solid, (-34.0, 34.0,
+                                        -half_d - 10.0, -half_d + 140.0,
+                                        base + 50.0, base + 180.0))
+            if blocked:
+                problems.append("%d triangles inside the doorway" % blocked)
+
+        for problem in problems:
+            report.failures += 1
+            print("  FAIL  %-30s %s" % (name + "/" + kind, problem))
+        if not problems:
+            print("  ok    %-30s %5d tris" % (name + "/" + kind,
+                                              solid.triangle_count))
+    print("  ..    %-30s heaviest, %d tris" % (heaviest[1], heaviest[0]))
+
+
 def check_doorway(report, name, mesh, width, depth, storeys=1):
     """The doorway has to be a hole the pawn fits through.
 
@@ -324,6 +385,7 @@ def main():
 
     print("\ntown")
     check_interiors(report, interior, MeshBuilder)
+    check_city_interiors(report, interior, MeshBuilder)
 
     houses = [("house A", 211, 760.0, 580.0, 1, True),
               ("house B", 223, 700.0, 620.0, 2, False),

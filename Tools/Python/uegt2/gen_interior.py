@@ -393,6 +393,201 @@ def _pick(rng, items):
 # A room smaller than this in either direction is not a room, it is a cupboard:
 # the player capsule is 68 across and needs somewhere to stand that is not
 # inside the furniture.
+# ---------------------------------------------------------------------------
+# Shop, clinic and civic fittings
+# ---------------------------------------------------------------------------
+# Newhaven's ground floors are businesses, and a business is legible from its
+# fittings alone: a chair with a basin behind it is a barber, a long glass case
+# is an optician, benches facing a table is a church hall. Same rules as the
+# domestic kit above - origin on the floor, centred on x, back to -Y, and a seed
+# on every one so place() can call any of them the same way.
+def display_case(mesh, length=170.0, seed=1):
+    """A glass topped case. Opticians, bakers, pharmacies, jewellers."""
+    mesh.box((0.0, 0.0, 42.0), (length, 58.0, 84.0), pal.WOOD_DARK)
+    mesh.box((0.0, 0.0, 93.0), (length - 12.0, 50.0, 18.0), pal.WINDOW_GLASS)
+    mesh.box((0.0, 0.0, 104.0), (length, 58.0, 8.0), pal.WOOD_PLANK)
+
+
+def clothes_rail(mesh, length=200.0, seed=1):
+    """A rail of garments. On its own it says clothing shop."""
+    rng = _SmallRng(seed)
+    shirts = [pal.CLOTH_RED, pal.CLOTH_BLUE, pal.CLOTH_GREEN,
+              pal.CLOTH_YELLOW, pal.CLOTH_CREAM]
+    for sx in (-1.0, 1.0):
+        mesh.box((sx * (length * 0.5 - 8.0), 0.0, 82.0), (10.0, 10.0, 164.0),
+                 pal.METAL_IRON)
+    mesh.box((0.0, 0.0, 162.0), (length, 8.0, 8.0), pal.METAL_IRON)
+    for i in range(6):
+        x = -length * 0.5 + 22.0 + i * (length - 44.0) / 5.0
+        mesh.box((x, 0.0, 116.0), (20.0, 34.0, 82.0),
+                 shirts[int(rng.next() * len(shirts)) % len(shirts)])
+
+
+def produce_bin(mesh, length=150.0, seed=1):
+    """A sloped grocery bin with something in it."""
+    rng = _SmallRng(seed)
+    crop = [pal.CROP_GREEN, pal.LEAF_AUTUMN, pal.BEAK_ORANGE, pal.CROP_WHEAT]
+    mesh.box((0.0, 0.0, 34.0), (length, 78.0, 68.0), pal.WOOD_PLANK)
+    mesh.box((0.0, -6.0, 76.0), (length - 14.0, 62.0, 20.0),
+             crop[int(rng.next() * len(crop)) % len(crop)])
+    mesh.box((0.0, 34.0, 88.0), (length, 8.0, 44.0), pal.WOOD_DARK)
+
+
+def checkout(mesh, length=160.0, seed=1):
+    """A till counter with a register on it."""
+    mesh.box((0.0, 0.0, 46.0), (length, 72.0, 92.0), pal.WALL_WHITE)
+    mesh.box((0.0, 0.0, 96.0), (length + 10.0, 80.0, 10.0), pal.STONE_PALE)
+    mesh.box((length * 0.3, 0.0, 118.0), (44.0, 40.0, 34.0), pal.METAL_IRON)
+    mesh.box((length * 0.3, -14.0, 138.0), (36.0, 6.0, 22.0), pal.GLASS_DARK)
+
+
+def fridge_cabinet(mesh, width=150.0, seed=1):
+    """A tall glass fronted cabinet: chilled goods, or a display of stock."""
+    mesh.box((0.0, 6.0, 96.0), (width, 68.0, 192.0), pal.WALL_WHITE)
+    mesh.box((0.0, -26.0, 104.0), (width - 18.0, 10.0, 150.0), pal.WINDOW_GLASS)
+    for z in (56.0, 106.0, 156.0):
+        mesh.box((0.0, -6.0, z), (width - 22.0, 46.0, 8.0), pal.METAL_IRON)
+
+
+def tool_rack(mesh, width=170.0, seed=1):
+    """Pegboard and hanging tools: the hardware shop in one object."""
+    rng = _SmallRng(seed)
+    mesh.box((0.0, 12.0, 110.0), (width, 16.0, 200.0), pal.WOOD_DARK)
+    for i in range(5):
+        x = -width * 0.5 + 20.0 + i * (width - 40.0) / 4.0
+        length = 40.0 + rng.next() * 60.0
+        mesh.box((x, -2.0, 190.0 - length * 0.5), (12.0, 12.0, length),
+                 pal.METAL_IRON if i % 2 else pal.WOOD_PLANK)
+    mesh.box((0.0, -4.0, 44.0), (width, 44.0, 88.0), pal.WOOD_PLANK)
+
+
+def sofa(mesh, length=210.0, seed=1):
+    rng = _SmallRng(seed)
+    cloth = [pal.CLOTH_BLUE, pal.CLOTH_GREEN, pal.CLOTH_RED, pal.CLOTH_CREAM]
+    body = cloth[int(rng.next() * len(cloth)) % len(cloth)]
+    mesh.box((0.0, 0.0, 22.0), (length, 86.0, 44.0), pal.WOOD_DARK)
+    mesh.box((0.0, 4.0, 52.0), (length - 20.0, 78.0, 22.0), body)
+    mesh.box((0.0, 34.0, 78.0), (length, 18.0, 76.0), body)
+    for sx in (-1.0, 1.0):
+        mesh.box((sx * (length * 0.5 - 10.0), 4.0, 68.0), (20.0, 82.0, 52.0), body)
+
+
+def appliance(mesh, width=110.0, seed=1):
+    """A boxed white good, or a screen on a stand: the electronics shop."""
+    rng = _SmallRng(seed)
+    if rng.next() < 0.5:
+        mesh.box((0.0, 0.0, 84.0), (width, 74.0, 168.0), pal.WALL_WHITE)
+        mesh.box((0.0, -38.0, 110.0), (width - 30.0, 6.0, 60.0), pal.GLASS_DARK)
+        mesh.box((0.0, -38.0, 156.0), (width - 44.0, 6.0, 10.0), pal.METAL_IRON)
+    else:
+        mesh.box((0.0, 0.0, 34.0), (width, 60.0, 68.0), pal.WOOD_DARK)
+        mesh.box((0.0, 0.0, 74.0), (26.0, 26.0, 14.0), pal.METAL_IRON)
+        mesh.box((0.0, 0.0, 120.0), (width + 20.0, 12.0, 78.0), pal.GLASS_DARK)
+
+
+def filing_cabinet(mesh, width=90.0, seed=1):
+    mesh.box((0.0, 0.0, 68.0), (width, 62.0, 136.0), pal.METAL_IRON)
+    for z in (28.0, 62.0, 96.0, 130.0):
+        mesh.box((0.0, -32.0, z), (width - 12.0, 4.0, 26.0), pal.CONCRETE_GREY)
+        mesh.box((0.0, -35.0, z), (22.0, 4.0, 6.0), pal.METAL_COPPER)
+
+
+def waiting_bench(mesh, length=220.0, seed=1):
+    """A run of seats against a wall: clinics, offices, waiting rooms."""
+    mesh.box((0.0, 0.0, 40.0), (length, 52.0, 12.0), pal.WOOD_PLANK)
+    mesh.box((0.0, 22.0, 74.0), (length, 10.0, 56.0), pal.WOOD_PLANK)
+    for sx in (-1.0, 0.0, 1.0):
+        mesh.box((sx * (length * 0.5 - 14.0), 0.0, 18.0), (12.0, 46.0, 36.0),
+                 pal.METAL_IRON)
+
+
+def reception_desk(mesh, length=250.0, seed=1):
+    """The desk you meet on the way in. Lobbies, clinics, stations."""
+    mesh.box((0.0, 0.0, 54.0), (length, 76.0, 108.0), pal.WOOD_DARK)
+    mesh.box((0.0, -6.0, 114.0), (length + 16.0, 92.0, 12.0), pal.STONE_PALE)
+    mesh.box((length * 0.28, 10.0, 132.0), (44.0, 8.0, 30.0), pal.GLASS_DARK)
+
+
+def potted_plant(mesh, height=150.0, seed=1):
+    rng = _SmallRng(seed)
+    mesh.cylinder((0.0, 0.0, 26.0), 26.0, 52.0, pal.FACADE_TERRA, sides=8)
+    mesh.box((0.0, 0.0, height * 0.5 + 40.0), (10.0, 10.0, height - 60.0),
+             pal.TRUNK_BROWN)
+    for i in range(4):
+        angle = 90.0 * i + rng.next() * 40.0
+        mesh.box((_cos(angle) * 26.0, _sin(angle) * 26.0, height * 0.72),
+                 (58.0, 20.0, 12.0), pal.LEAF_JUNGLE, yaw=angle)
+
+
+def pew(mesh, length=280.0, seed=1):
+    mesh.box((0.0, 0.0, 42.0), (length, 44.0, 10.0), pal.WOOD_DARK)
+    mesh.box((0.0, 20.0, 74.0), (length, 10.0, 74.0), pal.WOOD_DARK)
+    for sx in (-1.0, 1.0):
+        mesh.box((sx * (length * 0.5 - 12.0), 0.0, 20.0), (14.0, 40.0, 40.0),
+                 pal.WOOD_DARK)
+
+
+def altar(mesh, length=200.0, seed=1):
+    mesh.box((0.0, 0.0, 48.0), (length, 90.0, 96.0), pal.STONE_PALE)
+    mesh.box((0.0, 0.0, 100.0), (length + 20.0, 100.0, 12.0), pal.STONE_DARK)
+    mesh.box((0.0, 0.0, 106.0), (length - 40.0, 70.0, 4.0), pal.CLOTH_CREAM)
+    mesh.box((0.0, 10.0, 140.0), (14.0, 14.0, 64.0), pal.METAL_COPPER)
+    mesh.box((0.0, 10.0, 160.0), (46.0, 12.0, 14.0), pal.METAL_COPPER)
+
+
+def lectern(mesh, width=70.0, seed=1):
+    mesh.box((0.0, 0.0, 56.0), (26.0, 26.0, 112.0), pal.WOOD_DARK)
+    mesh.box((0.0, 0.0, 14.0), (width, 60.0, 28.0), pal.WOOD_DARK)
+    mesh.box((0.0, -6.0, 122.0), (width, 54.0, 12.0), pal.WOOD_PLANK, pitch=14.0)
+    mesh.box((0.0, -8.0, 132.0), (width - 22.0, 40.0, 4.0), pal.PAPER_CREAM,
+             pitch=14.0)
+
+
+def barber_chair(mesh, seed=1):
+    mesh.cylinder((0.0, 0.0, 16.0), 34.0, 32.0, pal.METAL_IRON, sides=8)
+    mesh.box((0.0, 0.0, 40.0), (18.0, 18.0, 48.0), pal.METAL_IRON)
+    mesh.box((0.0, 0.0, 70.0), (74.0, 74.0, 20.0), pal.CLOTH_RED)
+    mesh.box((0.0, 30.0, 112.0), (74.0, 18.0, 84.0), pal.CLOTH_RED)
+    mesh.box((0.0, 34.0, 162.0), (52.0, 16.0, 26.0), pal.CLOTH_RED)
+    for sx in (-1.0, 1.0):
+        mesh.box((sx * 42.0, 2.0, 92.0), (10.0, 60.0, 12.0), pal.METAL_IRON)
+
+
+def dental_chair(mesh, seed=1):
+    mesh.box((0.0, 0.0, 18.0), (60.0, 90.0, 36.0), pal.METAL_IRON)
+    mesh.box((0.0, -10.0, 58.0), (74.0, 150.0, 24.0), pal.CLOTH_GREEN)
+    mesh.box((0.0, 54.0, 104.0), (74.0, 22.0, 76.0), pal.CLOTH_GREEN)
+    mesh.box((0.0, 40.0, 180.0), (16.0, 16.0, 80.0), pal.METAL_IRON)
+    mesh.box((0.0, 10.0, 214.0), (40.0, 74.0, 16.0), pal.WALL_WHITE)
+    mesh.box((0.0, 10.0, 204.0), (30.0, 60.0, 8.0), pal.LAMP_GLASS)
+
+
+def exam_couch(mesh, length=190.0, seed=1):
+    mesh.box((0.0, 0.0, 30.0), (length - 30.0, 62.0, 60.0), pal.WALL_WHITE)
+    mesh.box((0.0, 0.0, 70.0), (length, 72.0, 22.0), pal.CLOTH_BLUE)
+    mesh.box((-length * 0.36, 0.0, 92.0), (length * 0.28, 72.0, 22.0),
+             pal.CLOTH_BLUE, pitch=-18.0)
+    mesh.box((0.0, 0.0, 12.0), (length - 60.0, 46.0, 24.0), pal.METAL_IRON)
+
+
+def gym_bench(mesh, length=170.0, seed=1):
+    mesh.box((0.0, 0.0, 48.0), (length, 44.0, 16.0), pal.CLOTH_RED)
+    for sx in (-1.0, 1.0):
+        mesh.box((sx * (length * 0.5 - 16.0), 0.0, 22.0), (16.0, 60.0, 44.0),
+                 pal.METAL_IRON)
+    mesh.box((0.0, 34.0, 100.0), (24.0, 24.0, 104.0), pal.METAL_IRON)
+    for z in (76.0, 132.0):
+        mesh.box((0.0, 34.0, z), (120.0, 26.0, 22.0), pal.STONE_DARK)
+
+
+def bar_counter(mesh, length=300.0, seed=1):
+    """A long service counter with a footrail: bars, cafes, canteens."""
+    mesh.box((0.0, 0.0, 52.0), (length, 74.0, 104.0), pal.WOOD_DARK)
+    mesh.box((0.0, -8.0, 110.0), (length + 24.0, 96.0, 14.0), pal.STONE_DARK)
+    mesh.box((0.0, -46.0, 18.0), (length, 10.0, 10.0), pal.METAL_COPPER)
+    mesh.box((0.0, 30.0, 158.0), (length - 40.0, 24.0, 10.0), pal.WOOD_PLANK)
+
+
 MIN_ROOM = 250.0
 # Above this floor area a room gets split. 5 m x 5 m is a generous single room
 # at this art scale; a cottage stays one room and a farmhouse becomes two.
@@ -452,7 +647,7 @@ class Partition(object):
         self.door_offset = door_offset
 
 
-def plan(width, depth, storeys, seed, door_x=0.0):
+def plan(width, depth, storeys, seed, door_x=0.0, wall_t=WALL_T):
     """Split a building footprint into rooms, one set per storey.
 
     A binary split, longest axis first, recursing while a room is bigger than
@@ -465,8 +660,8 @@ def plan(width, depth, storeys, seed, door_x=0.0):
     Returns (rooms, partitions).
     """
     rng = _SmallRng(seed * 31 + 7)
-    inner_hx = width * 0.5 - WALL_T
-    inner_hy = depth * 0.5 - WALL_T
+    inner_hx = width * 0.5 - wall_t
+    inner_hy = depth * 0.5 - wall_t
 
     rooms = []
     partitions = []
@@ -576,6 +771,80 @@ RECIPES = {
     "office":  [("desk", 2), ("bookshelf", 2), ("shelf", 1), ("chair", 2)],
     "lobby":   [("settle", 2), ("shop_stand", 1), ("bookshelf", 1), ("rug", 1)],
 }
+
+# Newhaven's trades. Every one of these is somewhere in the city, because
+# city._assign_venues hands the critical ones out before it hands out anything
+# else - a city you can walk around ought to have a grocer and a dentist in it
+# whether or not the dice felt like it.
+VENUE_RECIPES = {
+    "grocer":      [("produce_bin", 3), ("fridge_cabinet", 1), ("shelf", 2),
+                    ("checkout", 1), ("crate_small", 2), ("sack", 2)],
+    "clothier":    [("clothes_rail", 3), ("display_case", 1), ("shelf", 1),
+                    ("checkout", 1), ("stool", 1)],
+    "baker":       [("display_case", 2), ("counter", 1), ("shelf", 2),
+                    ("sack", 2), ("checkout", 1)],
+    "pharmacy":    [("display_case", 1), ("shelf", 3), ("counter", 1),
+                    ("filing_cabinet", 1), ("checkout", 1)],
+    "bookshop":    [("bookshelf", 4), ("table", 1), ("chair", 2), ("counter", 1)],
+    "hardware":    [("tool_rack", 3), ("shelf", 2), ("crate_small", 3),
+                    ("barrel_small", 2), ("checkout", 1)],
+    "furniture":   [("sofa", 2), ("table", 1), ("chair", 2), ("wardrobe", 1),
+                    ("dresser", 1), ("rug", 2)],
+    "electronics": [("appliance", 4), ("shelf", 2), ("display_case", 1),
+                    ("checkout", 1)],
+    "restaurant":  [("table", 3), ("chair", 6), ("bar_counter", 1), ("shelf", 1),
+                    ("potted_plant", 1)],
+    "cafe":        [("bar_counter", 1), ("display_case", 1), ("table", 2),
+                    ("chair", 4), ("shelf", 1)],
+    "bar":         [("bar_counter", 1), ("stool", 4), ("shelf", 2),
+                    ("barrel_small", 2), ("table", 1)],
+    "barber":      [("barber_chair", 2), ("washstand", 1), ("display_case", 1),
+                    ("waiting_bench", 1), ("shelf", 1)],
+    "dentist":     [("dental_chair", 1), ("display_case", 1), ("washstand", 1),
+                    ("waiting_bench", 1), ("filing_cabinet", 1)],
+    "doctor":      [("exam_couch", 1), ("desk", 1), ("chair", 2),
+                    ("filing_cabinet", 1), ("waiting_bench", 1), ("shelf", 1)],
+    "optician":    [("display_case", 2), ("desk", 1), ("chair", 2),
+                    ("shelf", 1), ("waiting_bench", 1)],
+    "lawyer":      [("desk", 2), ("bookshelf", 3), ("filing_cabinet", 2),
+                    ("chair", 2), ("waiting_bench", 1)],
+    "bank":        [("counter", 2), ("filing_cabinet", 2), ("desk", 1),
+                    ("chair", 2), ("potted_plant", 1)],
+    "gym":         [("gym_bench", 3), ("waiting_bench", 1), ("shelf", 1),
+                    ("washstand", 1)],
+    "post":        [("counter", 1), ("shelf", 3), ("crate_small", 3),
+                    ("filing_cabinet", 1)],
+    "library":     [("bookshelf", 5), ("table", 2), ("chair", 4)],
+    "school":      [("desk", 4), ("chair", 4), ("bookshelf", 2), ("lectern", 1)],
+    "police":      [("reception_desk", 1), ("filing_cabinet", 2), ("desk", 1),
+                    ("chair", 2), ("waiting_bench", 1)],
+    "museum":      [("display_case", 3), ("potted_plant", 2), ("waiting_bench", 1)],
+    "chapel":      [("pew", 4), ("altar", 1), ("lectern", 1)],
+    "office_lobby": [("reception_desk", 1), ("sofa", 2), ("potted_plant", 2),
+                     ("rug", 1)],
+    "apartment_lobby": [("filing_cabinet", 1), ("sofa", 1), ("waiting_bench", 1),
+                        ("potted_plant", 2), ("rug", 1)],
+    "civic_hall":  [("lectern", 1), ("pew", 4), ("potted_plant", 2),
+                    ("reception_desk", 1)],
+    "workshop":    [("tool_rack", 2), ("counter", 1), ("crate_small", 3),
+                    ("barrel_small", 2), ("shelf", 1)],
+    "barn":        [("crate_small", 3), ("barrel_small", 3), ("sack", 4),
+                    ("firewood", 2), ("shelf", 1), ("tool_rack", 1)],
+}
+
+# What sits behind the shop floor. A restaurant needs a kitchen; a solicitor
+# needs another office; everything else needs a stock room.
+BACK_OF_HOUSE = {
+    "restaurant": "kitchen", "cafe": "kitchen", "baker": "kitchen",
+    "bar": "kitchen", "grocer": "store", "hardware": "store",
+    "lawyer": "office", "bank": "office", "police": "office",
+    "doctor": "doctor", "dentist": "doctor", "optician": "office",
+    "office_lobby": "office", "apartment_lobby": "store",
+    "civic_hall": "office", "library": "office", "school": "office",
+    "museum": "store", "chapel": "store",
+}
+
+RECIPES.update(VENUE_RECIPES)
 
 # Items that belong out on the floor rather than against a wall.
 _FREESTANDING = ("table", "rug", "chair", "stool", "pot")
@@ -758,7 +1027,8 @@ def _door_keepout(wall, door_w):
     return (wall.x, wall.y + wall.door_offset, door_w * 0.75)
 
 
-def lamp_points(width, depth, storeys, seed, base_z=gen_town.PLINTH_H, drop=115.0):
+def lamp_points(width, depth, storeys, seed, base_z=gen_town.PLINTH_H,
+                drop=115.0, wall_t=WALL_T, storey_h=STOREY_H):
     """Where the ceiling lamps hang, so the world can put real lights in them.
 
     fit_out() builds the fixtures but cannot place an actor, and a room lit by
@@ -779,14 +1049,15 @@ def lamp_points(width, depth, storeys, seed, base_z=gen_town.PLINTH_H, drop=115.
     from underneath and throws its light down into the room, which is what a
     pendant does.
     """
-    rooms, _partitions = plan(width, depth, storeys, seed)
+    rooms, _partitions = plan(width, depth, storeys, seed, 0.0, wall_t)
     return [(room.x, room.y,
-             base_z + (room.storey + 1) * STOREY_H - drop, room.storey)
+             base_z + (room.storey + 1) * storey_h - drop, room.storey)
             for room in rooms]
 
 
 def fit_out(width, depth, storeys, seed, base_z=gen_town.PLINTH_H, door_x=0.0,
-            ground_kind=None, floor_colour=None, wall_colour=None):
+            ground_kind=None, floor_colour=None, wall_colour=None,
+            wall_t=WALL_T, storey_h=STOREY_H, ceiling=True):
     """The whole inside of one building, as (solid, emissive) mesh builders.
 
     Built in the building's own local frame with ``base_z`` at the top of its
@@ -800,18 +1071,28 @@ def fit_out(width, depth, storeys, seed, base_z=gen_town.PLINTH_H, door_x=0.0,
     """
     floor_colour = floor_colour if floor_colour is not None else pal.FLOOR_BOARD
     wall_colour = wall_colour if wall_colour is not None else pal.PLASTER_WHITE
-    inner_hx = width * 0.5 - WALL_T
-    inner_hy = depth * 0.5 - WALL_T
+    # wall_t and storey_h are the shell's, not this module's: a Newhaven
+    # shopfront has 34 cm walls and a 3.8 m ceiling, a cottage has 22 and 3.2,
+    # and a fit-out that assumed the cottage's numbers would stand its furniture
+    # a foot inside the city's walls.
+    inner_hx = width * 0.5 - wall_t
+    inner_hy = depth * 0.5 - wall_t
 
     solid = MeshBuilder()
     glow = MeshBuilder()
 
-    rooms, partitions = plan(width, depth, storeys, seed, door_x)
+    rooms, partitions = plan(width, depth, storeys, seed, door_x, wall_t)
     assign_kinds(rooms, storeys, door_x)
     if ground_kind:
-        for room in rooms:
-            if room.storey == 0:
-                room.kind = ground_kind
+        # The business is the room the street door opens into. Rooms behind it
+        # are its back of house - a kitchen behind a restaurant, a stock room
+        # behind a grocer - because a shop with four identical shop floors in a
+        # row reads as a warehouse, not a shop.
+        behind = BACK_OF_HOUSE.get(ground_kind, "store")
+        ground = sorted([r for r in rooms if r.storey == 0],
+                        key=lambda r: abs(r.x - door_x) + abs(r.y + r.hy) * 0.1)
+        for index, room in enumerate(ground):
+            room.kind = ground_kind if index == 0 else behind
 
     # --- the stair, and the hole it needs in the floor above -----------------
     stair_hole = None
@@ -853,32 +1134,47 @@ def fit_out(width, depth, storeys, seed, base_z=gen_town.PLINTH_H, door_x=0.0,
     solid.box((0.0, 0.0, base_z + 4.0),
               ((inner_hx + TUCK) * 2.0, (inner_hy + TUCK) * 2.0, 8.0), floor_colour)
     for storey in range(1, storeys):
-        floor_slab(solid, inner_hx + TUCK, inner_hy + TUCK, base_z + storey * STOREY_H,
+        floor_slab(solid, inner_hx + TUCK, inner_hy + TUCK, base_z + storey * storey_h,
                    floor_colour, hole=stair_hole if storey == 1 else None)
-    solid.box((0.0, 0.0, base_z + storeys * STOREY_H - 7.0),
-              ((inner_hx + TUCK) * 2.0, (inner_hy + TUCK) * 2.0, 14.0),
-              pal.CEILING_PLASTER)
+    if ceiling:
+        solid.box((0.0, 0.0, base_z + storeys * storey_h - 7.0),
+                  ((inner_hx + TUCK) * 2.0, (inner_hy + TUCK) * 2.0, 14.0),
+                  pal.CEILING_PLASTER)
 
     # --- partitions ----------------------------------------------------------
     for wall in partitions:
-        z = base_z + wall.storey * STOREY_H
+        z = base_z + wall.storey * storey_h
         yaw = 0.0 if wall.axis == "x" else 90.0
         place(solid, partition, (wall.x, wall.y, z), yaw,
-              length=wall.length, height=STOREY_H - 20.0, thickness=PARTITION_T,
+              length=wall.length, height=storey_h - 20.0, thickness=PARTITION_T,
               door_at=wall.door_offset, door_w=DOOR_W, door_h=DOOR_H,
               colour=wall_colour)
         blocked.setdefault(wall.storey, []).append(_door_keepout(wall, DOOR_W))
 
-    # The front doorway has to stay walkable too.
-    blocked.setdefault(0, []).append((door_x, -inner_hy, 150.0))
+    # The front doorway has to stay walkable too, and one circle on the wall is
+    # not enough: it keeps a chest off the threshold and lets a tool rack stand
+    # a metre inside it, which in a room as small as a shed is the same thing as
+    # a blocked door. Three overlapping circles make a corridor from the
+    # threshold into the room, as wide as the opening and as long as the pawn
+    # needs to get through and turn.
+    for step in (0.0, 0.45, 0.9):
+        blocked.setdefault(0, []).append(
+            (door_x, -inner_hy + step * 200.0, 115.0))
 
     # --- furniture and lamps -------------------------------------------------
     for room in rooms:
-        z = base_z + room.storey * STOREY_H
+        z = base_z + room.storey * storey_h
         furnish(solid, room, seed + room.storey * 13, blocked.get(room.storey, []),
                 z, glow=glow)
-        lamp_z = base_z + (room.storey + 1) * STOREY_H - 16.0
-        place(solid, ceiling_lamp, (room.x, room.y, lamp_z), 0.0, seed=seed)
-        place(glow, ceiling_lamp_glow, (room.x, room.y, lamp_z), 0.0, seed=seed)
+        # The pendant hangs as far as the room can spare. ceiling_lamp is 46 cm
+        # of shade below however far its cord drops, and the pawn is 180 tall:
+        # in a 2.5 m shed the full 42 cm cord put the shade at head height, in
+        # the middle of the floor, where you walk.
+        lamp_z = base_z + (room.storey + 1) * storey_h - 16.0
+        drop = max(2.0, min(42.0, storey_h - 16.0 - 46.0 - 200.0))
+        place(solid, ceiling_lamp, (room.x, room.y, lamp_z), 0.0, seed=seed,
+              drop=drop)
+        place(glow, ceiling_lamp_glow, (room.x, room.y, lamp_z), 0.0, seed=seed,
+              drop=drop)
 
     return solid, glow

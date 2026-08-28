@@ -17,11 +17,16 @@ from .meshkit import MeshBuilder, _SmallRng, add, rotate_z
 # ---------------------------------------------------------------------------
 def _windows_on_wall(mesh, centre, wall_width, wall_height, axis, count, seed,
                      sill_z, pane=pal.WINDOW_GLASS, frame=pal.WINDOW_FRAME,
-                     depth=14.0):
+                     depth=14.0, glass=None):
     """Punch a row of framed windows onto one wall face.
 
     ``axis`` is 'x' for a wall facing +/-X, 'y' for +/-Y. Windows are proud of
     the wall rather than recessed: cheaper, and it reads well at low poly.
+
+    ``glass`` takes the panes if it is given. They have to leave this mesh
+    because a static mesh carries one material and glass is the one thing in
+    this project that is not opaque; the panes become their own asset on
+    M_Glass, on the same transform.
     """
     if count <= 0:
         return
@@ -44,7 +49,7 @@ def _windows_on_wall(mesh, centre, wall_width, wall_height, axis, count, seed,
             pane_size = (win_w, depth * 0.7, win_h)
 
         mesh.box(frame_pos, frame_size, frame)
-        mesh.box(pane_pos, pane_size, pane)
+        (glass if glass is not None else mesh).box(pane_pos, pane_size, pane)
 
 
 def _door(mesh, centre, axis, colour, width=90.0, height=200.0, depth=16.0):
@@ -99,8 +104,31 @@ def _front_windows(width):
     return max(nearest, min(furthest, width * 0.27))
 
 
+def _hollow_walls(mesh, width, depth, height, base_z, colour, front=(), sides=(),
+                  back=(), thickness=WALL_T, floor=True, foundation=200.0,
+                  offset_y=0.0):
+    """Four wall panels and a floor, in place of a solid box.
+
+    The same shape as house(), lifted out so the barn, the church, the warehouse
+    and the shed can be walked into as well. ``front`` is the -Y face, which is
+    the one every building in this project puts its door on.
+    """
+    half_w, half_d = width * 0.5, depth * 0.5
+    if floor:
+        mesh.box((0.0, offset_y, base_z - foundation * 0.5),
+                 (width + 30.0, depth + 30.0, foundation), pal.WALL_STONE)
+    mesh.wall((0.0, offset_y - half_d + thickness * 0.5, base_z), "x", width,
+              height, thickness, colour, openings=front)
+    mesh.wall((0.0, offset_y + half_d - thickness * 0.5, base_z), "x", width,
+              height, thickness, colour, openings=back)
+    for sx in (-1.0, 1.0):
+        mesh.wall((sx * (half_w - thickness * 0.5), offset_y, base_z), "y",
+                  depth - thickness * 2.0, height, thickness, colour,
+                  openings=sides)
+
+
 def house(seed=1, width=760.0, depth=580.0, storeys=1, wall=None, roof=None,
-          door=None, chimney=True, porch=False):
+          door=None, chimney=True, porch=False, glass=None):
     """The workhorse town building - and, since interiors, a hollow one.
 
     The walls are four panels with real openings punched through them rather
@@ -155,14 +183,14 @@ def house(seed=1, width=760.0, depth=580.0, storeys=1, wall=None, roof=None,
     # --- glazing and the door -----------------------------------------------
     for (offset, opening_w, sill, opening_h) in front[1:]:
         _glaze(mesh, (offset, -half_d + WALL_T * 0.5, PLINTH_H + sill), "x",
-               opening_w, opening_h)
+               opening_w, opening_h, glass=glass)
     for (offset, opening_w, sill, opening_h) in back:
         _glaze(mesh, (offset, half_d - WALL_T * 0.5, PLINTH_H + sill), "x",
-               opening_w, opening_h)
+               opening_w, opening_h, glass=glass)
     for (offset, opening_w, sill, opening_h) in ends:
         for sx in (-1.0, 1.0):
             _glaze(mesh, (sx * (half_w - WALL_T * 0.5), offset, PLINTH_H + sill),
-                   "y", opening_w, opening_h)
+                   "y", opening_w, opening_h, glass=glass)
 
     _doorway(mesh, (0.0, -half_d + WALL_T * 0.5, PLINTH_H), door)
 
@@ -205,22 +233,24 @@ def house(seed=1, width=760.0, depth=580.0, storeys=1, wall=None, roof=None,
 
 
 def _glaze(mesh, centre, axis, opening_w, opening_h,
-           pane=pal.WINDOW_GLASS, frame=pal.WINDOW_FRAME):
+           pane=pal.WINDOW_GLASS, frame=pal.WINDOW_FRAME, glass=None):
     """Fill a window opening: a pane in the reveal, a frame on both faces.
 
-    The pane sits *in* the wall now rather than standing proud of it, so a window
-    reads as a window from inside the room as well as from the street.
+    The pane sits *in* the wall rather than standing proud of it, so a window
+    reads as a window from inside the room as well as from the street, and it
+    goes into ``glass`` when one is given so it can be genuinely transparent.
     """
     cx, cy, cz = centre
     z = cz + opening_h * 0.5
+    target = glass if glass is not None else mesh
     if axis == "x":
-        mesh.box((cx, cy, z), (opening_w, 8.0, opening_h), pane)
+        target.box((cx, cy, z), (opening_w, 8.0, opening_h), pane)
         for sy in (-1.0, 1.0):
             mesh.box((cx, cy + sy * 13.0, z),
                      (opening_w + 18.0, 6.0, opening_h + 18.0), frame)
         mesh.box((cx, cy - 15.0, cz - 5.0), (opening_w + 34.0, 22.0, 12.0), frame)
     else:
-        mesh.box((cx, cy, z), (8.0, opening_w, opening_h), pane)
+        target.box((cx, cy, z), (8.0, opening_w, opening_h), pane)
         for sx in (-1.0, 1.0):
             mesh.box((cx + sx * 13.0, cy, z),
                      (6.0, opening_w + 18.0, opening_h + 18.0), frame)
@@ -248,40 +278,61 @@ def rng_choice(rng, items):
     return items[int(rng.next() * len(items)) % len(items)]
 
 
-def barn(seed=1, width=1150.0, depth=820.0):
+def barn(seed=1, width=1150.0, depth=820.0, glass=None):
     rng = _SmallRng(seed)
     mesh = MeshBuilder()
     wall_h = 430.0
     mesh.box((0.0, 0.0, 14.0), (width + 30.0, depth + 30.0, 28.0), pal.STONE_DARK)
-    mesh.box((0.0, 0.0, 28.0 + wall_h * 0.5), (width, depth, wall_h), pal.WALL_RED)
+    # A barn is a big shed, and now a walk-in one: the doorway is the full
+    # height of the sliding doors, which hang slid open against the wall beside
+    # it rather than across it.
+    _hollow_walls(mesh, width, depth, wall_h, 28.0, pal.WALL_RED,
+                  front=[(0.0, 430.0, 0.0, 380.0)],
+                  sides=[(0.0, 150.0, wall_h * 0.55, 150.0)])
 
     # Gambrel-ish roof: two stacked prisms give the barn silhouette.
     mesh.prism((0.0, 0.0, 28.0 + wall_h), (width + 60.0, depth + 60.0, 170.0), pal.ROOF_BROWN)
     mesh.prism((0.0, 0.0, 28.0 + wall_h + 150.0), (width + 20.0, depth * 0.62, 230.0), pal.ROOF_BROWN)
 
     # Big sliding doors and white trim boards.
-    mesh.box((0.0, -depth * 0.5 - 8.0, 28.0 + 180.0), (420.0, 22.0, 360.0), pal.WOOD_DARK)
-    mesh.box((0.0, -depth * 0.5 - 14.0, 28.0 + 180.0), (24.0, 14.0, 360.0), pal.TRIM_WHITE)
+    mesh.box((-width * 0.5 + 220.0, -depth * 0.5 - 18.0, 28.0 + 190.0),
+             (420.0, 22.0, 380.0), pal.WOOD_DARK)
+    mesh.box((-width * 0.5 + 220.0, -depth * 0.5 - 26.0, 28.0 + 190.0),
+             (24.0, 14.0, 380.0), pal.TRIM_WHITE)
+    mesh.box((0.0, -depth * 0.5 - 16.0, 28.0 + 396.0), (width * 0.86, 26.0, 18.0),
+             pal.METAL_IRON)
     for sx in (-1.0, 1.0):
         mesh.box((sx * width * 0.42, -depth * 0.5 - 6.0, 28.0 + wall_h * 0.5),
                  (26.0, 14.0, wall_h), pal.TRIM_WHITE)
     _windows_on_wall(mesh, (width * 0.5, 0.0, 28.0), depth, wall_h, "x", 2,
-                     seed, sill_z=wall_h * 0.55)
+                     seed, sill_z=wall_h * 0.55, glass=glass)
     return mesh
 
 
-def church(seed=1):
+def church(seed=1, glass=None):
     mesh = MeshBuilder()
     nave_w, nave_d, wall_h = 700.0, 1350.0, 520.0
     mesh.box((0.0, 0.0, 20.0), (nave_w + 40.0, nave_d + 40.0, 40.0), pal.WALL_STONE)
-    mesh.box((0.0, 0.0, 40.0 + wall_h * 0.5), (nave_w, nave_d, wall_h), pal.WALL_STONE)
+    # The nave is a room. Its door is at the -Y end, under the tower, which is
+    # where the tower's own doorway already is.
+    _hollow_walls(mesh, nave_w, nave_d, wall_h, 40.0, pal.WALL_STONE,
+                  front=[(0.0, 200.0, 0.0, 300.0)], thickness=40.0)
     mesh.prism((0.0, 0.0, 40.0 + wall_h), (nave_w + 60.0, nave_d + 60.0, 300.0), pal.ROOF_SLATE)
 
     # Tower at the -Y end with a spire.
     tower = 380.0
     tower_h = 900.0
     ty = -nave_d * 0.5 - tower * 0.35
-    mesh.box((0.0, ty, 40.0 + tower_h * 0.5), (tower, tower, tower_h), pal.WALL_STONE)
+    # The tower is a porch at the bottom and solid above, so the way in runs
+    # through it into the nave.
+    _tower_shift = ty
+    _hollow_walls(mesh, tower, tower, 320.0, 40.0, pal.WALL_STONE,
+                  front=[(0.0, 160.0, 0.0, 280.0)],
+                  back=[(0.0, 200.0, 0.0, 300.0)], thickness=40.0, floor=False,
+                  offset_y=_tower_shift)
+    mesh.box((0.0, ty, 40.0 + 320.0 + (tower_h - 320.0) * 0.5),
+             (tower, tower, tower_h - 320.0), pal.WALL_STONE)
+    mesh.box((0.0, ty, 40.0 + 310.0), (tower, tower, 20.0), pal.WALL_STONE)
     mesh.box((0.0, ty, 40.0 + tower_h + 24.0), (tower + 60.0, tower + 60.0, 48.0), pal.STONE_DARK)
     mesh.cone((0.0, ty, 40.0 + tower_h + 48.0), tower * 0.72, 460.0, pal.ROOF_TEAL, sides=4, yaw=45.0)
     mesh.box((0.0, ty, 40.0 + tower_h + 540.0), (24.0, 24.0, 90.0), pal.METAL_COPPER)
@@ -289,7 +340,8 @@ def church(seed=1):
     _door(mesh, (0.0, ty - tower * 0.5, 40.0), "y", pal.DOOR_WOOD, width=140.0, height=260.0)
     for side in (-1.0, 1.0):
         _windows_on_wall(mesh, (side * nave_w * 0.5, 0.0, 40.0), nave_d, wall_h, "x",
-                         4, seed, sill_z=wall_h * 0.36, pane=pal.LAMP_GLASS)
+                         4, seed, sill_z=wall_h * 0.36, pane=pal.LAMP_GLASS,
+                         glass=glass)
     _windows_on_wall(mesh, (0.0, ty, 40.0 + tower_h * 0.62), tower, 200.0, "y",
                      1, seed + 9, sill_z=0.0, pane=pal.LAMP_GLASS)
     return mesh
@@ -354,26 +406,35 @@ def windmill(seed=1):
     return mesh
 
 
-def warehouse(seed=1, width=1000.0, depth=700.0):
+def warehouse(seed=1, width=1000.0, depth=700.0, glass=None):
     mesh = MeshBuilder()
     wall_h = 420.0
     mesh.box((0.0, 0.0, 16.0), (width + 24.0, depth + 24.0, 32.0), pal.STONE_DARK)
-    mesh.box((0.0, 0.0, 32.0 + wall_h * 0.5), (width, depth, wall_h), pal.WALL_TIMBER)
+    _hollow_walls(mesh, width, depth, wall_h, 32.0, pal.WALL_TIMBER,
+                  front=[(0.0, 390.0, 0.0, 350.0)])
     mesh.prism((0.0, 0.0, 32.0 + wall_h), (width + 50.0, depth + 50.0, 190.0), pal.ROOF_SLATE)
-    mesh.box((0.0, -depth * 0.5 - 8.0, 32.0 + 170.0), (380.0, 20.0, 340.0), pal.WOOD_DARK)
+    mesh.box((-width * 0.5 + 200.0, -depth * 0.5 - 20.0, 32.0 + 180.0),
+             (380.0, 20.0, 360.0), pal.WOOD_DARK)
     _windows_on_wall(mesh, (0.0, depth * 0.5, 32.0), width, wall_h, "y", 3, seed,
-                     sill_z=wall_h * 0.5)
+                     sill_z=wall_h * 0.5, glass=glass)
     return mesh
 
 
 def shed(seed=1, width=380.0, depth=320.0):
     mesh = MeshBuilder()
     wall_h = 250.0
-    mesh.box((0.0, 0.0, wall_h * 0.5), (width, depth, wall_h), pal.WOOD_PLANK)
+    _hollow_walls(mesh, width, depth, wall_h, 0.0, pal.WOOD_PLANK,
+                  front=[(0.0, 120.0, 0.0, 200.0)], thickness=16.0,
+                  foundation=120.0)
     # Single-pitch roof: a thin slab tilted about its own centre.
     mesh.box((0.0, 0.0, wall_h + 40.0), (width + 60.0, depth + 60.0, 26.0),
              pal.ROOF_BROWN, roll=-12.0)
-    _door(mesh, (0.0, -depth * 0.5, 0.0), "y", pal.DOOR_WOOD, width=110.0, height=180.0)
+    # Lining only. A leaf across the opening is a shed nobody can get into,
+    # because collision here is complex-as-simple.
+    for sx in (-1.0, 1.0):
+        mesh.box((sx * 68.0, -depth * 0.5 + 8.0, 100.0), (16.0, 24.0, 210.0),
+                 pal.TRIM_WHITE)
+    mesh.box((0.0, -depth * 0.5 + 8.0, 208.0), (152.0, 24.0, 16.0), pal.TRIM_WHITE)
     return mesh
 
 
