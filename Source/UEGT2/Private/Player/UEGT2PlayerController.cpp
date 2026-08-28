@@ -15,6 +15,8 @@
 #include "Player/UEGT2InputConfig.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "UEGT2LogChannels.h"
+#include "NPC/UEGT2NPCActor.h"
+#include "UI/SUEGT2Dialogue.h"
 #include "UI/SUEGT2Menu.h"
 #include "Widgets/SWeakWidget.h"
 
@@ -148,8 +150,85 @@ void AUEGT2PlayerController::EnsureMenuWidget()
 	MenuWidget->SetVisibility(EVisibility::Collapsed);
 }
 
+void AUEGT2PlayerController::EnsureDialogueWidget()
+{
+	if (DialogueWidget.IsValid() || !GEngine || !GEngine->GameViewport)
+	{
+		return;
+	}
+	DialogueWidget = SNew(SUEGT2Dialogue).Controller(this);
+	// Below the menu's z-order: opening the pause menu mid-conversation should
+	// put the menu on top, not behind.
+	GEngine->GameViewport->AddViewportWidgetContent(DialogueWidget.ToSharedRef(), 60);
+	DialogueWidget->SetVisibility(EVisibility::Collapsed);
+}
+
+void AUEGT2PlayerController::ApplyDialogueInputMode()
+{
+	const bool bOpen = DialoguePartner.IsValid();
+	bShowMouseCursor = bOpen;
+	if (bOpen)
+	{
+		// UIOnly, but the world is NOT paused: needs keep running down while you
+		// talk, which is the whole reason the panel shows them.
+		FInputModeUIOnly Mode;
+		if (DialogueWidget.IsValid())
+		{
+			Mode.SetWidgetToFocus(DialogueWidget);
+		}
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(Mode);
+	}
+	else if (MenuState == EUEGT2MenuState::None)
+	{
+		SetInputMode(FInputModeGameOnly());
+	}
+}
+
+void AUEGT2PlayerController::OpenDialogue(AUEGT2NPCActor* NPC)
+{
+	if (NPC == nullptr || MenuState != EUEGT2MenuState::None)
+	{
+		return;
+	}
+	EnsureDialogueWidget();
+	DialoguePartner = NPC;
+	if (DialogueWidget.IsValid())
+	{
+		DialogueWidget->SetVisibility(EVisibility::Visible);
+		DialogueWidget->SetPartner(NPC);
+	}
+	ApplyDialogueInputMode();
+	UE_LOG(LogUEGT2UI, Log, TEXT("Talking to %s."), *NPC->GetDisplayName().ToString());
+}
+
+void AUEGT2PlayerController::CloseDialogue()
+{
+	DialoguePartner.Reset();
+	if (DialogueWidget.IsValid())
+	{
+		DialogueWidget->SetPartner(nullptr);
+		DialogueWidget->SetVisibility(EVisibility::Collapsed);
+	}
+	ApplyDialogueInputMode();
+}
+
+void AUEGT2PlayerController::AskDialogueTopic(int32 Topic)
+{
+	if (DialogueWidget.IsValid() && DialoguePartner.IsValid()
+		&& Topic >= 0 && Topic < (int32)EUEGT2DialogueTopic::Count)
+	{
+		DialogueWidget->AskTopic((EUEGT2DialogueTopic)Topic);
+	}
+}
+
 void AUEGT2PlayerController::ApplyMenuState(EUEGT2MenuState NewState)
 {
+	if (NewState != EUEGT2MenuState::None && DialoguePartner.IsValid())
+	{
+		CloseDialogue();
+	}
+
 	MenuState = NewState;
 	EnsureMenuWidget();
 

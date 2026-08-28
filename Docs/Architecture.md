@@ -205,6 +205,33 @@ conveniences in the town and eighteen in Newhaven, spread across the squares,
 the quay, the farms and every park, because a need answered in exactly one place
 is a need that sends the whole town to the same doorstep.
 
+**You can talk to anyone, and what they say is true.** `UEGT2Dialogue.h` is a
+set of pure functions over `FUEGT2DialogueState` - a snapshot of one
+inhabitant's needs, activity, role, hour and seed. No world, no actor, no
+widget, exactly like `ResolveActivity`, which is what lets the whole
+conversation be tested without opening the editor.
+
+Every answer is derived from real state. Ask whether someone is hungry and the
+reply is chosen by the same `Fed` value, against the same thresholds, that
+`ResolveActivity` uses to decide whether to send them to eat - so what they say
+and what they then do agree. Saying "I'm fine" and walking off to the bakehouse
+is the sort of small lie that makes a whole world feel fake, and the thresholds
+are shared precisely so it cannot happen.
+
+The panel is `SUEGT2Dialogue`, Slate like the rest of the UI, sharing its
+palette with the menu through `UEGT2UIStyle.h`. It sits low on the screen rather
+than filling it - you are talking to somebody standing in front of you - and it
+shows the four needs as bars beside the topic list, so you can see how someone
+is *before* you ask and then hear them say the same thing. The world is not
+paused while it is open: the bars move while you talk.
+
+Two topics change the world rather than describe it. "Will you walk with me?"
+sets a follow target on the NPC; `AdvanceFollowing` repaths toward the player
+every second or so and stops at a couple of metres. Following overrides where
+they go but not what they need - a companion who gets hungry still says so and
+still breaks off, because `EvaluateSchedule` only lets following win when the
+decision was not need-driven.
+
 **Landscape, not World Partition.** One level, one landscape, no streaming. At
 4 km with instanced scatter this loads in seconds and keeps the content build
 simple. Streaming is the obvious next step if the world grows, and nothing here

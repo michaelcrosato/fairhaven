@@ -68,6 +68,8 @@ private:
 	void CaptureNext();
 	void BeginMenuTour();
 	void RunMenuStep();
+	void BeginDialogueTour();
+	void RunDialogueStep();
 	void BeginWalkSmoke();
 	bool TickWalkSmoke(float DeltaSeconds);
 	void FinishTour();
@@ -83,6 +85,9 @@ private:
 	FDelegateHandle ScreenshotHandle;
 	bool bMenuMode = false;
 	int32 MenuIndex = 0;
+	bool bDialogueMode = false;
+	int32 DialogueIndex = 0;
+	TWeakObjectPtr<class AUEGT2NPCActor> DialoguePartner;
 	FVector WalkStart = FVector::ZeroVector;
 	float WalkElapsed = 0.0f;
 

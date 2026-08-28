@@ -5,6 +5,8 @@
 #include "GameFramework/PlayerController.h"
 #include "UEGT2PlayerController.generated.h"
 
+class AUEGT2NPCActor;
+class SUEGT2Dialogue;
 class SUEGT2Menu;
 class UUEGT2InputConfig;
 
@@ -52,6 +54,29 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Menu")
 	bool IsMenuOpen() const { return MenuState != EUEGT2MenuState::None; }
 
+	// ---- Conversation ------------------------------------------------------
+	/**
+	 * Start talking to somebody.
+	 *
+	 * The world keeps running behind it, unlike the pause menu: the point of
+	 * asking whether somebody is hungry is that they are getting hungrier while
+	 * you ask, and the needs bars in the panel move while you watch.
+	 */
+	void OpenDialogue(AUEGT2NPCActor* NPC);
+
+	void CloseDialogue();
+
+	bool IsDialogueOpen() const { return DialoguePartner.IsValid(); }
+
+	/**
+	 * Ask the open conversation one question, by topic index.
+	 *
+	 * Exists so the capture tour can fill a transcript without a human clicking
+	 * through it, and so a future console command can drive the same path.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Dialogue")
+	void AskDialogueTopic(int32 Topic);
+
 	/** Rebuild input mappings after a control rebind. */
 	void RebuildInputMappings();
 
@@ -81,10 +106,14 @@ private:
 	void OnMenuAction();
 	void OnDiagnosticsAction();
 	void EnsureMenuWidget();
+	void EnsureDialogueWidget();
+	void ApplyDialogueInputMode();
 
 	UPROPERTY(Transient) TObjectPtr<UUEGT2InputConfig> InputConfig = nullptr;
 
 	TSharedPtr<SUEGT2Menu> MenuWidget;
+	TSharedPtr<SUEGT2Dialogue> DialogueWidget;
+	TWeakObjectPtr<AUEGT2NPCActor> DialoguePartner;
 	EUEGT2MenuState MenuState = EUEGT2MenuState::None;
 	bool bDiagnosticsVisible = false;
 	bool bPawnActionsBound = false;

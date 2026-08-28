@@ -98,6 +98,17 @@ what it is: a grocery, a bakehouse, an ironmonger, a draper, a barber, a
 physician, a dentist, a spectacle maker, a solicitor, a bookseller, a post
 office and a bank. The church is bigger than it was and has a door you can open.
 
+**Talk to people.** Walk up to anyone and press the interact key. A panel opens
+with their name, their trade, what they are doing, and four bars showing how
+rested, fed, comfortable and sociable they are. Ask them anything: what they are
+doing, how they are keeping, whether they are hungry or tired, what they do for
+a living, about the town, about what lies beyond it - or ask them to walk with
+you, and later to go on without you.
+
+What to judge: does the panel read well and get out of the way? Do the answers
+match the bars, and match what they then go and do? Is asking someone to follow
+you worth doing? Try it on someone whose bars are already low, and on a dog.
+
 **What people need.** Every inhabitant now carries four needs - energy, hunger,
 the bathroom and company - and acts on whichever is worst. Dev Mode -> Life ->
 Show Plans reports the reason for what they are doing; look for "Need". Follow

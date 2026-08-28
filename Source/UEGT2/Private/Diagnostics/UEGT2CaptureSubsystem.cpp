@@ -11,6 +11,9 @@
 #include "Player/UEGT2InputConfig.h"
 #include "Player/UEGT2PlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "NPC/UEGT2Dialogue.h"
+#include "NPC/UEGT2NPCActor.h"
+#include "EngineUtils.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
@@ -255,12 +258,15 @@ void UUEGT2CaptureSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 		this, &UUEGT2CaptureSubsystem::HandleScreenshotCaptured);
 
 	bMenuMode = FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureMenu"));
+	bDialogueMode = FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureDialogue"));
 
 	// Give Lumen, virtual shadow maps and streaming time to settle first.
 	InWorld.GetTimerManager().SetTimer(TimerHandle,
-		FTimerDelegate::CreateUObject(this, bMenuMode
-			? &UUEGT2CaptureSubsystem::BeginMenuTour
-			: &UUEGT2CaptureSubsystem::BeginTour),
+		FTimerDelegate::CreateUObject(this, bDialogueMode
+			? &UUEGT2CaptureSubsystem::BeginDialogueTour
+			: bMenuMode
+				? &UUEGT2CaptureSubsystem::BeginMenuTour
+				: &UUEGT2CaptureSubsystem::BeginTour),
 		FMath::Max(Delay, 0.5f), false);
 }
 
@@ -346,6 +352,112 @@ void UUEGT2CaptureSubsystem::CaptureNext()
 		}), HoldSeconds, false);
 }
 
+
+// ---------------------------------------------------------------------------
+// Dialogue capture: proves the conversation panel renders, with a real
+// inhabitant's real state in it, without a human standing in front of one.
+// ---------------------------------------------------------------------------
+void UUEGT2CaptureSubsystem::BeginDialogueTour()
+{
+	UWorld* World = GetWorld();
+	AUEGT2PlayerController* PC = World
+		? Cast<AUEGT2PlayerController>(UGameplayStatics::GetPlayerController(World, 0))
+		: nullptr;
+	if (!PC)
+	{
+		UE_LOG(LogUEGT2Diag, Error, TEXT("Dialogue capture: no UEGT2 player controller."));
+		FinishTour();
+		return;
+	}
+
+	// Whoever is nearest the player start and can actually be spoken to. Taking
+	// the nearest rather than a named one keeps this working when the seed
+	// moves the population around.
+	AUEGT2NPCActor* Best = nullptr;
+	double BestDistance = TNumericLimits<double>::Max();
+	const FVector From = PC->GetPawn() ? PC->GetPawn()->GetActorLocation() : FVector::ZeroVector;
+	for (TActorIterator<AUEGT2NPCActor> It(World); It; ++It)
+	{
+		AUEGT2NPCActor* NPC = *It;
+		if (!NPC || NPC->IsAnimal() || !NPC->CanInteract(PC->GetPawn()))
+		{
+			continue;
+		}
+		const double Distance = FVector::DistSquared(From, NPC->GetActorLocation());
+		if (Distance < BestDistance)
+		{
+			BestDistance = Distance;
+			Best = NPC;
+		}
+	}
+
+	if (!Best)
+	{
+		UE_LOG(LogUEGT2Diag, Error, TEXT("Dialogue capture: nobody to talk to."));
+		FinishTour();
+		return;
+	}
+
+	// Stand the player in front of them and look at them, so the shot shows a
+	// conversation and not a panel floating over empty grass.
+	if (APawn* Pawn = PC->GetPawn())
+	{
+		const FVector Target = Best->GetActorLocation();
+		const FVector Offset = FVector(210.0f, 60.0f, 0.0f);
+		Pawn->TeleportTo(Target + Offset + FVector(0.0f, 0.0f, 40.0f),
+			Pawn->GetActorRotation(), false, true);
+		PC->SetControlRotation((Target - (Target + Offset)).Rotation());
+	}
+
+	DialoguePartner = Best;
+	PC->OpenDialogue(Best);
+	UE_LOG(LogUEGT2Diag, Log, TEXT("Dialogue capture: talking to %s."),
+		*Best->GetDisplayName().ToString());
+	RunDialogueStep();
+}
+
+void UUEGT2CaptureSubsystem::RunDialogueStep()
+{
+	static const TCHAR* Names[] = { TEXT("Opening"), TEXT("Asked") };
+	if (DialogueIndex >= (int32)UE_ARRAY_COUNT(Names))
+	{
+		FinishTour();
+		return;
+	}
+
+	// The second shot has the transcript filled in, so the review shows what
+	// the panel looks like in use rather than only at its emptiest.
+	if (DialogueIndex == 1)
+	{
+		if (AUEGT2PlayerController* PC = Cast<AUEGT2PlayerController>(
+			UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+		{
+			PC->AskDialogueTopic((int32)EUEGT2DialogueTopic::Wellbeing);
+			PC->AskDialogueTopic((int32)EUEGT2DialogueTopic::Doing);
+			PC->AskDialogueTopic((int32)EUEGT2DialogueTopic::Follow);
+		}
+	}
+
+	const FString Name = Names[DialogueIndex];
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+		[this, Name](float) -> bool
+		{
+			PendingFileName = FString::Printf(TEXT("%s/talk_%02d_%s.png"),
+				*OutputDirectory, DialogueIndex + 1, *Name);
+			UE_LOG(LogUEGT2Diag, Log, TEXT("Dialogue capture %02d: %s"),
+				DialogueIndex + 1, *Name);
+			FScreenshotRequest::RequestScreenshot(true);
+
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+				[this](float) -> bool
+				{
+					++DialogueIndex;
+					RunDialogueStep();
+					return false;
+				}), 0.9f);
+			return false;
+		}), HoldSeconds);
+}
 
 // ---------------------------------------------------------------------------
 // Menu capture: proves the front end, every settings tab and the pause screen

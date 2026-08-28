@@ -10,6 +10,7 @@
 #include "NPC/UEGT2NPCRoutines.h"
 #include "NPC/UEGT2NPCSpeech.h"
 #include "NPC/UEGT2RouteNetwork.h"
+#include "Player/UEGT2PlayerController.h"
 #include "Sound/SoundBase.h"
 #include "UEGT2LogChannels.h"
 #include "UI/UEGT2HUD.h"
@@ -276,27 +277,23 @@ void AUEGT2NPCActor::Interact(AActor* Interactor)
 	const float Hour = Director ? Director->GetHour() : 12.0f;
 	const EUEGT2Weather Weather = Director ? Director->GetWeather() : EUEGT2Weather::Clear;
 
-	// A different line each time you ask, but the same sequence every run.
-	const uint32 Variation = (uint32)FMath::FloorToInt(GetWorld()->GetTimeSeconds() * 0.5f);
-	const FText Line = GetSpeechLine(NPCRole, Species, Decision.Activity,
-		EUEGT2SpeechMood::Reply, Weather, Hour, (uint32)Seed, Variation);
-	Say(Line, 4.4f, 0.35f);
-
-	// The HUD line is the honest one: it names what they are actually doing,
-	// which is the part a playtester needs to be able to check.
-	if (!IsAnimal())
+	// Talking to somebody opens a conversation. It used to shout one canned
+	// line at you and print a status to the HUD, which told you what they were
+	// doing but gave you no way to ask anything.
+	const APawn* Pawn = Cast<APawn>(Interactor);
+	APlayerController* Controller = Pawn
+		? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+	if (AUEGT2PlayerController* Player = Cast<AUEGT2PlayerController>(Controller))
 	{
-		const FText Message = FText::Format(LOCTEXT("NPCStatus", "{0}, {1} - {2}"),
-			DisplayName.IsEmpty() ? GetRoleDisplayName(NPCRole) : DisplayName,
-			GetRoleDisplayName(NPCRole),
-			GetActivityDisplayName(Decision.Activity));
-
-		const APawn* Pawn = Cast<APawn>(Interactor);
-		const APlayerController* Controller = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
-		if (AUEGT2HUD* Hud = Controller ? Cast<AUEGT2HUD>(Controller->GetHUD()) : nullptr)
-		{
-			Hud->ShowMessage(Message, 4.0f);
-		}
+		Player->OpenDialogue(this);
+	}
+	else
+	{
+		// No player controller - the smoke test, or a script. Fall back to the
+		// old behaviour so this is never silently a no-op.
+		const uint32 Variation = (uint32)FMath::FloorToInt(GetWorld()->GetTimeSeconds() * 0.5f);
+		Say(GetSpeechLine(NPCRole, Species, Decision.Activity,
+			EUEGT2SpeechMood::Reply, Weather, Hour, (uint32)Seed, Variation), 4.4f, 0.35f);
 	}
 
 	if (USoundBase* Click = LoadObject<USoundBase>(nullptr, TEXT("/Game/Fairhaven/Audio/S_Interact")))
@@ -312,6 +309,82 @@ void AUEGT2NPCActor::Interact(AActor* Interactor)
 
 	UE_LOG(LogUEGT2NPC, Verbose, TEXT("%s spoken to while %s."),
 		*DisplayName.ToString(), *GetActivityDisplayName(Decision.Activity).ToString());
+}
+
+FUEGT2DialogueState AUEGT2NPCActor::MakeDialogueState() const
+{
+	const UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(GetWorld());
+
+	FUEGT2DialogueState State;
+	State.Role = NPCRole;
+	State.Species = Species;
+	State.Needs = Needs;
+	State.Activity = Decision.Activity;
+	State.Reason = Decision.Reason;
+	State.Anchor = Decision.Anchor;
+	State.Hour = Director ? Director->GetHour() : 12.0f;
+	State.Seed = Seed;
+	State.bFollowing = IsFollowing();
+	State.DisplayName = DisplayName.IsEmpty() ? GetRoleDisplayName(NPCRole) : DisplayName;
+	// Newhaven is far to the west; anybody out there is a city dweller. Cheaper
+	// and steadier than asking the world which settlement owns this actor.
+	State.bCityDweller = SpawnLocation.X < -60000.0;
+	return State;
+}
+
+void AUEGT2NPCActor::SetFollowTarget(AActor* Target)
+{
+	FollowTarget = Target;
+	FollowRepathCountdown = 0.0f;
+	if (Target == nullptr)
+	{
+		// Straight back onto whatever the hour asks for, rather than standing
+		// where they were left until the next schedule tick.
+		bActivityChanged = true;
+		StuckSeconds = 0.0f;
+	}
+}
+
+void AUEGT2NPCActor::SayReply(const FText& Line)
+{
+	Say(Line, 5.0f, 0.3f);
+	Needs.Company = FMath::Min(Needs.Company + 0.12f, 1.0f);
+}
+
+void AUEGT2NPCActor::AdvanceFollowing(float DeltaSeconds)
+{
+	AActor* Target = FollowTarget.Get();
+	if (Target == nullptr)
+	{
+		return;
+	}
+
+	FollowRepathCountdown -= DeltaSeconds;
+	const FVector Ours = GetActorLocation();
+	const FVector Theirs = Target->GetActorLocation();
+	const float Distance = FVector::Dist2D(Ours, Theirs);
+
+	// Close enough is close enough: repathing every tick makes a companion
+	// jitter on the spot, and a companion who stands two metres away and waits
+	// looks like they are walking with you.
+	if (Distance < 260.0f)
+	{
+		bArrived = true;
+		PathPoints.Reset();
+		return;
+	}
+
+	if (FollowRepathCountdown > 0.0f)
+	{
+		return;
+	}
+	FollowRepathCountdown = (Distance > 2500.0f) ? 0.6f : 1.4f;
+
+	// Aim a little short of them, on their near side, so they are followed
+	// rather than walked into.
+	const FVector Approach = Ours + (Theirs - Ours).GetSafeNormal2D()
+		* FMath::Max(Distance - 190.0f, 0.0f);
+	RepathTo(Approach);
 }
 
 void AUEGT2NPCActor::SetInteractionFocus(bool bInFocused)
@@ -438,6 +511,18 @@ void AUEGT2NPCActor::EvaluateSchedule(const FUEGT2NPCContext& Context, bool bFor
 	const bool bChanged = Previous.Activity != Decision.Activity
 		|| Previous.Anchor != Decision.Anchor;
 	bActivityChanged |= (Previous.Activity != Decision.Activity);
+
+	// Following overrides where they go, but not what they need: the decision
+	// above still ran, so a companion who gets hungry still says so, and still
+	// breaks off if the need is bad enough to send them somewhere.
+	if (IsFollowing() && Decision.Reason != EUEGT2ActivityReason::Need)
+	{
+		return;
+	}
+	if (IsFollowing())
+	{
+		SetFollowTarget(nullptr);
+	}
 
 	if (bChanged || bForceRepath)
 	{
@@ -741,6 +826,11 @@ void AUEGT2NPCActor::Tick(float DeltaSeconds)
 	{
 		SpeedFraction = 0.0f;
 		return;
+	}
+
+	if (IsFollowing())
+	{
+		AdvanceFollowing(DeltaSeconds);
 	}
 
 	AdvanceMovement(DeltaSeconds);

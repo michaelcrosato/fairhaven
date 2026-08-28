@@ -15,6 +15,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Interaction/UEGT2Interactable.h"
+#include "NPC/UEGT2Dialogue.h"
 #include "NPC/UEGT2NPCTypes.h"
 #include "UEGT2NPCActor.generated.h"
 
@@ -74,6 +75,31 @@ public:
 	virtual void Interact(AActor* Interactor) override;
 	virtual void SetInteractionFocus(bool bFocused) override;
 	virtual FVector GetInteractionPoint() const override;
+
+	// ---- Conversation ------------------------------------------------------
+	/** Everything the dialogue is allowed to know: a snapshot, not a pointer. */
+	FUEGT2DialogueState MakeDialogueState() const;
+
+	/**
+	 * Walk with this actor until told otherwise. Null stops following.
+	 *
+	 * Following overrides the schedule rather than replacing it: needs still run
+	 * down, and somebody who is starving will still break off to eat. That is
+	 * the point - a companion who ignores their own hunger is a prop.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|NPC")
+	void SetFollowTarget(AActor* Target);
+
+	UFUNCTION(BlueprintPure, Category = "UEGT2|NPC")
+	bool IsFollowing() const { return FollowTarget.IsValid(); }
+
+	/** Say a line as a speech bubble. Used by the conversation UI. */
+	void SayReply(const FText& Line);
+
+private:
+	void AdvanceFollowing(float DeltaSeconds);
+
+public:
 
 	// ---- Life --------------------------------------------------------------
 	/** Re-decide what to do now. Called by the director, and on arrival. */
@@ -221,6 +247,12 @@ private:
 	/** Cached because the personality is a pure function of the seed. */
 	FUEGT2Personality Personality;
 	FUEGT2NPCNeeds Needs;
+
+	/** Who this NPC is walking with, if anyone. */
+	TWeakObjectPtr<AActor> FollowTarget;
+
+	/** Seconds until the next repath toward whoever they are following. */
+	float FollowRepathCountdown = 0.0f;
 	FUEGT2ActivityDecision Decision;
 
 	FVector SpawnLocation = FVector::ZeroVector;

@@ -26,6 +26,7 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Package.ps1                           # playable build
 ./Scripts/Screenshot-Tour.ps1                   # 20 viewpoints -> PNG
 ./Scripts/Screenshot-Tour.ps1 -Menu             # menu + settings -> PNG
+./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureDialogue'   # the talk panel
 ./Scripts/Preview.ps1 -Stages lighting          # build + package + screenshot
 python Tools/Python/check_meshes.py             # every generated mesh, no editor, ~1s
 python Tools/Terrain/generate_terrain.py        # re-roll terrain (+ PNG previews)
