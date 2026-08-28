@@ -332,6 +332,121 @@ def _walk(points, step):
 # ---------------------------------------------------------------------------
 # Districts
 # ---------------------------------------------------------------------------
+# What the signpost outside each town shop says. gameplay._place_service_signs
+# reads the actor label to find the trade, so these two have to agree - which is
+# why the table lives here, where the shops are placed, and not there.
+SERVICE_NAMES = {
+    "grocer": "Fairhaven Grocery", "baker": "The Bakehouse",
+    "butcher_hardware": "Ironmonger and Hardware", "clothier": "Draper and Tailor",
+    "barber": "Barber", "doctor": "Physician", "dentist": "Dentist",
+    "optician": "Spectacle Maker", "lawyer": "Solicitor",
+    "bookshop": "Bookseller", "post": "Post Office", "bank": "Bank",
+}
+
+
+def _place_conveniences(placer, rng):
+    """A washroom within reach of everywhere anyone in the town stands.
+
+    Four needs drive an inhabitant now and one of them is the bathroom, so the
+    town has to answer it in more than one place: a bench on the far side of the
+    square is no use to a dockhand. One by the square, one at each end of the
+    high street, one on the quay, and one at every farm.
+    """
+    cx, cy = placer.wd.town["center"]
+    placed = 0
+
+    ring = [(cx + 1450.0, cy - 1250.0), (cx - 1500.0, cy + 1350.0),
+            (cx + 1600.0, cy + 1500.0), (cx - 1350.0, cy - 1500.0)]
+    for (wx, wy) in ring:
+        # check=False: these four are the ones that matter, because they are
+        # where the people are. A privy rejected for overlapping a bench is a
+        # need with nowhere to answer it.
+        if placer.place("SM_Privy_A", wx, wy, rng.uniform(0.0, 360.0),
+                        "Privy %d" % placed, radius=220.0, z_offset=-8.0,
+                        check=False):
+            placed += 1
+
+    shore = _coast_y_at(placer.wd, cx)
+    for offset in (-1800.0, 900.0):
+        if placer.place("SM_Privy_A", cx + offset, shore - 1500.0,
+                        rng.uniform(0.0, 360.0), "Privy %d" % placed,
+                        radius=220.0, z_offset=-8.0, check=False):
+            placed += 1
+
+    for actor in placer.subsystem.get_all_level_actors():
+        label = actor.get_actor_label()
+        if not label.startswith(LABEL_PREFIX + "Farm "):
+            continue
+        location = actor.get_actor_location()
+        angle = rng.uniform(0.0, 360.0)
+        wx = location.x + math.cos(math.radians(angle)) * 760.0
+        wy = location.y + math.sin(math.radians(angle)) * 760.0
+        if placer.place("SM_Privy_A", wx, wy, angle, "Privy %d" % placed,
+                        radius=220.0, z_offset=-8.0):
+            placed += 1
+
+    ctx.log("town: %d public conveniences" % placed)
+    return placed
+
+
+def _place_services(placer, rng):
+    """A dozen trades along the street nearest the square.
+
+    They go down before the houses do, so they get the frontage closest to the
+    square instead of whatever is left over at the far end of a lane. Each is a
+    house shell with a shop inside it rather than a new archetype: what makes it
+    a bakery is the fit-out and the signpost, and a village high street is
+    houses with shops in them anyway.
+    """
+    from . import meshbuild
+
+    cx, cy = placer.wd.town["center"]
+    streets = [r for r in placer.wd.roads
+               if r["is_street"] and not r.get("is_city")]
+    if not streets:
+        return 0
+
+    def near(street):
+        return min(math.hypot(p[0] - cx, p[1] - cy) for p in street["points"])
+
+    street = min(streets, key=near)
+    half = street["width_uu"] * 0.5
+    setback = half + 620.0
+
+    spots = []
+    for (x, y, tx, ty) in _walk(street["points"], 1150.0):
+        for side in (-1.0, 1.0):
+            nx, ny = -ty * side, tx * side
+            spots.append((x + nx * setback, y + ny * setback,
+                          _face_yaw(nx, ny), math.hypot(x - cx, y - cy)))
+    spots.sort(key=lambda s: s[3])
+
+    placed = 0
+    for (venue, shell, width, depth) in meshbuild.TOWN_SERVICES:
+        while spots and placed < len(meshbuild.TOWN_SERVICES):
+            wx, wy, yaw, _d = spots.pop(0)
+            radius = BUILDING_FOOTPRINT.get(shell, 480.0)
+            low, high = placer.ground_range(wx, wy, yaw, width * 0.5, depth * 0.5)
+            lift = high + FLOOR_CLEAR - gen_town.PLINTH_H - placer.wd.height_uu(wx, wy)
+            built = placer.place(shell, wx, wy, yaw, "Shop %s %d" % (venue, placed),
+                                 radius=radius, z_offset=lift, footprint=0.0)
+            if built is None:
+                continue
+            location = built.get_actor_location()
+            placer.place_at("SM_Int_Shop_%s" % venue, location, yaw,
+                            "ShopFit %s" % venue, cull=INTERIOR_CULL)
+            placer.place_at("SM_Glow_Shop_%s" % venue, location, yaw,
+                            "ShopGlow %s" % venue, cull=GLOW_CULL,
+                            shadow=False, collision=False)
+            place_room_lights(placer, location, yaw, width, depth, 1,
+                              6400 + placed * 71, "ShopLight %s" % venue)
+            placed += 1
+            break
+
+    ctx.log("town: %d trades on the high street" % placed)
+    return placed
+
+
 def _place_streets(placer, rng):
     """Houses along both sides of every town street, plus lamps and benches."""
     # is_city matters: the city grid is also flagged is_street, and without
@@ -793,10 +908,13 @@ def build(world, world_data, meshes=None):
     rng = _SmallRng(world_data.seed + 4242)
 
     _place_plaza(placer, rng)
+    _place_services(placer, rng)
     _place_streets(placer, rng)
     shore = _place_waterfront(placer, rng)
     _place_landmarks(placer, rng, shore)
     _place_farms(placer, rng)
+    # After the farms, because it puts one at each of them.
+    _place_conveniences(placer, rng)
     _place_fences(placer, rng, world)
     _place_bridge(placer, rng)
 

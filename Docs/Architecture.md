@@ -153,6 +153,23 @@ because exposure is one global setting shared with the outdoors and floored at
 EV 7 so that night still reads as night; a room has to reach about EV 10 to be
 visible at all under that floor.
 
+**A tall building is one mesh per floor, placed once per storey.** A twenty-two
+storey interior built as a single mesh is 43,000 triangles and a 48 MB build,
+and the editor died somewhere around the twentieth tower cooking them. So
+`gen_interior.fit_out(..., stair_up=True, floor_hole=True)` builds ONE floor -
+its own slab with the stairwell punched through it, a flight up out of it, and
+enough furniture to say what the floor is for - and `city._place_interior`
+places that one mesh on every storey. A tower costs twenty-one actors and one
+mesh, each floor culls on its own, and no asset is bigger than about 2,000
+triangles.
+
+The stair column is the thing that makes it stack: `gen_interior.stair_column`
+puts the flight against the +X wall from the footprint alone, so every floor
+agrees where it is without being told, and `plan()` is handed the stairwell as a
+keep-out so no partition is ever built through it. The roof reads the same
+rectangle back (`gen_city._roof_hole`) to punch its deck and stand a stair head
+on it, which is what makes a roof somewhere you can walk out onto.
+
 **Every building in the world opens.** The town's houses have a full
 multi-storey fit-out; every other building - the barn, the church, the
 warehouse, the shed, and all 334 blocks of Newhaven plus the city hall - has a
@@ -170,6 +187,23 @@ dentist in it. `gen_interior.VENUE_RECIPES` is the furniture, and `BACK_OF_HOUSE
 is what sits behind the shop floor - a kitchen behind a restaurant, a stock room
 behind a grocer - because four identical shop floors in a row read as a
 warehouse.
+
+**Four needs, and somewhere to answer each of them.** Every inhabitant carries
+Energy, Fed, Relief and Company in `FUEGT2NPCNeeds`, seeded to a different value
+each so the town does not all get hungry at once. `Needs::Worst` returns the one
+furthest past its own threshold, and `ResolveActivity` acts on it *at any hour* -
+the old code answered hunger only between eleven and three, which meant a
+villager could be starving at half nine and keep working.
+
+Each need has an anchor the content build bakes per inhabitant from the nearest
+handful of real places: `Food` (a stall, a tavern, a bakery, a grocer, a
+restaurant), `Washroom` (a privy, a public convenience, a gym), `Seat` (a bench)
+and `Square` for company. Home is the fallback for all of them, because a house
+has a chair, a kitchen and a washroom in it - so an inhabitant who cannot find a
+public one goes home, which is what a person does. There are twelve public
+conveniences in the town and eighteen in Newhaven, spread across the squares,
+the quay, the farms and every park, because a need answered in exactly one place
+is a need that sends the whole town to the same doorstep.
 
 **Landscape, not World Partition.** One level, one landscape, no streaming. At
 4 km with instanced scatter this loads in seconds and keeps the content build
@@ -191,17 +225,15 @@ of `uegt2/water.py` for the trade-off.
 
 Target: 1920×1080, 60 fps on an RTX 3060-class GPU.
 
-- 256 unique meshes, 158,131 triangles total; the heaviest asset is 4,288
-  triangles (`SM_Int_Office_A_library`). Interiors are 123,272 of that - four
-  fifths of the catalog - which is why every one of them is a separate actor on
-  a 90 m draw distance rather than baked into the shell it sits in. Collision is
-  not culled with the drawing, so a floor stays solid under an NPC in a building
-  nobody is looking at.
-- About 6,000 actors in the level: 1,400 in the town, 3,370 in Newhaven, 1,214
-  inhabitants. Roughly 1,700 of those are interior point lights, one per room.
-  They are movable and cast shadows - a shadowless light inside a building lights
-  the street through the wall - and they are affordable only because
-  `max_draw_distance` is 42 m, so a handful are ever submitted.
+- 304 unique meshes, 241,867 triangles total; the heaviest asset is 7,184
+  triangles (`SM_Tower_D`, a thirty-one storey shell). No interior is bigger
+  than about 4,400, because a tall building's floors are one mesh placed many
+  times rather than one mesh containing them all.
+- About 7,700 actors in the level: 1,440 in the town, 6,090 in Newhaven, 1,190
+  inhabitants. Newhaven's count is dominated by stacked floors - a tower is
+  twenty-one floor actors - and by ~1,700 interior point lights. The lights are
+  movable and cast shadows, and are affordable only because `max_draw_distance`
+  is 42 m, so a handful are ever submitted.
 - ~650,000 scattered instances across 13 species, all in hierarchical instanced
   components with per-species cull distances (grass 70 m, trees 700–900 m).
 - ~1,215 inhabitants as movable static mesh actors. Measured cost: **nothing

@@ -88,21 +88,28 @@ GLAZED = [
 # Width and depth are the shopfront footprint from gen_city, which for a tower
 # is the podium and not the shaft. Height is its ceiling.
 CITY_INTERIORS = [
-    ("Shophouse_A", 1050.0, 1250.0, 330.0,
+    # (archetype, room width, room depth, storey height, storeys, what the
+    #  floors above the ground floor are, the trades it can host)
+    #
+    # Storeys is the ground floor plus every floor of the shaft above it, which
+    # is why a tower is twenty-two of them. A setback tower's interior stops at
+    # the setback: the stair comes out onto that terrace, which is the roof you
+    # can actually get to.
+    ("Shophouse_A", 1050.0, 1250.0, 360.0, 3, "bedroom",
      ["grocer", "clothier", "baker", "pharmacy", "bookshop", "hardware",
       "restaurant", "cafe"]),
-    ("Shophouse_B", 950.0, 1150.0, 330.0,
+    ("Shophouse_B", 950.0, 1150.0, 360.0, 2, "bedroom",
      ["furniture", "electronics", "bar", "barber", "optician", "post", "gym"]),
-    ("Apartment_A", 1790.0, 1590.0, 360.0, ["apartment_lobby"]),
-    ("Apartment_B", 1990.0, 1490.0, 360.0, ["apartment_lobby"]),
-    ("Apartment_C", 1590.0, 1390.0, 360.0, ["apartment_lobby"]),
-    ("Tower_A", 2060.0, 1860.0, 380.0, ["office_lobby", "bank"]),
-    ("Tower_B", 2260.0, 2010.0, 380.0, ["office_lobby", "lawyer"]),
-    ("Tower_C", 1860.0, 1760.0, 380.0, ["office_lobby", "restaurant"]),
-    ("Tower_D", 2460.0, 1760.0, 380.0, ["office_lobby", "museum"]),
-    ("Office_A", 2220.0, 1820.0, 380.0,
+    ("Apartment_A", 1790.0, 1590.0, 360.0, 6, "bedroom", ["apartment_lobby"]),
+    ("Apartment_B", 1990.0, 1490.0, 360.0, 8, "bedroom", ["apartment_lobby"]),
+    ("Apartment_C", 1590.0, 1390.0, 360.0, 4, "bedroom", ["apartment_lobby"]),
+    ("Tower_A", 2060.0, 1860.0, 360.0, 14, "office", ["office_lobby", "bank"]),
+    ("Tower_B", 2260.0, 2010.0, 360.0, 18, "office", ["office_lobby", "lawyer"]),
+    ("Tower_C", 1860.0, 1760.0, 360.0, 11, "office", ["office_lobby", "restaurant"]),
+    ("Tower_D", 2460.0, 1760.0, 360.0, 22, "office", ["office_lobby", "museum"]),
+    ("Office_A", 2220.0, 1820.0, 360.0, 10, "office",
      ["office_lobby", "doctor", "dentist", "library"]),
-    ("Office_B", 2520.0, 1720.0, 380.0,
+    ("Office_B", 2520.0, 1720.0, 360.0, 13, "office",
      ["office_lobby", "police", "school", "lawyer"]),
 ]
 
@@ -110,21 +117,53 @@ CITY_INTERIORS = [
 def _city_interior_entries():
     """Catalog rows for every Newhaven ground floor, one per trade."""
     rows = []
-    for (arch, width, depth, height, venues) in CITY_INTERIORS:
+    for (arch, width, depth, height, storeys, upper, venues) in CITY_INTERIORS:
         for index, venue in enumerate(venues):
             seed = 7100 + index * 97 + len(arch) * 13
             rows.append(("SM_Int_%s_%s" % (arch, venue), P_INTERIOR,
-                         (lambda w=width, d=depth, h=height, v=venue, sd=seed:
+                         (lambda w=width, d=depth, h=height, v=venue, sd=seed,
+                          up=storeys > 1:
                           interior.fit_out(w, d, 1, sd, base_z=0.0,
                                            ground_kind=v, wall_t=34.0,
-                                           storey_h=h, ceiling=False)[0]),
+                                           storey_h=h, ceiling=False,
+                                           stair_up=up)[0]),
                          "prop", "complex"))
             rows.append(("SM_Glow_%s_%s" % (arch, venue), P_INTERIOR,
-                         (lambda w=width, d=depth, h=height, v=venue, sd=seed:
+                         (lambda w=width, d=depth, h=height, v=venue, sd=seed,
+                          up=storeys > 1:
                           interior.fit_out(w, d, 1, sd, base_z=0.0,
                                            ground_kind=v, wall_t=34.0,
-                                           storey_h=h, ceiling=False)[1]),
+                                           storey_h=h, ceiling=False,
+                                           stair_up=up)[1]),
                          "emissive", "none"))
+    return rows
+
+
+def _city_floor_entries():
+    """One upper floor per archetype, placed once for every storey it has.
+
+    A tower is the same floor twenty-one times over. Building it once and
+    placing it twenty-one times keeps every mesh small enough for the editor to
+    cook and lets each floor cull on its own, which a single 43,000 triangle
+    interior could not do.
+    """
+    rows = []
+    for (arch, width, depth, height, storeys, upper, _venues) in CITY_INTERIORS:
+        if storeys <= 1:
+            continue
+        seed = 7700 + len(arch) * 17
+        rows.append(("SM_Floor_%s" % arch, P_INTERIOR,
+                     (lambda w=width, d=depth, h=height, u=upper, sd=seed:
+                      interior.fit_out(w, d, 1, sd, base_z=0.0, ground_kind=u,
+                                       wall_t=34.0, storey_h=h, ceiling=False,
+                                       stair_up=True, floor_hole=True)[0]),
+                     "prop", "complex"))
+        rows.append(("SM_FloorGlow_%s" % arch, P_INTERIOR,
+                     (lambda w=width, d=depth, h=height, u=upper, sd=seed:
+                      interior.fit_out(w, d, 1, sd, base_z=0.0, ground_kind=u,
+                                       wall_t=34.0, storey_h=h, ceiling=False,
+                                       stair_up=True, floor_hole=True)[1]),
+                     "emissive", "none"))
     return rows
 
 
@@ -135,9 +174,50 @@ EXTRA_INTERIORS = [
     ("Barn_A", 1150.0, 820.0, 430.0, 28.0, 22.0, "barn"),
     ("Warehouse_A", 1000.0, 700.0, 420.0, 32.0, 22.0, "store"),
     ("Shed_A", 380.0, 320.0, 250.0, 0.0, 16.0, "workshop"),
-    ("Church_A", 700.0, 1350.0, 520.0, 40.0, 40.0, "chapel"),
+    ("Church_A", 900.0, 1650.0, 560.0, 40.0, 40.0, "chapel"),
     ("CityHall_A", 3200.0, 1900.0, 460.0, 130.0, 34.0, "civic_hall"),
 ]
+
+
+# The town's high street. Fairhaven had a market, a tavern and a church and
+# nothing else you could buy anything in; these are the dozen trades a village
+# actually needs, each one a house shell with a shop inside it and a signpost at
+# the gate. Two shells so the row is not twelve identical buildings.
+TOWN_SERVICES = [
+    ("grocer", "SM_House_C", 900.0, 560.0),
+    ("baker", "SM_House_A", 760.0, 580.0),
+    ("butcher_hardware", "SM_House_C", 900.0, 560.0),
+    ("clothier", "SM_House_A", 760.0, 580.0),
+    ("barber", "SM_House_C", 900.0, 560.0),
+    ("doctor", "SM_House_A", 760.0, 580.0),
+    ("dentist", "SM_House_C", 900.0, 560.0),
+    ("optician", "SM_House_A", 760.0, 580.0),
+    ("lawyer", "SM_House_C", 900.0, 560.0),
+    ("bookshop", "SM_House_A", 760.0, 580.0),
+    ("post", "SM_House_C", 900.0, 560.0),
+    ("bank", "SM_House_A", 760.0, 580.0),
+]
+
+# butcher_hardware is the hardware recipe under a name that reads as a village
+# ironmonger; the recipe table has no butcher and a village ironmonger sells
+# much the same shelf of things.
+TOWN_SERVICE_KIND = {"butcher_hardware": "hardware"}
+
+
+def _town_service_entries():
+    rows = []
+    for index, (venue, shell, width, depth) in enumerate(TOWN_SERVICES):
+        seed = 6400 + index * 71
+        kind = TOWN_SERVICE_KIND.get(venue, venue)
+        rows.append(("SM_Int_Shop_%s" % venue, P_INTERIOR,
+                     (lambda w=width, d=depth, k=kind, sd=seed:
+                      interior.fit_out(w, d, 1, sd, ground_kind=k)[0]),
+                     "prop", "complex"))
+        rows.append(("SM_Glow_Shop_%s" % venue, P_INTERIOR,
+                     (lambda w=width, d=depth, k=kind, sd=seed:
+                      interior.fit_out(w, d, 1, sd, ground_kind=k)[1]),
+                     "emissive", "none"))
+    return rows
 
 
 def _extra_interior_entries():
@@ -252,6 +332,9 @@ def _catalog():
         ("SM_Lighthouse_Glow", P_TOWN, lambda: town.lighthouse_glow(257), "emissive", "none"),
         ("SM_Windmill_A", P_TOWN, lambda: town.windmill(263), "prop", "complex"),
         ("SM_Shed_A", P_TOWN, lambda: town.shed(271), "prop", "complex"),
+        ("SM_Privy_A", P_TOWN, lambda: town.privy(277), "prop", "complex"),
+        ("SM_PublicWC_A", P_CITY, lambda: town.privy(281, 230.0, 210.0, stone=True),
+         "prop", "complex"),
         ("SM_MarketStall_A", P_TOWN, lambda: town.market_stall(277), "prop", "complex"),
         ("SM_Door_A", P_TOWN, lambda: town.door_leaf(279, width=116.0, height=210.0), "prop", "complex"),
 
@@ -348,7 +431,7 @@ def _catalog():
         ("SM_Horse_B", P_FAUNA, lambda: fauna.horse(691), "prop", "complex"),
         ("SM_Seagull_A", P_FAUNA, lambda: fauna.seagull(701), "prop", "complex"),
         ("SM_Rabbit_A", P_FAUNA, lambda: fauna.rabbit(709), "prop", "complex"),
-    ] + _glazed_entries() + _interior_entries() + _city_interior_entries() + _extra_interior_entries()
+    ] + _glazed_entries() + _interior_entries() + _city_interior_entries() + _extra_interior_entries() + _town_service_entries() + _city_floor_entries()
 
 
 def build_all(prop_material, emissive_material, foliage_material, glass_material,

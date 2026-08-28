@@ -120,7 +120,7 @@ class _Enums(object):
         self.anchor = {name: _enum("UEGT2Anchor", name.upper()) for name in (
             "Home", "Work", "Market", "Square", "Church", "Dock", "Field",
             "Tavern", "Park", "Plaza", "Shore", "Water", "Coop", "Pasture",
-            "Shelter", "Wander")}
+            "Shelter", "Wander", "Food", "Washroom", "Seat")}
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +155,14 @@ def _pick_near(points, x, y, seed, pool=4, fallback=None):
     ranked = sorted(points, key=lambda p: (p[0] - x) ** 2 + (p[1] - y) ** 2)
     ranked = ranked[:max(1, pool)]
     return ranked[abs(seed) % len(ranked)]
+
+
+# Trades an inhabitant can eat at, and trades with a washroom in them. Both are
+# read off the actor labels the town and city stages write, which is why the
+# labels carry the trade at all.
+FOOD_TRADES = frozenset((
+    "grocer", "baker", "restaurant", "cafe", "bar", "butcher_hardware"))
+WASH_TRADES = frozenset(("gym", "apartment_lobby", "office_lobby"))
 
 
 def _front_of(location, yaw, depth, clearance):
@@ -273,6 +281,14 @@ class _Survey(object):
         self.town_farms = []          # barns and sheds out in the fields
         self.town_church = None
         self.town_shelters = []
+        # The three the needs use. Every one of them is a place an inhabitant
+        # can walk to and have the need answered: somewhere to eat, somewhere
+        # to sit, somewhere to wash. They are lists rather than single points
+        # because a need answered in exactly one place is a need that sends the
+        # whole town to the same doorstep.
+        self.town_food = []
+        self.town_washrooms = []
+        self.town_seats = []
         # Everywhere it is reasonable to stand "in the square": the benches, the
         # stall fronts and the well. A single square anchor put seventy-five
         # people on one coordinate.
@@ -297,6 +313,9 @@ class _Survey(object):
         self.city_shelters = []
         self.city_docks = []
         self.city_plaza = None
+        self.city_food = []
+        self.city_washrooms = []
+        self.city_seats = []
 
         cx, cy = world_data.town["center"]
         self.town_square = (cx, cy, world_data.height_uu(cx, cy))
@@ -347,7 +366,22 @@ class _Survey(object):
         name = self._mesh_name(actor)
         point = (location.x, location.y, location.z)
 
-        if label.startswith("Town House "):
+        if label.startswith("Town Privy "):
+            self.town_washrooms.append(point)
+        elif label.startswith("City WC "):
+            self.city_washrooms.append(point)
+        elif label.startswith("Town Shop "):
+            trade = label.split()[2] if len(label.split()) > 2 else ""
+            if trade in FOOD_TRADES:
+                self.town_food.append(_front_of(location, yaw, 560.0, 190.0))
+        elif label.startswith("City Interior "):
+            parts = label.split()
+            trade = parts[3] if len(parts) > 3 else ""
+            if trade in FOOD_TRADES:
+                self.city_food.append(point)
+            if trade in WASH_TRADES:
+                self.city_washrooms.append(point)
+        elif label.startswith("Town House "):
             depth = HOUSE_DEPTH.get(name, 560.0)
             self.town_homes.append(_front_of(location, yaw, depth, 190.0))
         elif label.startswith("Town Farm "):
@@ -395,7 +429,11 @@ class _Survey(object):
 
     def warn_gaps(self):
         """Shout about anchor sets that came out empty, and labels nobody claimed."""
-        for name, values in (("town homes", self.town_homes),
+        for name, values in (("town food", self.town_food),
+                             ("town washrooms", self.town_washrooms),
+                             ("city food", self.city_food),
+                             ("city washrooms", self.city_washrooms),
+                             ("town homes", self.town_homes),
                              ("town stalls", self.town_stalls),
                              ("square spots", self.town_square_spots),
                              ("town docks", self.town_docks),
@@ -502,6 +540,13 @@ class _Populator(object):
             (a["Plaza"], _pick_near(s.town_square_spots, hx, hy, seed + 7, 16, square)),
             (a["Shore"], shore),
             (a["Shelter"], _pick_near(s.town_shelters, hx, hy, seed, 3, home)),
+            # The needs. Home is the fallback for all three because a house has
+            # a chair, a kitchen and a washroom in it - so an inhabitant who
+            # cannot find a public one goes home, which is what a person does.
+            (a["Food"], _pick_near(s.town_food + s.town_stalls, hx, hy, seed, 6, home)),
+            (a["Washroom"], _pick_near(s.town_washrooms, hx, hy, seed, 4, home)),
+            (a["Seat"], _pick_near(s.town_benches or s.town_square_spots,
+                                   hx, hy, seed, 8, home)),
         ]
 
     def city_anchors(self, home, work, seed=0):
@@ -522,6 +567,10 @@ class _Populator(object):
             (a["Plaza"], _pick_near(s.city_plaza_spots, hx, hy, seed + 7, 14, plaza)),
             (a["Shore"], _pick_near(s.city_docks, hx, hy, seed, 8, plaza)),
             (a["Shelter"], _pick_near(s.city_shelters, hx, hy, seed, 3, home)),
+            (a["Food"], _pick_near(s.city_food or s.city_shops, hx, hy, seed, 6, home)),
+            (a["Washroom"], _pick_near(s.city_washrooms, hx, hy, seed, 4, home)),
+            (a["Seat"], _pick_near(s.city_parks or s.city_plaza_spots,
+                                   hx, hy, seed, 8, home)),
         ]
 
     def animal_anchors(self, home, extras):

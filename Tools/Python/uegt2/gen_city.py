@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import math
 
+from . import gen_interior as interior
 from . import palette as pal
 from .meshkit import MeshBuilder, _SmallRng, add
 
@@ -39,9 +40,49 @@ def _banded_shaft(mesh, centre, width, depth, floors, body, band,
         mesh.box((cx, cy, z), (width + band_inset, depth + band_inset, 26.0), band)
 
 
-def _parapet(mesh, centre, width, depth, colour, height=90.0, thickness=40.0):
-    """Roof edge wall, so a flat roof does not read as a cut-off box."""
+def _roof_hole(width, depth, floor_h=FLOOR_H):
+    """Where the stair comes through the roof.
+
+    Read from gen_interior rather than guessed: the flight is placed by
+    stair_column from the inner dimensions alone, so the same call here gives
+    the same rectangle the floors below punched in themselves.
+    """
+    stair, _keep = interior.stair_column(width * 0.5 - CITY_WALL_T,
+                                         depth * 0.5 - CITY_WALL_T, floor_h, 1)
+    return stair.hole
+
+
+def _roof_stair_head(mesh, hole, z, height=250.0):
+    """The hut on the roof that the stair arrives inside."""
+    x0, x1, y0, y1 = hole
+    cx, cy = (x0 + x1) * 0.5, (y0 + y1) * 0.5
+    w, d, t = x1 - x0 + 44.0, y1 - y0 + 44.0, 18.0
+    mesh.box((cx, cy + d * 0.5, z + height * 0.5), (w, t, height), pal.CONCRETE_PALE)
+    for sx in (-1.0, 1.0):
+        mesh.box((cx + sx * w * 0.5, cy, z + height * 0.5), (t, d, height),
+                 pal.CONCRETE_PALE)
+    mesh.box((cx, cy - d * 0.5, z + height - 30.0), (w, t, 60.0), pal.CONCRETE_PALE)
+    mesh.box((cx, cy, z + height + 10.0), (w + 30.0, d + 30.0, 20.0),
+             pal.CONCRETE_GREY)
+
+
+def _parapet(mesh, centre, width, depth, colour, height=90.0, thickness=40.0,
+             deck=False):
+    """Roof edge wall, so a flat roof does not read as a cut-off box.
+
+    ``deck`` also lays the roof itself, which matters now that the stair comes
+    up through it: without a slab you climb the last flight and fall down the
+    inside of the building.
+    """
     cx, cy, cz = centre
+    if deck:
+        # The stair comes up through this, so it is laid as four boards round a
+        # hole rather than one slab. Without the hole you climb the last flight
+        # into the underside of your own roof.
+        hole = _roof_hole(width, depth)
+        interior.floor_slab(mesh, width * 0.5, depth * 0.5, cz - 18.0,
+                            pal.ROOF_TAR, hole=hole, thickness=18.0)
+        _roof_stair_head(mesh, hole, cz)
     z = cz + height * 0.5
     mesh.box((cx, cy - depth * 0.5, z), (width, thickness, height), colour)
     mesh.box((cx, cy + depth * 0.5, z), (width, thickness, height), colour)
@@ -86,6 +127,47 @@ CITY_DOOR_W = 170.0       # a shop door is wider than a front door
 CITY_DOOR_H = 270.0
 CITY_FOUNDATION = 300.0   # buried skirt, as deep as the worst city slope
 GROUND_CLEAR = 12.0       # floor above the highest ground under the footprint
+
+
+def _hollow_shaft(mesh, centre, width, depth, floors, body, band, glass=None,
+                  floor_h=FLOOR_H, band_inset=140.0, sill=100.0):
+    """A storeyed shaft you can stand inside.
+
+    The solid box this replaces was cheap and read perfectly well from the
+    street, which is exactly why the city was a set of painted boxes: there was
+    nowhere to be inside one. Now each floor is four wall panels with a window
+    band punched through, so the fit-out has somewhere to put a floor and the
+    stair has somewhere to come up.
+
+    The panes go to ``glass``; the floor bands stay on the outside as before,
+    because they are what makes a shaft read as storeyed from a mile away.
+    """
+    cx, cy, cz = centre
+    half_w, half_d = width * 0.5, depth * 0.5
+    t = CITY_WALL_T
+    win_h = floor_h * 0.40
+    long_w = width * 0.66
+    end_w = (depth - t * 2.0) * 0.6
+    target = glass if glass is not None else mesh
+
+    for i in range(floors):
+        z = cz + i * floor_h
+        long_open = [(0.0, long_w, sill, win_h)]
+        end_open = [(0.0, end_w, sill, win_h)]
+        for sy in (-1.0, 1.0):
+            mesh.wall((cx, cy + sy * (half_d - t * 0.5), z), "x", width, floor_h,
+                      t, body, openings=long_open)
+            target.box((cx, cy + sy * (half_d - t * 0.5), z + sill + win_h * 0.5),
+                       (long_w, 10.0, win_h), pal.GLASS_BLUE)
+        for sx in (-1.0, 1.0):
+            mesh.wall((cx + sx * (half_w - t * 0.5), cy, z), "y",
+                      depth - t * 2.0, floor_h, t, body, openings=end_open)
+            target.box((cx + sx * (half_w - t * 0.5), cy, z + sill + win_h * 0.5),
+                       (10.0, end_w, win_h), pal.GLASS_BLUE)
+
+    for i in range(1, floors):
+        mesh.box((cx, cy, cz + i * floor_h),
+                 (width + band_inset, depth + band_inset, 26.0), band)
 
 
 def _pane(mesh, glass, centre, size, colour):
@@ -196,25 +278,27 @@ def tower(seed=1, width=1800.0, depth=1600.0, floors=20, setback=True,
 
     # Podium: wider than the shaft, which is what stops a tower looking like a
     # rod stuck in the ground.
-    podium_h = 380.0
+    podium_h = FLOOR_H
     _shopfront(mesh, width + 260.0, depth + 260.0, podium_h, pal.CONCRETE_GREY,
                pal.CONCRETE_DARK, pal.GLASS_DARK, glass=glass)
 
     lower_floors = floors if not setback else int(floors * 0.68)
-    _banded_shaft(mesh, (0.0, 0.0, podium_h), width, depth, lower_floors,
-                  glazing, band)
+    _hollow_shaft(mesh, (0.0, 0.0, podium_h), width, depth, lower_floors,
+                  glazing, band, glass=glass)
     top_z = podium_h + lower_floors * FLOOR_H
 
     if setback:
         upper_floors = max(floors - lower_floors, 2)
         uw, ud = width * 0.68, depth * 0.68
-        _parapet(mesh, (0.0, 0.0, top_z), width, depth, band, height=70.0)
-        _banded_shaft(mesh, (0.0, 0.0, top_z), uw, ud, upper_floors, glazing, band)
+        _parapet(mesh, (0.0, 0.0, top_z), width, depth, band, height=70.0,
+                 deck=True)
+        _hollow_shaft(mesh, (0.0, 0.0, top_z), uw, ud, upper_floors, glazing,
+                      band, glass=glass)
         top_z = top_z + upper_floors * FLOOR_H
-        _parapet(mesh, (0.0, 0.0, top_z), uw, ud, band)
+        _parapet(mesh, (0.0, 0.0, top_z), uw, ud, band, deck=True)
         _rooftop_clutter(mesh, (0.0, 0.0, top_z), uw, ud, rng)
     else:
-        _parapet(mesh, (0.0, 0.0, top_z), width, depth, band)
+        _parapet(mesh, (0.0, 0.0, top_z), width, depth, band, deck=True)
         _rooftop_clutter(mesh, (0.0, 0.0, top_z), width, depth, rng)
 
     return mesh
@@ -227,12 +311,13 @@ def office_block(seed=1, width=2100.0, depth=1700.0, floors=9, glass=None):
     glazing = _pick(rng, [pal.GLASS_BLUE, pal.GLASS_TEAL])
 
     mesh = MeshBuilder()
-    base_h = 380.0
+    base_h = FLOOR_H
     _shopfront(mesh, width + 120.0, depth + 120.0, base_h, pal.CONCRETE_PALE,
                pal.CONCRETE_DARK, pal.GLASS_DARK, glass=glass)
 
     body_h = floors * FLOOR_H
-    mesh.box((0.0, 0.0, base_h + body_h * 0.5), (width, depth, body_h), facade)
+    _hollow_shaft(mesh, (0.0, 0.0, base_h), width, depth, floors, facade,
+                  pal.CONCRETE_PALE, glass=glass, band_inset=60.0)
 
     # Continuous glazing bands on the long faces, recessed columns between.
     for i in range(floors):
@@ -265,7 +350,8 @@ def apartment(seed=1, width=1700.0, depth=1500.0, floors=6, glass=None):
 
     floors = max(1, floors - 1)
     body_h = floors * FLOOR_H
-    mesh.box((0.0, 0.0, plinth + body_h * 0.5), (width, depth, body_h), facade)
+    _hollow_shaft(mesh, (0.0, 0.0, plinth), width, depth, floors, facade,
+                  pal.CONCRETE_PALE, glass=glass, band_inset=40.0)
 
     for i in range(floors):
         z = plinth + i * FLOOR_H + FLOOR_H * 0.5
@@ -284,8 +370,8 @@ def apartment(seed=1, width=1700.0, depth=1500.0, floors=6, glass=None):
                   (30.0, depth * 0.5, FLOOR_H * 0.34), pal.WINDOW_GLASS)
 
     top_z = plinth + body_h
-    _parapet(mesh, (0.0, 0.0, top_z), width, depth, facade, height=70.0)
-    mesh.box((0.0, 0.0, top_z + 20.0), (width + 40.0, depth + 40.0, 40.0), pal.ROOF_TAR)
+    _parapet(mesh, (0.0, 0.0, top_z), width, depth, facade, height=70.0,
+             deck=True)
     return mesh
 
 
@@ -297,10 +383,11 @@ def shophouse(seed=1, width=1050.0, depth=1250.0, floors=3, glass=None):
     awning = _pick(rng, [pal.AWNING_RED, pal.AWNING_GREEN, pal.CLOTH_BLUE, pal.CLOTH_YELLOW])
 
     mesh = MeshBuilder()
-    shop_h = 330.0
+    shop_h = FLOOR_H
     body_h = (floors - 1) * FLOOR_H
 
-    mesh.box((0.0, 0.0, shop_h + body_h * 0.5), (width, depth, body_h), facade)
+    _hollow_shaft(mesh, (0.0, 0.0, shop_h), width, depth, floors - 1, facade,
+                  pal.WOOD_PALE, glass=glass, band_inset=40.0)
     _shopfront(mesh, width, depth, shop_h, facade, pal.WOOD_DARK,
                pal.GLASS_DARK, glass=glass)
 
@@ -317,7 +404,8 @@ def shophouse(seed=1, width=1050.0, depth=1250.0, floors=3, glass=None):
                   (width * 0.68, 30.0, FLOOR_H * 0.4), pal.WINDOW_GLASS)
 
     top_z = shop_h + body_h
-    mesh.box((0.0, 0.0, top_z + 45.0), (width + 110.0, depth + 110.0, 90.0), pal.CONCRETE_PALE)
+    _parapet(mesh, (0.0, 0.0, top_z), width, depth, pal.CONCRETE_PALE,
+             height=90.0, deck=True)
     return mesh
 
 
@@ -361,7 +449,8 @@ def city_hall(seed=1, glass=None):
                (width * 0.78, 520.0, 260.0), pal.TRIM_WHITE, yaw=90.0)
 
     top_z = steps_h + body_h
-    _parapet(mesh, (0.0, 0.0, top_z), width, depth, stone, height=110.0)
+    _parapet(mesh, (0.0, 0.0, top_z), width, depth, stone, height=110.0,
+             deck=True)
 
     # Drum and dome.
     mesh.cylinder((0.0, 0.0, top_z), 620.0, 420.0, stone, sides=10)

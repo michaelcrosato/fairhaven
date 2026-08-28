@@ -65,12 +65,14 @@ RING_CHOICES = {
 def _venue_table():
     from . import meshbuild
     table = {}
-    for (arch, width, depth, height, venues) in meshbuild.CITY_INTERIORS:
+    for (arch, width, depth, height, storeys, _upper, venues) in meshbuild.CITY_INTERIORS:
         table["SM_" + arch] = (width, depth, height, list(venues))
+        _STOREYS["SM_" + arch] = storeys
     return table
 
 
 _VENUES = None
+_STOREYS = {}
 
 # What the sign outside says. The player has no way to know a room full of
 # filing cabinets is a solicitor until something says so.
@@ -122,7 +124,8 @@ def _place_interior(placer, actor, mesh_name, index, seeds):
     yaw = actor.get_actor_rotation().yaw
     placed = 0
     if placer.place_at("SM_Int_%s_%s" % (arch, venue), location, yaw,
-                       "Interior %d" % index, cull=town_mod.INTERIOR_CULL):
+                       "Interior %d %s" % (index, venue),
+                       cull=town_mod.INTERIOR_CULL):
         placed += 1
     if placer.place_at("SM_Glow_%s_%s" % (arch, venue), location, yaw,
                        "InteriorGlow %d" % index, cull=town_mod.GLOW_CULL,
@@ -131,6 +134,22 @@ def _place_interior(placer, actor, mesh_name, index, seeds):
     placed += town_mod.place_room_lights(
         placer, location, yaw, width, depth, 1, seeds[(arch, venue)],
         "InteriorLight %d" % index, base_z=0.0, wall_t=34.0, storey_h=height)
+
+    # Every floor above the ground one, stacked. They share a mesh, so a tower
+    # costs twenty-one actors and not twenty-one meshes - and each floor culls
+    # on its own, which matters when only the one you are standing on is worth
+    # drawing.
+    storeys = _STOREYS.get(mesh_name, 1)
+    for storey in range(1, storeys):
+        z = unreal.Vector(location.x, location.y, location.z + storey * height)
+        if placer.place_at("SM_Floor_%s" % arch, z, yaw,
+                           "Floor %d.%d" % (index, storey),
+                           cull=town_mod.INTERIOR_CULL):
+            placed += 1
+        if placer.place_at("SM_FloorGlow_%s" % arch, z, yaw,
+                           "FloorGlow %d.%d" % (index, storey),
+                           cull=town_mod.GLOW_CULL, shadow=False, collision=False):
+            placed += 1
     return placed
 
 
@@ -186,7 +205,7 @@ def _reset_venues():
     from . import meshbuild
     _VENUES = _venue_table()
     _SEEDS.clear()
-    for (arch, _w, _d, _h, venues) in meshbuild.CITY_INTERIORS:
+    for (arch, _w, _d, _h, _n, _u, venues) in meshbuild.CITY_INTERIORS:
         for i, venue in enumerate(venues):
             _SEEDS[(arch, venue)] = 7100 + i * 97 + len(arch) * 13
     _ARCH_TURN.clear()
@@ -239,6 +258,34 @@ def _fill_block(placer, rng, block, index):
                 _COUNTER[0] += 1
                 placed += 1
 
+    return placed
+
+
+def _place_conveniences(placer, rng, blocks, parks, plaza=None):
+    """A public convenience in every park and a pair on the civic square.
+
+    The city's inhabitants have the same four needs the town's do and a good
+    deal further to walk, so the answer has to be spread across the grid rather
+    than parked on the plaza.
+    """
+    placed = 0
+    for index in sorted(parks):
+        block = blocks[index]
+        for (lu, lv) in ((block.half_u * 0.55, block.half_v * 0.55),
+                         (-block.half_u * 0.55, -block.half_v * 0.55)):
+            wx, wy = block.to_world(lu, lv)
+            if placer.place("SM_PublicWC_A", wx, wy, rng.uniform(0.0, 360.0),
+                            "WC %d" % placed, radius=260.0, z_offset=-8.0):
+                placed += 1
+
+    if plaza:
+        for (dx, dy) in ((900.0, 700.0), (-950.0, -750.0)):
+            if placer.place("SM_PublicWC_A", plaza[0] + dx, plaza[1] + dy,
+                            rng.uniform(0.0, 360.0), "WC %d" % placed,
+                            radius=260.0, z_offset=-8.0):
+                placed += 1
+
+    ctx.log("city: %d public conveniences" % placed)
     return placed
 
 
@@ -475,6 +522,9 @@ def build(world, world_data, meshes=None):
     _place_civic(placer, blocks[hall_index], blocks[square_index])
     _place_blocks(placer, rng, blocks,
                   park_indices | {hall_index, square_index})
+    # Before the trees, or the trees take the ground the conveniences need.
+    _place_conveniences(placer, rng, blocks, park_indices,
+                        blocks[square_index].center)
     _place_parks(placer, rng, blocks, park_indices)
     _place_street_furniture(placer, rng, streets)
     _place_corners(placer, rng, blocks)

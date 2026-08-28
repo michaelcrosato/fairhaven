@@ -94,6 +94,8 @@ enum class EUEGT2Activity : uint8
 	Forage,
 	Patrol,
 	Scavenge,
+	Eat,          // hungry off-schedule: to the nearest food and eat there
+	Washroom,     // the bathroom need: to the nearest one, and use it
 	Idle,         // the fallback; also what a dormant NPC reports
 	Count UMETA(Hidden)
 };
@@ -121,6 +123,12 @@ enum class EUEGT2Anchor : uint8
 	Pasture,
 	Shelter,    // the nearest thing with a roof that is not home
 	Wander,     // no fixed point: roam near the current one
+	// The three the needs use. They are last on purpose: the Python side maps
+	// these names to indices by position, so anything appended is safe and
+	// anything inserted renumbers the world.
+	Food,       // a stall, a tavern, a bakery, a grocer, a restaurant
+	Washroom,   // a bathhouse, a privy, a public convenience
+	Seat,       // a bench: somewhere to sit down and get your breath back
 	Count UMETA(Hidden)
 };
 
@@ -191,9 +199,17 @@ struct UEGT2_API FUEGT2NPCNeeds
 {
 	GENERATED_BODY()
 
+	/** 1 is rested, 0 is asleep on their feet. Sitting or sleeping restores it. */
 	UPROPERTY(BlueprintReadOnly, Category = "UEGT2|NPC") float Energy = 1.0f;
+	/** 1 is full, 0 is starving. Eating restores it. */
 	UPROPERTY(BlueprintReadOnly, Category = "UEGT2|NPC") float Fed = 1.0f;
+	/** 1 is comfortable, 0 is desperate. A washroom restores it. */
+	UPROPERTY(BlueprintReadOnly, Category = "UEGT2|NPC") float Relief = 1.0f;
+	/** 1 is content, 0 is lonely. Being with someone restores it. */
 	UPROPERTY(BlueprintReadOnly, Category = "UEGT2|NPC") float Company = 0.6f;
+
+	/** The need most in want of attention, and how badly, in 0..1. */
+	float Worst(EUEGT2Activity& OutActivity, EUEGT2Anchor& OutAnchor) const;
 
 	/** Advance by InHours of world time given what they are doing. */
 	void Advance(float InHours, EUEGT2Activity Activity);

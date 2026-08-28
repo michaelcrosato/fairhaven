@@ -87,6 +87,25 @@ What to judge:
 Dev Mode -> Teleport has four buttons that put you straight inside one:
 HouseInterior, HouseUpstairs, CottageInterior and HouseHearth.
 
+**Climb one.** Every floor of every Newhaven building is walkable, and the
+stairs run from the street to the roof. Go into a tower, keep going up, and come
+out on top of it. What to judge: is the climb worth making, does the stair ever
+put you somewhere you cannot get out of, and is the view from the roof worth the
+walk?
+
+**Fairhaven's high street.** Twelve trades, each with a signpost outside saying
+what it is: a grocery, a bakehouse, an ironmonger, a draper, a barber, a
+physician, a dentist, a spectacle maker, a solicitor, a bookseller, a post
+office and a bank. The church is bigger than it was and has a door you can open.
+
+**What people need.** Every inhabitant now carries four needs - energy, hunger,
+the bathroom and company - and acts on whichever is worst. Dev Mode -> Life ->
+Show Plans reports the reason for what they are doing; look for "Need". Follow
+someone for a few minutes of world time and you should see them break off to
+eat, to sit down, to find a washroom or to find someone to talk to. What to
+judge: does it read as people with lives, or as people twitching between errands?
+Are there enough places to do each of those things near where they are?
+
 **Newhaven's ground floors.** Every building in the city opens, and every one
 of them is a business. There are twenty-seven trades in the city and at least
 one of each: a grocer, a baker, a pharmacy, a hardware shop, a clothier, a

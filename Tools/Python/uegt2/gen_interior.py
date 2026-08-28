@@ -23,6 +23,8 @@ Conventions, and they matter because everything here is composed blind:
 """
 from __future__ import annotations
 
+import math
+
 from . import gen_town
 from . import palette as pal
 from .meshkit import MeshBuilder, _SmallRng, rotate_z
@@ -647,7 +649,8 @@ class Partition(object):
         self.door_offset = door_offset
 
 
-def plan(width, depth, storeys, seed, door_x=0.0, wall_t=WALL_T):
+def plan(width, depth, storeys, seed, door_x=0.0, wall_t=WALL_T,
+         stair_keep=None):
     """Split a building footprint into rooms, one set per storey.
 
     A binary split, longest axis first, recursing while a room is bigger than
@@ -667,12 +670,13 @@ def plan(width, depth, storeys, seed, door_x=0.0, wall_t=WALL_T):
     partitions = []
     for storey in range(storeys):
         cells = _split(0.0, 0.0, inner_hx, inner_hy, storey, rng, partitions, 0,
-                       door_x if storey == 0 else None)
+                       door_x if storey == 0 else None, stair_keep)
         rooms.extend(cells)
     return rooms, partitions
 
 
-def _split(x, y, hx, hy, storey, rng, partitions, depth, door_x=None):
+def _split(x, y, hx, hy, storey, rng, partitions, depth, door_x=None,
+           stair_keep=None):
     area = (hx * 2.0) * (hy * 2.0)
     if depth >= 2 or area <= MAX_ROOM_AREA:
         return [Room(x, y, hx, hy, storey)]
@@ -710,25 +714,47 @@ def _split(x, y, hx, hy, storey, rng, partitions, depth, door_x=None):
             else:
                 return [Room(x, y, hx, hy, storey)]
 
+    # Nor may a partition be built through the stairwell. The flight is in the
+    # same place on every floor so that the flights stack into a climbable
+    # column, which means it is also in the same place as whatever the layout
+    # felt like doing there.
+    if stair_keep is not None:
+        lo, hi = (stair_keep[0], stair_keep[1]) if along_x else (stair_keep[2], stair_keep[3])
+        origin = x if along_x else y
+        if lo - PARTITION_T < origin + cut < hi + PARTITION_T:
+            for edge in (hi + PARTITION_T, lo - PARTITION_T):
+                candidate = edge - origin
+                low = candidate + span * 0.5 - PARTITION_T * 0.5
+                high = span * 0.5 - candidate - PARTITION_T * 0.5
+                if low >= MIN_ROOM and high >= MIN_ROOM:
+                    cut, low_span, high_span = candidate, low, high
+                    break
+            else:
+                return [Room(x, y, hx, hy, storey)]
+
     cross = (hy if along_x else hx) * 2.0
     door_offset = (rng.next() - 0.5) * max(cross - DOOR_W - 80.0, 0.0)
 
     if along_x:
         partitions.append(Partition(x + cut, y, "y", hy * 2.0, storey, door_offset))
         low = _split(x + cut - PARTITION_T * 0.5 - low_span * 0.5, y,
-                     low_span * 0.5, hy, storey, rng, partitions, depth + 1, door_x)
+                     low_span * 0.5, hy, storey, rng, partitions, depth + 1, door_x,
+                     stair_keep)
         high = _split(x + cut + PARTITION_T * 0.5 + high_span * 0.5, y,
-                      high_span * 0.5, hy, storey, rng, partitions, depth + 1, door_x)
+                      high_span * 0.5, hy, storey, rng, partitions, depth + 1, door_x,
+                      stair_keep)
     else:
         partitions.append(Partition(x, y + cut, "x", hx * 2.0, storey, door_offset))
         low = _split(x, y + cut - PARTITION_T * 0.5 - low_span * 0.5,
-                     hx, low_span * 0.5, storey, rng, partitions, depth + 1, door_x)
+                     hx, low_span * 0.5, storey, rng, partitions, depth + 1, door_x,
+                     stair_keep)
         high = _split(x, y + cut + PARTITION_T * 0.5 + high_span * 0.5,
-                      hx, high_span * 0.5, storey, rng, partitions, depth + 1, door_x)
+                      hx, high_span * 0.5, storey, rng, partitions, depth + 1, door_x,
+                      stair_keep)
     return low + high
 
 
-def assign_kinds(rooms, storeys, door_x=0.0):
+def assign_kinds(rooms, storeys, door_x=0.0, upper_kind=None):
     """Name each room, so the furniture kit knows what to put in it.
 
     The room the front door opens into is the living room - that is the one the
@@ -747,7 +773,10 @@ def assign_kinds(rooms, storeys, door_x=0.0):
         upper = sorted([r for r in rooms if r.storey == storey],
                        key=lambda r: -r.area)
         for index, room in enumerate(upper):
-            room.kind = "bedroom" if index < 2 else "store"
+            if upper_kind:
+                room.kind = upper_kind
+            else:
+                room.kind = "bedroom" if index < 2 else "store"
     return rooms
 
 
@@ -832,6 +861,16 @@ VENUE_RECIPES = {
                     ("firewood", 2), ("shelf", 1), ("tool_rack", 1)],
 }
 
+# The floors above the ground floor. A tower has twenty-one of them and only one
+# of them is ever on screen, so they are furnished to say what the floor is for
+# and no further: dressing them like the ground floor cost 87,000 triangles a
+# tower and looked no different from the one landing you can see.
+SPARSE_RECIPES = {
+    "office":  [("desk", 2), ("chair", 2), ("filing_cabinet", 1)],
+    "bedroom": [("bed", 1), ("wardrobe", 1), ("bedside", 1)],
+    "store":   [("crate_small", 2), ("barrel_small", 1)],
+}
+
 # What sits behind the shop floor. A restaurant needs a kitchen; a solicitor
 # needs another office; everything else needs a stock room.
 BACK_OF_HOUSE = {
@@ -908,7 +947,8 @@ def _wall_pose(room, axis, sign, offset, back):
     return room.x + offset, room.y + room.hy - back, 180.0
 
 
-def furnish(mesh, room, seed, blocked=(), z=0.0, kind=None, glow=None):
+def furnish(mesh, room, seed, blocked=(), z=0.0, kind=None, glow=None,
+            sparse=False):
     """Fill one room from its recipe, keeping clear of doorways and stairs.
 
     ``blocked`` is a list of (x, y, radius) circles in building-local
@@ -920,7 +960,8 @@ def furnish(mesh, room, seed, blocked=(), z=0.0, kind=None, glow=None):
     hearth. It has to be separate because a static mesh in this project carries
     exactly one material.
     """
-    recipe = RECIPES.get(kind or room.kind, RECIPES["store"])
+    name = kind or room.kind
+    recipe = (SPARSE_RECIPES.get(name) if sparse else None) or         RECIPES.get(name, RECIPES["store"])
     rng = _SmallRng(seed * 131 + 11)
     slots = list(_wall_slots(room, seed))
     used = []
@@ -997,6 +1038,25 @@ def _sin(degrees):
 # ---------------------------------------------------------------------------
 # Assembly
 # ---------------------------------------------------------------------------
+def stair_head(mesh, stair, z, height=250.0):
+    """The little hut on a flat roof that the stair comes up inside."""
+    x0, x1, y0, y1 = stair.hole
+    cx, cy = (x0 + x1) * 0.5, (y0 + y1) * 0.5
+    w = x1 - x0 + 44.0
+    d = y1 - y0 + 44.0
+    thick = 18.0
+    # Three walls and a lid; the fourth side is the way out onto the roof.
+    mesh.box((cx, cy + d * 0.5, z + height * 0.5), (w, thick, height),
+             pal.CONCRETE_PALE)
+    for sx in (-1.0, 1.0):
+        mesh.box((cx + sx * w * 0.5, cy, z + height * 0.5), (thick, d, height),
+                 pal.CONCRETE_PALE)
+    mesh.box((cx, cy - d * 0.5, z + height - 30.0), (w, thick, 60.0),
+             pal.CONCRETE_PALE)
+    mesh.box((cx, cy, z + height + 10.0), (w + 30.0, d + 30.0, 20.0),
+             pal.CONCRETE_GREY)
+
+
 def floor_slab(mesh, half_x, half_y, z, colour, hole=None, thickness=FLOOR_T):
     """A floor at height z, optionally with a rectangular stairwell hole in it.
 
@@ -1055,9 +1115,53 @@ def lamp_points(width, depth, storeys, seed, base_z=gen_town.PLINTH_H,
             for room in rooms]
 
 
+class _Stair(object):
+    """Where a building's stair column stands, and what it displaces."""
+
+    def __init__(self, x, y, width, steps, run, hole, keep_radius):
+        self.x, self.y = x, y
+        self.width, self.steps, self.run = width, steps, run
+        self.hole = hole
+        self.keep_radius = keep_radius
+
+
+def stair_column(inner_hx, inner_hy, storey_h, seed):
+    """Plant the stair against the +X wall, centred, and measure what it takes.
+
+    Deterministic on the footprint alone. It has to be, because plan() needs to
+    know where the stairwell is before it can lay rooms out around it, and the
+    stair used to be positioned from the rooms - which only worked while there
+    was exactly one flight and nothing above it.
+
+    Risers are kept at or under 40 cm; the pawn steps 45.
+    """
+    steps = max(8, int(math.ceil(storey_h / 40.0)))
+    run = 30.0
+    width = 110.0
+    scratch = MeshBuilder()
+    stair_run(scratch, storey_h, width=width, steps=steps, run=run, seed=seed)
+    min_x = min(v[0] for v in scratch.vertices)
+    max_x = max(v[0] for v in scratch.vertices)
+    min_y = min(v[1] for v in scratch.vertices)
+    max_y = max(v[1] for v in scratch.vertices)
+
+    # Far enough off the wall that the stair head - which is wider than the
+    # stairwell, because it has walls of its own - still fits inside it.
+    x = inner_hx - max_x - 58.0
+    y = max(min(0.0, inner_hy - max_y), -inner_hy - min_y)
+    # The hole clears the flight, not the handrail: a hole as wide as the rail
+    # would eat the landing you step onto at the top.
+    hole = (x - width * 0.5 - 14.0, x + width * 0.5 + 14.0,
+            y + min_y, y + max_y)
+    keep = (x + min_x - 30.0, x + max_x + 30.0, y + min_y - 30.0, y + max_y + 30.0)
+    return _Stair(x, y, width, steps, run, hole,
+                  max(width, steps * run) * 0.58), keep
+
+
 def fit_out(width, depth, storeys, seed, base_z=gen_town.PLINTH_H, door_x=0.0,
             ground_kind=None, floor_colour=None, wall_colour=None,
-            wall_t=WALL_T, storey_h=STOREY_H, ceiling=True):
+            wall_t=WALL_T, storey_h=STOREY_H, ceiling=True, roof_hatch=False,
+            upper_kind=None, stair_up=False, floor_hole=False):
     """The whole inside of one building, as (solid, emissive) mesh builders.
 
     Built in the building's own local frame with ``base_z`` at the top of its
@@ -1081,8 +1185,11 @@ def fit_out(width, depth, storeys, seed, base_z=gen_town.PLINTH_H, door_x=0.0,
     solid = MeshBuilder()
     glow = MeshBuilder()
 
-    rooms, partitions = plan(width, depth, storeys, seed, door_x, wall_t)
-    assign_kinds(rooms, storeys, door_x)
+    stair, stair_keep = stair_column(inner_hx, inner_hy, storey_h, seed)
+    rooms, partitions = plan(width, depth, storeys, seed, door_x, wall_t,
+                             stair_keep if (storeys > 1 or roof_hatch or stair_up)
+                             else None)
+    assign_kinds(rooms, storeys, door_x, upper_kind)
     if ground_kind:
         # The business is the room the street door opens into. Rooms behind it
         # are its back of house - a kitchen behind a restaurant, a stock room
@@ -1094,34 +1201,37 @@ def fit_out(width, depth, storeys, seed, base_z=gen_town.PLINTH_H, door_x=0.0,
         for index, room in enumerate(ground):
             room.kind = ground_kind if index == 0 else behind
 
-    # --- the stair, and the hole it needs in the floor above -----------------
+    # --- the stair column ----------------------------------------------------
+    # One flight per storey, all in the same place, so they stack into
+    # something you can actually climb from the street to the roof. The
+    # position comes from the footprint rather than from the largest room,
+    # because the rooms are laid out around the stair and not the other way
+    # about - plan() is given the stairwell to keep its partitions out of.
     stair_hole = None
     blocked = {}
-    if storeys > 1:
-        host = max((r for r in rooms if r.storey == 0), key=lambda r: r.area)
-        stair_w = 110.0
-        flight = 30.0 * 8
-
-        # Measured, not assumed: stair_run carries a handrail down one side, so
-        # its footprint is wider than the flight and not centred on its origin.
-        scratch = MeshBuilder()
-        stair_run(scratch, STOREY_H, width=stair_w, steps=8, run=30.0, seed=seed)
-        s_min_x = min(v[0] for v in scratch.vertices)
-        s_max_x = max(v[0] for v in scratch.vertices)
-        s_min_y = min(v[1] for v in scratch.vertices)
-        s_max_y = max(v[1] for v in scratch.vertices)
-
-        sx = host.x + host.hx - s_max_x
-        sy = max(min(host.y, inner_hy - s_max_y), -inner_hy - s_min_y)
-        place(solid, stair_run, (sx, sy, base_z), 0.0,
-              rise=STOREY_H, width=stair_w, steps=8, run=30.0, seed=seed)
-        # The hole has to clear the flight itself, not the rail: a hole as wide
-        # as the rail would eat the landing.
-        stair_hole = (sx - stair_w * 0.5 - 14.0, sx + stair_w * 0.5 + 14.0,
-                      sy + s_min_y, sy + s_max_y)
-        keep = (sx, sy, max(stair_w, flight) * 0.55)
+    if stair_up:
+        # One floor of a tall building, built once and placed on every storey.
+        # A twenty-two storey interior as a single mesh was 43,000 triangles and
+        # a 48 MB build, and the editor died somewhere around the twentieth
+        # tower; a floor is 1,500 triangles and gets culled on its own.
+        place(solid, stair_run, (stair.x, stair.y, base_z), 0.0,
+              rise=storey_h, width=stair.width, steps=stair.steps,
+              run=stair.run, seed=seed)
+        keep = (stair.x, stair.y, stair.keep_radius)
         blocked.setdefault(0, []).append(keep)
-        blocked.setdefault(1, []).append(keep)
+        stair_hole = stair.hole
+    elif storeys > 1 or roof_hatch:
+        for storey in range(storeys):
+            z = base_z + storey * storey_h
+            if storey == storeys - 1 and not roof_hatch:
+                break
+            place(solid, stair_run, (stair.x, stair.y, z), 0.0,
+                  rise=storey_h, width=stair.width, steps=stair.steps,
+                  run=stair.run, seed=seed + storey)
+            keep = (stair.x, stair.y, stair.keep_radius)
+            blocked.setdefault(storey, []).append(keep)
+            blocked.setdefault(storey + 1, []).append(keep)
+        stair_hole = stair.hole
 
     # --- floors and the ceiling ---------------------------------------------
     # Storey 0 is a board finish laid on the plinth, which is already solid, so
@@ -1131,15 +1241,27 @@ def fit_out(width, depth, storeys, seed, base_z=gen_town.PLINTH_H, door_x=0.0,
     # two perpendicular surfaces, and a shared edge rasterises as a hairline
     # that light comes through - at the top corners of a room, where the roof
     # space is on the other side, that reads as a sliver of sky in the ceiling.
-    solid.box((0.0, 0.0, base_z + 4.0),
-              ((inner_hx + TUCK) * 2.0, (inner_hy + TUCK) * 2.0, 8.0), floor_colour)
+    if floor_hole and stair_hole:
+        floor_slab(solid, inner_hx + TUCK, inner_hy + TUCK, base_z + 8.0,
+                   floor_colour, hole=stair_hole, thickness=8.0)
+    else:
+        solid.box((0.0, 0.0, base_z + 4.0),
+                  ((inner_hx + TUCK) * 2.0, (inner_hy + TUCK) * 2.0, 8.0),
+                  floor_colour)
     for storey in range(1, storeys):
         floor_slab(solid, inner_hx + TUCK, inner_hy + TUCK, base_z + storey * storey_h,
-                   floor_colour, hole=stair_hole if storey == 1 else None)
+                   floor_colour, hole=stair_hole)
     if ceiling:
         solid.box((0.0, 0.0, base_z + storeys * storey_h - 7.0),
                   ((inner_hx + TUCK) * 2.0, (inner_hy + TUCK) * 2.0, 14.0),
                   pal.CEILING_PLASTER)
+    elif roof_hatch:
+        # The top slab is the roof, and the stair comes up through it into a
+        # stair head that stands on it - which is what makes a roof somewhere
+        # you can walk out onto rather than something you can see.
+        floor_slab(solid, inner_hx + TUCK, inner_hy + TUCK,
+                   base_z + storeys * storey_h, pal.CONCRETE_PALE, hole=stair_hole)
+        stair_head(solid, stair, base_z + storeys * storey_h)
 
     # --- partitions ----------------------------------------------------------
     for wall in partitions:
@@ -1165,7 +1287,7 @@ def fit_out(width, depth, storeys, seed, base_z=gen_town.PLINTH_H, door_x=0.0,
     for room in rooms:
         z = base_z + room.storey * storey_h
         furnish(solid, room, seed + room.storey * 13, blocked.get(room.storey, []),
-                z, glow=glow)
+                z, glow=glow, sparse=room.storey > 0 and storeys > 2)
         # The pendant hangs as far as the room can spare. ceiling_lamp is 46 cm
         # of shade below however far its cord drops, and the pawn is 180 tall:
         # in a 2.5 m shed the full 42 cm cord put the shade at head height, in

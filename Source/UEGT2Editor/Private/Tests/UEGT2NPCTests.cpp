@@ -381,38 +381,80 @@ bool FUEGT2NeedDecisionTest::RunTest(const FString& Parameters)
 {
 	using namespace UEGT2NPCTests;
 
+	// Hunger. It used to be answered only between eleven and three, which meant
+	// a villager could be starving at half nine and keep working.
 	FUEGT2NPCContext Hungry = Plain(12.0f);
 	Hungry.Needs.Fed = 0.05f;
-	const FUEGT2ActivityDecision Lunch = ResolveActivity(EUEGT2NPCRole::Villager,
+	const FUEGT2ActivityDecision Meal = ResolveActivity(EUEGT2NPCRole::Villager,
 		EUEGT2NPCSpecies::Person, Hungry);
-	TestEqual(TEXT("a hungry worker breaks for lunch"), Lunch.Activity, EUEGT2Activity::Lunch);
-	TestEqual(TEXT("driven by a need"), Lunch.Reason, EUEGT2ActivityReason::Need);
+	TestEqual(TEXT("a hungry worker goes to eat"), Meal.Activity, EUEGT2Activity::Eat);
+	TestEqual(TEXT("at the nearest food"), Meal.Anchor, EUEGT2Anchor::Food);
+	TestEqual(TEXT("driven by a need"), Meal.Reason, EUEGT2ActivityReason::Need);
 
-	// The same hunger outside the lunch window is not a reason to stop working.
 	FUEGT2NPCContext HungryEarly = Hungry;
 	HungryEarly.Hour = 9.5f;
-	TestEqual(TEXT("hungry at half nine is just hungry"),
+	TestEqual(TEXT("and is still hungry at half nine"),
 		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, HungryEarly).Activity,
-		EUEGT2Activity::Work);
+		EUEGT2Activity::Eat);
+
+	// The bathroom.
+	FUEGT2NPCContext Bursting = Plain(14.0f);
+	Bursting.Needs.Relief = 0.02f;
+	const FUEGT2ActivityDecision Wash = ResolveActivity(EUEGT2NPCRole::Clerk,
+		EUEGT2NPCSpecies::Person, Bursting);
+	TestEqual(TEXT("a desperate clerk finds a washroom"), Wash.Activity,
+		EUEGT2Activity::Washroom);
+	TestEqual(TEXT("at the nearest one"), Wash.Anchor, EUEGT2Anchor::Washroom);
+
+	// Tiredness in the day is answered by sitting down, at night by going to bed.
+	FUEGT2NPCContext Weary = Plain(13.0f);
+	Weary.Needs.Energy = 0.03f;
+	const FUEGT2ActivityDecision SitDown = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Person, Weary);
+	TestEqual(TEXT("a tired villager sits down"), SitDown.Activity, EUEGT2Activity::Rest);
+	TestEqual(TEXT("on the nearest bench"), SitDown.Anchor, EUEGT2Anchor::Seat);
 
 	FUEGT2NPCContext Exhausted = Plain(21.5f);
-	Exhausted.Needs.Energy = 0.05f;
-	TestEqual(TEXT("an exhausted villager goes home early"),
+	Exhausted.Needs.Energy = 0.03f;
+	TestEqual(TEXT("but at night goes home to bed"),
 		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Exhausted).Activity,
 		EUEGT2Activity::HomeTime);
 
+	// Company.
 	FUEGT2NPCContext Lonely = Plain(10.0f);
-	Lonely.Needs.Company = 0.05f;
+	Lonely.Needs.Company = 0.02f;
 	Lonely.Personality.Sociability = 0.9f;
-	TestEqual(TEXT("a lonely sociable villager goes looking for company"),
+	TestEqual(TEXT("a lonely villager goes looking for company"),
 		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Lonely).Activity,
 		EUEGT2Activity::Socialise);
 
-	FUEGT2NPCContext LonelyLoner = Lonely;
-	LonelyLoner.Personality.Sociability = 0.1f;
-	TestEqual(TEXT("a loner does not"),
-		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, LonelyLoner).Activity,
+	// The worst need wins, and nothing fires while everything is comfortable.
+	FUEGT2NPCContext Both = Plain(12.0f);
+	Both.Needs.Fed = 0.20f;      // under its threshold, but only just
+	Both.Needs.Relief = 0.02f;   // desperate
+	TestEqual(TEXT("the worse of two needs wins"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Both).Activity,
+		EUEGT2Activity::Washroom);
+
+	FUEGT2NPCContext Content = Plain(12.0f);
+	Content.Needs.Energy = 0.9f;
+	Content.Needs.Fed = 0.9f;
+	Content.Needs.Relief = 0.9f;
+	Content.Needs.Company = 0.9f;
+	TestEqual(TEXT("a contented villager just works"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Content).Activity,
 		EUEGT2Activity::Work);
+
+	// The bathroom need does not run down while you are asleep.
+	FUEGT2NPCNeeds Sleeping;
+	Sleeping.Relief = 0.5f;
+	Sleeping.Advance(6.0f, EUEGT2Activity::Sleep);
+	TestTrue(TEXT("you do not need the bathroom in your sleep"), Sleeping.Relief > 0.3f);
+
+	FUEGT2NPCNeeds Used;
+	Used.Relief = 0.05f;
+	Used.Advance(0.5f, EUEGT2Activity::Washroom);
+	TestTrue(TEXT("and a washroom answers it"), Used.Relief > 0.7f);
 	return true;
 }
 

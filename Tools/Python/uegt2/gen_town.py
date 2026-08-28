@@ -311,7 +311,9 @@ def barn(seed=1, width=1150.0, depth=820.0, glass=None):
 
 def church(seed=1, glass=None):
     mesh = MeshBuilder()
-    nave_w, nave_d, wall_h = 700.0, 1350.0, 520.0
+    # Bigger than it was. Seven metres across was fine for a silhouette on the
+    # skyline and mean for a room with pews down both sides of an aisle.
+    nave_w, nave_d, wall_h = 900.0, 1650.0, 560.0
     mesh.box((0.0, 0.0, 20.0), (nave_w + 40.0, nave_d + 40.0, 40.0), pal.WALL_STONE)
     # The nave is a room. Its door is at the -Y end, under the tower, which is
     # where the tower's own doorway already is.
@@ -337,13 +339,26 @@ def church(seed=1, glass=None):
     mesh.cone((0.0, ty, 40.0 + tower_h + 48.0), tower * 0.72, 460.0, pal.ROOF_TEAL, sides=4, yaw=45.0)
     mesh.box((0.0, ty, 40.0 + tower_h + 540.0), (24.0, 24.0, 90.0), pal.METAL_COPPER)
 
-    _door(mesh, (0.0, ty - tower * 0.5, 40.0), "y", pal.DOOR_WOOD, width=140.0, height=260.0)
+    # A lining, not a leaf. gameplay._place_doors hangs a real swinging door in
+    # this opening; a leaf modelled across it is a church nobody can enter,
+    # because collision here is complex-as-simple.
+    for sx in (-1.0, 1.0):
+        mesh.box((sx * 88.0, ty - tower * 0.5 + 12.0, 40.0 + 145.0),
+                 (20.0, 40.0, 300.0), pal.TRIM_WHITE)
+    mesh.box((0.0, ty - tower * 0.5 + 12.0, 40.0 + 300.0), (196.0, 40.0, 20.0),
+             pal.TRIM_WHITE)
+    mesh.box((0.0, ty - tower * 0.5 + 12.0, 40.0 + 7.0), (180.0, 48.0, 14.0),
+             pal.STONE_DARK)
     for side in (-1.0, 1.0):
         _windows_on_wall(mesh, (side * nave_w * 0.5, 0.0, 40.0), nave_d, wall_h, "x",
                          4, seed, sill_z=wall_h * 0.36, pane=pal.LAMP_GLASS,
                          glass=glass)
     _windows_on_wall(mesh, (0.0, ty, 40.0 + tower_h * 0.62), tower, 200.0, "y",
                      1, seed + 9, sill_z=0.0, pane=pal.LAMP_GLASS)
+    for step in range(1, 6):
+        top = 40.0 - 22.0 * step
+        mesh.box((0.0, ty - tower * 0.5 - 34.0 * (step - 0.5), (top - 200.0) * 0.5),
+                 (300.0, 34.0, top + 200.0), pal.STONE_DARK)
     return mesh
 
 
@@ -417,6 +432,33 @@ def warehouse(seed=1, width=1000.0, depth=700.0, glass=None):
              (380.0, 20.0, 360.0), pal.WOOD_DARK)
     _windows_on_wall(mesh, (0.0, depth * 0.5, 32.0), width, wall_h, "y", 3, seed,
                      sill_z=wall_h * 0.5, glass=glass)
+    return mesh
+
+
+def privy(seed=1, width=200.0, depth=190.0, stone=False):
+    """A public convenience. Wooden out in the town, concrete in the city.
+
+    Small on purpose: the point of it is that there is one within sight
+    wherever you are standing, not that it is a building worth visiting.
+    """
+    body = pal.CONCRETE_PALE if stone else pal.WOOD_PLANK
+    roof = pal.ROOF_SLATE if stone else pal.ROOF_BROWN
+    mesh = MeshBuilder()
+    wall_h = 250.0
+    mesh.box((0.0, 0.0, 12.0), (width + 30.0, depth + 30.0, 24.0), pal.STONE_DARK)
+    _hollow_walls(mesh, width, depth, wall_h, 24.0, body,
+                  front=[(0.0, 110.0, 0.0, 205.0)], thickness=16.0,
+                  foundation=110.0)
+    mesh.box((0.0, 0.0, 24.0 + wall_h + 14.0), (width + 70.0, depth + 70.0, 28.0),
+             roof, roll=-9.0)
+    # A basin inside, so it reads as what it is through the doorway.
+    mesh.box((0.0, depth * 0.5 - 40.0, 24.0 + 92.0), (110.0, 46.0, 22.0),
+             pal.TRIM_WHITE)
+    mesh.box((0.0, depth * 0.5 - 26.0, 24.0 + 150.0), (14.0, 14.0, 46.0),
+             pal.METAL_COPPER)
+    for sx in (-1.0, 1.0):
+        mesh.box((sx * 62.0, -depth * 0.5 + 10.0, 24.0 + 104.0), (16.0, 22.0, 208.0),
+                 pal.TRIM_WHITE)
     return mesh
 
 

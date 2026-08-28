@@ -170,6 +170,17 @@ const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
 		AddIndoor(TEXT("NewhavenDiner"), -124372.1f, -1054.4f, 1225.3f, 99.7f, -4.0f,
 			TEXT("A restaurant off the avenue"));
 
+		// The floors above the ground one, and the roof they lead to.
+		AddIndoor(TEXT("NewhavenUpperFloor"), -119294.0f, 25982.3f, 3048.3f, -80.5f, -4.0f,
+			TEXT("The fifth floor of a Newhaven office block"));
+		AddIndoor(TEXT("NewhavenRoof"), -137299.3f, 4588.4f, 4842.2f, -80.7f, -6.0f,
+			TEXT("On the roof of a Newhaven block, looking across the city"));
+		// Fairhaven's church and its high street.
+		AddIndoor(TEXT("FairhavenChurch"), -5200.0f, 2700.0f, 1721.8f, 90.0f, -4.0f,
+			TEXT("Inside Fairhaven church, looking the length of the nave"));
+		AddIndoor(TEXT("FairhavenShop"), 424.0f, -3762.0f, 1740.9f, 90.0f, -4.0f,
+			TEXT("The grocery on Fairhaven high street"));
+
 		// Development-only: the asset showcase grid (see Tools/Python/uegt2/showcase.py).
 		Add(TEXT("ShowcaseA"), 27200.0f, -57500.0f, 3.4f, 90.0f, -3.0f,
 			TEXT("Asset showcase, front row"));

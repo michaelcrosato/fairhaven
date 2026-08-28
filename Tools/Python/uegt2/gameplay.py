@@ -218,6 +218,53 @@ def _place_doors(world_data, meshes):
     return placed
 
 
+def _place_service_signs(world_data, meshes):
+    """A signpost outside every shop, saying what it is.
+
+    Without one a bakery is a room with a counter in it. The trade is read back
+    off the actor label the town stage wrote, so there is one list of trades and
+    one list of names, and they are in the module that places the shops.
+    """
+    cls = _load_class("UEGT2Sign")
+    marker = meshes.get("SM_SignPost_A")
+
+    placed = 0
+    for actor in _subsystem().get_all_level_actors():
+        label = actor.get_actor_label()
+        if not label.startswith("Town Shop "):
+            continue
+        parts = label.split()
+        if len(parts) < 4:
+            continue
+        venue = parts[2]
+        name = town_mod.SERVICE_NAMES.get(venue)
+        if name is None:
+            continue
+
+        location = actor.get_actor_location()
+        yaw = actor.get_actor_rotation().yaw
+        radians = math.radians(yaw)
+        cos_y, sin_y = math.cos(radians), math.sin(radians)
+        depth = town_mod.HOUSE_DEPTH.get("SM_House_A", 580.0)
+        mesh_comp = actor.get_editor_property("static_mesh_component")
+        mesh = mesh_comp.get_editor_property("static_mesh") if mesh_comp else None
+        if mesh is not None:
+            depth = town_mod.HOUSE_DEPTH.get(mesh.get_name(), depth)
+        # Beside the door, clear of the steps.
+        local_x, local_y = 210.0, -(depth * 0.5 + 250.0)
+        wx = location.x + local_x * cos_y - local_y * sin_y
+        wy = location.y + local_x * sin_y + local_y * cos_y
+        wz = world_data.height_uu(wx, wy) - 10.0
+        sign = _spawn_interactable(cls, marker, wx, wy, wz, yaw + 180.0,
+                                   "Shop %s" % name, unreal.ComponentMobility.STATIC)
+        if sign is not None:
+            sign.set_sign_text(name)
+            placed += 1
+
+    ctx.log("gameplay: %d shop signs" % placed)
+    return placed
+
+
 def _place_lamps(world_data, meshes):
     """Interactable lamps around the square, replacing plain lamp props."""
     cls = _load_class("UEGT2Lamp")
@@ -293,6 +340,7 @@ def build(world, world_data, meshes=None):
     total += _place_landmarks(world_data, meshes)
     total += _place_signs(world_data, meshes)
     total += _place_doors(world_data, meshes)
+    total += _place_service_signs(world_data, meshes)
     total += _place_lamps(world_data, meshes)
     total += _place_pickups(world_data, meshes)
 

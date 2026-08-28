@@ -250,20 +250,21 @@ def check_city_interiors(report, interior, builder_cls):
 
     print("")
     print("newhaven and outbuilding interiors")
-    plans = [(arch, w, d, h, 0.0, 34.0, v, 7100 + i * 97 + len(arch) * 13)
-             for (arch, w, d, h, venues) in meshbuild.CITY_INTERIORS
+    plans = [(arch, w, d, h, 0.0, 34.0, v, 7100 + i * 97 + len(arch) * 13, n, u)
+             for (arch, w, d, h, n, u, venues) in meshbuild.CITY_INTERIORS
              for i, v in enumerate(venues)]
-    plans += [(name, w, d, h, b, t, k, 8300 + len(name) * 29)
+    plans += [(name, w, d, h, b, t, k, 8300 + len(name) * 29, 1, None)
               for (name, w, d, h, b, t, k) in meshbuild.EXTRA_INTERIORS]
 
     worst_all = -1e9
     heaviest = (0, "")
-    for (name, width, depth, height, base, wall, kind, seed) in plans:
+    for (name, width, depth, height, base, wall, kind, seed, storeys, upper) in plans:
         inner_hx = width * 0.5 - wall + interior.TUCK
         inner_hy = depth * 0.5 - wall + interior.TUCK
         solid, glow = interior.fit_out(width, depth, 1, seed, base_z=base,
                                        ground_kind=kind, wall_t=wall,
-                                       storey_h=height, ceiling=False)
+                                       storey_h=height, ceiling=False,
+                                       stair_up=storeys > 1)
         report.checked += 1
         report.triangles += solid.triangle_count + glow.triangle_count
         if solid.triangle_count > heaviest[0]:
@@ -279,9 +280,11 @@ def check_city_interiors(report, interior, builder_cls):
             if worst > 1.0:
                 problems.append("escapes its shell by %.1f cm" % worst)
             top = max(v[2] for v in solid.vertices)
-            if top > base + height + 1.0:
-                problems.append("reaches z=%.0f, ceiling is %.0f"
-                                % (top, base + height))
+            # The stair head stands ON the roof, so the ceiling of the top
+            # storey is not the ceiling of the mesh.
+            allowed = base + height + 1.0
+            if top > allowed:
+                problems.append("reaches z=%.0f, allowed %.0f" % (top, allowed))
             # The way in has to stay open, exactly as for a house.
             half_d = depth * 0.5 - wall
             blocked = _blocking(solid, (-34.0, 34.0,

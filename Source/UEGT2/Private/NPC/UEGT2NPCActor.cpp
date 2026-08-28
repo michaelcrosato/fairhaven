@@ -166,6 +166,9 @@ void AUEGT2NPCActor::BeginPlay()
 	Needs.Energy = 0.55f + UEGT2HashUnit((uint32)Seed, 0x1111u) * 0.45f;
 	Needs.Fed = 0.45f + UEGT2HashUnit((uint32)Seed, 0x2222u) * 0.5f;
 	Needs.Company = 0.3f + UEGT2HashUnit((uint32)Seed, 0x3333u) * 0.6f;
+	// Everyone starts somewhere different, so the town does not all get hungry
+	// at once on the first morning.
+	Needs.Relief = 0.35f + UEGT2HashUnit((uint32)Seed, 0x4444u) * 0.6f;
 
 	if (UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(GetWorld()))
 	{

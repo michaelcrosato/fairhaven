@@ -599,28 +599,37 @@ FUEGT2ActivityDecision ResolveActivity(EUEGT2NPCRole Role, EUEGT2NPCSpecies Spec
 			|| Decision.Activity == EUEGT2Activity::Errand
 			|| Decision.Activity == EUEGT2Activity::Patrol;
 
-		if (Context.Needs.Fed < 0.25f && bWorking
-			&& Context.Hour >= 11.0f && Context.Hour < 15.0f)
+		// A need bad enough to interrupt does so whatever the hour says, and
+		// the worst one wins. The schedule used to get the final word except in
+		// two narrow windows, which meant a villager could be starving at four
+		// in the afternoon and keep working because lunch was over.
+		if (bAnimal)
 		{
-			Decision.Activity = bAnimal ? EUEGT2Activity::Forage : EUEGT2Activity::Lunch;
-			Decision.Anchor = bAnimal ? EUEGT2Anchor::Wander : EUEGT2Anchor::Market;
-			Decision.Reason = EUEGT2ActivityReason::Need;
+			if (Context.Needs.Fed < 0.25f)
+			{
+				Decision.Activity = EUEGT2Activity::Forage;
+				Decision.Anchor = EUEGT2Anchor::Wander;
+				Decision.Reason = EUEGT2ActivityReason::Need;
+			}
 		}
-		else if (Context.Needs.Energy < 0.14f && Context.Hour >= 20.0f)
+		else
 		{
-			Decision.Activity = EUEGT2Activity::HomeTime;
-			Decision.Anchor = EUEGT2Anchor::Home;
-			Decision.Reason = EUEGT2ActivityReason::Need;
-		}
-		else if (!bAnimal && Context.Needs.Company < 0.15f
-			&& Context.Personality.Sociability > 0.5f
-			&& (Decision.Activity == EUEGT2Activity::Work
-				|| Decision.Activity == EUEGT2Activity::Stroll
-				|| Decision.Activity == EUEGT2Activity::Rest))
-		{
-			Decision.Activity = EUEGT2Activity::Socialise;
-			Decision.Anchor = EUEGT2Anchor::Square;
-			Decision.Reason = EUEGT2ActivityReason::Need;
+			EUEGT2Activity NeedActivity = EUEGT2Activity::Idle;
+			EUEGT2Anchor NeedAnchor = EUEGT2Anchor::Home;
+			if (Context.Needs.Worst(NeedActivity, NeedAnchor) > 0.0f)
+			{
+				// Tiredness at night is answered by going to bed, not by
+				// sitting on a bench in the dark.
+				if (NeedActivity == EUEGT2Activity::Rest
+					&& (Context.Hour >= 21.0f || Context.Hour < 5.0f))
+				{
+					NeedActivity = EUEGT2Activity::HomeTime;
+					NeedAnchor = EUEGT2Anchor::Home;
+				}
+				Decision.Activity = NeedActivity;
+				Decision.Anchor = NeedAnchor;
+				Decision.Reason = EUEGT2ActivityReason::Need;
+			}
 		}
 	}
 

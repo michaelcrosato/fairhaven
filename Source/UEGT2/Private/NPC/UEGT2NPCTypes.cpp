@@ -56,12 +56,21 @@ void FUEGT2NPCNeeds::Advance(float InHours, EUEGT2Activity Activity)
 	// is 50 seconds: these numbers are felt within a single play session.
 	float EnergyRate = -0.06f;
 	float FedRate = -0.11f;
+	float ReliefRate = -0.09f;
 	float CompanyRate = -0.07f;
 
 	switch (Activity)
 	{
 	case EUEGT2Activity::Sleep:
 		EnergyRate = 0.34f; FedRate = -0.03f; CompanyRate = -0.01f;
+		// You do not need the bathroom in your sleep, you need it when you wake.
+		ReliefRate = -0.02f;
+		break;
+	case EUEGT2Activity::Washroom:
+		ReliefRate = 1.6f; EnergyRate = 0.02f;
+		break;
+	case EUEGT2Activity::Eat:
+		FedRate = 0.9f; EnergyRate = 0.06f; CompanyRate = 0.1f;
 		break;
 	case EUEGT2Activity::Rest:
 	case EUEGT2Activity::Roost:
@@ -93,6 +102,7 @@ void FUEGT2NPCNeeds::Advance(float InHours, EUEGT2Activity Activity)
 		break;
 	}
 
+	Relief = FMath::Clamp(Relief + ReliefRate * InHours, 0.0f, 1.0f);
 	Energy = FMath::Clamp(Energy + EnergyRate * InHours, 0.0f, 1.0f);
 	Fed = FMath::Clamp(Fed + FedRate * InHours, 0.0f, 1.0f);
 	Company = FMath::Clamp(Company + CompanyRate * InHours, 0.0f, 1.0f);
@@ -244,6 +254,45 @@ bool IsAnimalSpecies(EUEGT2NPCSpecies Species)
 bool IsWetWeather(EUEGT2Weather Weather)
 {
 	return Weather == EUEGT2Weather::Storm;
+}
+
+float FUEGT2NPCNeeds::Worst(EUEGT2Activity& OutActivity, EUEGT2Anchor& OutAnchor) const
+{
+	// The thresholds differ because the needs do. You will cross a square to
+	// find a lavatory long before you will cross it because you are a bit
+	// peckish, and loneliness is the one you can put off longest.
+	struct FCall
+	{
+		float Value;
+		float Threshold;
+		EUEGT2Activity Activity;
+		EUEGT2Anchor Anchor;
+	};
+	const FCall Calls[] = {
+		{ Relief,  0.30f, EUEGT2Activity::Washroom,  EUEGT2Anchor::Washroom },
+		{ Fed,     0.26f, EUEGT2Activity::Eat,       EUEGT2Anchor::Food },
+		{ Energy,  0.22f, EUEGT2Activity::Rest,      EUEGT2Anchor::Seat },
+		{ Company, 0.18f, EUEGT2Activity::Socialise, EUEGT2Anchor::Square },
+	};
+
+	float Urgency = 0.0f;
+	for (const FCall& Call : Calls)
+	{
+		if (Call.Value >= Call.Threshold)
+		{
+			continue;
+		}
+		// How far past the threshold, as a fraction of it, so a need with a
+		// high threshold does not always win.
+		const float Score = (Call.Threshold - Call.Value) / Call.Threshold;
+		if (Score > Urgency)
+		{
+			Urgency = Score;
+			OutActivity = Call.Activity;
+			OutAnchor = Call.Anchor;
+		}
+	}
+	return Urgency;
 }
 
 bool IsIndoorActivity(EUEGT2Activity Activity)
