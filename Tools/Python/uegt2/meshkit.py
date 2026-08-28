@@ -177,6 +177,50 @@ class MeshBuilder(object):
             j = (i + 1) % 4
             self.add_quad(b[i], b[j], t[j], t[i], colour, wind)
 
+    def wall(self, base_centre, axis, length, height, thickness, colour,
+             openings=()):
+        """A wall panel with rectangular holes punched through it.
+
+        This is what turns a solid building into an enclosure you can walk into.
+        There are no boolean operations in this file and there do not need to be:
+        a wall with holes in it is a handful of boxes arranged around them, and
+        emitting it that way keeps every face flat-shaded and every triangle
+        accounted for.
+
+        ``base_centre`` is the middle of the wall at its foot. ``axis`` is 'x'
+        for a wall running along X (its two faces look up and down Y) or 'y' for
+        one running along Y. ``openings`` is an iterable of
+        ``(offset_along, width, sill_z, opening_height)``; they must not overlap.
+
+        A wall of n openings costs n+1 upright strips plus up to 2n sill and
+        lintel blocks - so a cottage front with a door and two windows is seven
+        boxes, 84 triangles, against the 12 of the solid box it replaces.
+        """
+        cx, cy, cz = base_centre
+        half = length * 0.5
+
+        def slab(a, b, z0, z1):
+            """One box spanning [a, b] along the wall and [z0, z1] up it."""
+            span = b - a
+            if span <= 1.0 or z1 - z0 <= 1.0:
+                return
+            mid = (a + b) * 0.5
+            size = ((span, thickness, z1 - z0) if axis == "x"
+                    else (thickness, span, z1 - z0))
+            centre = ((cx + mid, cy, cz + (z0 + z1) * 0.5) if axis == "x"
+                      else (cx, cy + mid, cz + (z0 + z1) * 0.5))
+            self.box(centre, size, colour)
+
+        cursor = -half
+        for (offset, width, sill, opening_h) in sorted(openings, key=lambda o: o[0]):
+            left = offset - width * 0.5
+            right = offset + width * 0.5
+            slab(cursor, left, 0.0, height)            # the pier beside it
+            slab(left, right, 0.0, sill)               # under the sill
+            slab(left, right, sill + opening_h, height)  # over the lintel
+            cursor = right
+        slab(cursor, half, 0.0, height)
+
     def prism(self, center, size, colour, wind=0.0, yaw=0.0):
         """Gable roof: a triangular prism ridged along local X."""
         hx, hy, hz = size[0] * 0.5, size[1] * 0.5, size[2]

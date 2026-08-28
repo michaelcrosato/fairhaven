@@ -31,6 +31,19 @@ struct FUEGT2Viewpoint
 	float Yaw = 0.0f;
 	float Pitch = -6.0f;
 	FString Description;
+
+	/**
+	 * Treat HeightAboveGround as a world Z in centimetres rather than metres
+	 * above the ground.
+	 *
+	 * Interior viewpoints need this. Finding the ground is a downward line
+	 * trace, and inside a building the only thing above the camera is the roof,
+	 * so the trace lands the camera on the tiles. There is no cheap trace that
+	 * finds the floor underneath instead: a multi-trace stops at the first
+	 * blocking hit, and the shell is a single component, so it reports the roof
+	 * and nothing else.
+	 */
+	bool bAbsoluteHeight = false;
 };
 
 UCLASS()

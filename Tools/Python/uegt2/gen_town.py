@@ -56,9 +56,60 @@ def _door(mesh, centre, axis, colour, width=90.0, height=200.0, depth=16.0):
         mesh.box(add(centre, (0.0, depth * 0.4, height * 0.5)), (width, depth * 0.7, height), colour)
 
 
+# Interior geometry that the shell and the fit-out both have to agree on. The
+# fit-out is generated separately in gen_interior.py, so these are the contract
+# between the two.
+WALL_T = 22.0            # exterior wall panel thickness
+PLINTH_H = 26.0          # the plinth top is the ground floor
+STOREY_H = 320.0
+DOOR_W = 120.0           # the pawn is 68 across
+DOOR_H = 215.0           # the pawn is 180 tall
+WIN_W = 100.0
+WIN_H = 118.0
+
+# The plinth is a buried foundation, not a doorstep. town._place_streets sets a
+# house so its floor clears the *highest* ground under the footprint, which
+# leaves the downhill side hanging; this is the skirt of stone that fills the
+# gap. 240 covers the worst lot in the generated town, where the ground falls
+# 217 cm across one footprint - measured, not guessed, because a foundation one
+# centimetre too shallow is a house you can see under.
+FOUNDATION_D = 240.0
+
+# The flight down from the door. The steepest doorstep in town is 148 cm above
+# the ground outside it, so seven risers of 26 reach it with room to spare, and
+# 26 is well inside the pawn's 45 cm step. On a level plot every step but the
+# top one is underground.
+STEP_RISE = 26.0
+STEP_GOING = 30.0
+STEP_COUNT = 7
+
+
+def _front_windows(width):
+    """Where the two front windows sit, kept clear of the door between them.
+
+    The door is 120 wide at the centre and a window is 100 wide, so the nearest a
+    window can sit is 60 + 50 + a 30 cm pier. On the narrowest cottage that is
+    most of the way to the corner, which is why this is computed rather than
+    written as a fraction of the width.
+    """
+    nearest = DOOR_W * 0.5 + WIN_W * 0.5 + 30.0
+    furthest = width * 0.5 - WALL_T - WIN_W * 0.5 - 25.0
+    if furthest < nearest:
+        return 0.0                     # too narrow for a window beside the door
+    return max(nearest, min(furthest, width * 0.27))
+
+
 def house(seed=1, width=760.0, depth=580.0, storeys=1, wall=None, roof=None,
           door=None, chimney=True, porch=False):
-    """The workhorse town building: box walls, gable roof, door and windows."""
+    """The workhorse town building - and, since interiors, a hollow one.
+
+    The walls are four panels with real openings punched through them rather
+    than one solid box, so the door is a hole you can walk through and the
+    windows let Lumen carry daylight in. The inside itself - floors, stairs,
+    partitions and furniture - is a separate mesh from gen_interior.fit_out()
+    placed on the same transform, so it can be culled at short range while the
+    shell stays visible across the valley.
+    """
     rng = _SmallRng(seed)
     wall = wall if wall is not None else rng_choice(rng, [
         pal.WALL_CREAM, pal.WALL_WHITE, pal.WALL_OCHRE, pal.WALL_SAGE,
@@ -69,48 +120,128 @@ def house(seed=1, width=760.0, depth=580.0, storeys=1, wall=None, roof=None,
         pal.DOOR_BLUE, pal.DOOR_RED, pal.DOOR_GREEN, pal.DOOR_WOOD])
 
     mesh = MeshBuilder()
-    wall_h = 320.0 * storeys
-    plinth_h = 26.0
+    wall_h = STOREY_H * storeys
+    half_w, half_d = width * 0.5, depth * 0.5
 
-    # Stone plinth grounds the building on uneven terrain.
-    mesh.box((0.0, 0.0, plinth_h * 0.5), (width + 30.0, depth + 30.0, plinth_h), pal.WALL_STONE)
-    mesh.box((0.0, 0.0, plinth_h + wall_h * 0.5), (width, depth, wall_h), wall)
+    # The foundation. Its top is the ground floor - solid, so the player stands
+    # on it without needing a slab of its own - and it runs deep enough below
+    # that to stay buried on the steepest plot in town.
+    mesh.box((0.0, 0.0, PLINTH_H - FOUNDATION_D * 0.5),
+             (width + 30.0, depth + 30.0, FOUNDATION_D), pal.WALL_STONE)
+
+    # --- openings -----------------------------------------------------------
+    win_x = _front_windows(width)
+    front = [(0.0, DOOR_W, 0.0, DOOR_H)]
+    back = []
+    ends = []
+    for storey in range(storeys):
+        sill = storey * STOREY_H + (110.0 if storey == 0 else 120.0)
+        if win_x > 0.0:
+            for side in (-1.0, 1.0):
+                front.append((side * win_x, WIN_W, sill, WIN_H))
+                back.append((side * win_x, WIN_W, sill, WIN_H))
+        if depth > 420.0:
+            ends.append((0.0, WIN_W, sill, WIN_H))
+
+    # --- the four wall panels -----------------------------------------------
+    mesh.wall((0.0, -half_d + WALL_T * 0.5, PLINTH_H), "x", width, wall_h,
+              WALL_T, wall, openings=front)
+    mesh.wall((0.0, half_d - WALL_T * 0.5, PLINTH_H), "x", width, wall_h,
+              WALL_T, wall, openings=back)
+    for sx in (-1.0, 1.0):
+        mesh.wall((sx * (half_w - WALL_T * 0.5), 0.0, PLINTH_H), "y",
+                  depth - WALL_T * 2.0, wall_h, WALL_T, wall, openings=ends)
+
+    # --- glazing and the door -----------------------------------------------
+    for (offset, opening_w, sill, opening_h) in front[1:]:
+        _glaze(mesh, (offset, -half_d + WALL_T * 0.5, PLINTH_H + sill), "x",
+               opening_w, opening_h)
+    for (offset, opening_w, sill, opening_h) in back:
+        _glaze(mesh, (offset, half_d - WALL_T * 0.5, PLINTH_H + sill), "x",
+               opening_w, opening_h)
+    for (offset, opening_w, sill, opening_h) in ends:
+        for sx in (-1.0, 1.0):
+            _glaze(mesh, (sx * (half_w - WALL_T * 0.5), offset, PLINTH_H + sill),
+                   "y", opening_w, opening_h)
+
+    _doorway(mesh, (0.0, -half_d + WALL_T * 0.5, PLINTH_H), door)
+
+    # Steps down from the doorway to whatever the ground is doing out there.
+    # Each one is a block down to the bottom of the foundation rather than a
+    # tread on legs, so nothing shows underneath where the hill falls away.
+    # They start beyond the porch on the houses that have one, because the porch
+    # deck is already at floor level.
+    step_y = -half_d - (150.0 if porch else 0.0)
+    for step in range(1, STEP_COUNT + 1):
+        top = PLINTH_H - STEP_RISE * step
+        bottom = PLINTH_H - FOUNDATION_D
+        mesh.box((0.0, step_y - STEP_GOING * (step - 0.5), (top + bottom) * 0.5),
+                 (DOOR_W + 120.0, STEP_GOING, top - bottom), pal.WALL_STONE)
 
     # Gable roof ridged along X, overhanging the walls.
     roof_h = 150.0 + 60.0 * storeys
-    mesh.prism((0.0, 0.0, plinth_h + wall_h), (width + 70.0, depth + 70.0, roof_h), roof)
-
-    # Door on the -Y face, windows on -Y and both ends.
-    _door(mesh, (0.0, -depth * 0.5, plinth_h), "y", door)
-    _windows_on_wall(mesh, (0.0, -depth * 0.5, plinth_h), width, wall_h, "y",
-                     2, seed, sill_z=wall_h * 0.34)
-    _windows_on_wall(mesh, (0.0, depth * 0.5, plinth_h), width, wall_h, "y",
-                     2, seed + 1, sill_z=wall_h * 0.34)
-    _windows_on_wall(mesh, (width * 0.5, 0.0, plinth_h), depth, wall_h, "x",
-                     1, seed + 2, sill_z=wall_h * 0.34)
-    if storeys > 1:
-        _windows_on_wall(mesh, (0.0, -depth * 0.5, plinth_h), width, wall_h, "y",
-                         2, seed + 3, sill_z=wall_h * 0.68)
-        _windows_on_wall(mesh, (0.0, depth * 0.5, plinth_h), width, wall_h, "y",
-                         2, seed + 4, sill_z=wall_h * 0.68)
+    mesh.prism((0.0, 0.0, PLINTH_H + wall_h), (width + 70.0, depth + 70.0, roof_h),
+               roof)
 
     if chimney:
         cx = width * rng.uniform(0.2, 0.34)
-        mesh.box((cx, depth * 0.16, plinth_h + wall_h + roof_h * 0.66),
+        mesh.box((cx, depth * 0.16, PLINTH_H + wall_h + roof_h * 0.66),
                  (90.0, 90.0, roof_h * 1.35), pal.BRICK_RED)
-        mesh.box((cx, depth * 0.16, plinth_h + wall_h + roof_h * 1.34),
+        mesh.box((cx, depth * 0.16, PLINTH_H + wall_h + roof_h * 1.34),
                  (110.0, 110.0, 26.0), pal.STONE_DARK)
 
     if porch:
         porch_d = 150.0
-        mesh.box((0.0, -depth * 0.5 - porch_d * 0.5, plinth_h + 8.0),
-                 (width * 0.55, porch_d, 16.0), pal.WOOD_PLANK)
+        # Flush with the floor inside, and thick enough downward that the hill
+        # does not show under it.
+        mesh.box((0.0, -half_d - porch_d * 0.5, PLINTH_H - 60.0),
+                 (width * 0.55, porch_d, 120.0), pal.WOOD_PLANK)
         for sx in (-1.0, 1.0):
-            mesh.box((sx * width * 0.24, -depth * 0.5 - porch_d * 0.85, plinth_h + 120.0),
+            mesh.box((sx * width * 0.24, -half_d - porch_d * 0.85, PLINTH_H + 120.0),
                      (28.0, 28.0, 230.0), pal.WOOD_DARK)
-        mesh.box((0.0, -depth * 0.5 - porch_d * 0.5, plinth_h + 245.0),
+        mesh.box((0.0, -half_d - porch_d * 0.5, PLINTH_H + 245.0),
                  (width * 0.6, porch_d + 40.0, 22.0), roof)
     return mesh
+
+
+def _glaze(mesh, centre, axis, opening_w, opening_h,
+           pane=pal.WINDOW_GLASS, frame=pal.WINDOW_FRAME):
+    """Fill a window opening: a pane in the reveal, a frame on both faces.
+
+    The pane sits *in* the wall now rather than standing proud of it, so a window
+    reads as a window from inside the room as well as from the street.
+    """
+    cx, cy, cz = centre
+    z = cz + opening_h * 0.5
+    if axis == "x":
+        mesh.box((cx, cy, z), (opening_w, 8.0, opening_h), pane)
+        for sy in (-1.0, 1.0):
+            mesh.box((cx, cy + sy * 13.0, z),
+                     (opening_w + 18.0, 6.0, opening_h + 18.0), frame)
+        mesh.box((cx, cy - 15.0, cz - 5.0), (opening_w + 34.0, 22.0, 12.0), frame)
+    else:
+        mesh.box((cx, cy, z), (8.0, opening_w, opening_h), pane)
+        for sx in (-1.0, 1.0):
+            mesh.box((cx + sx * 13.0, cy, z),
+                     (6.0, opening_w + 18.0, opening_h + 18.0), frame)
+
+
+def _doorway(mesh, centre, colour):
+    """The lining and leaf standing in a real door opening."""
+    cx, cy, cz = centre
+    # Reveal linings, so the wall does not read as paper thin from the side.
+    for sx in (-1.0, 1.0):
+        mesh.box((cx + sx * (DOOR_W * 0.5 + 7.0), cy, cz + DOOR_H * 0.5),
+                 (14.0, WALL_T + 10.0, DOOR_H + 14.0), pal.TRIM_WHITE)
+    mesh.box((cx, cy, cz + DOOR_H + 7.0),
+             (DOOR_W + 28.0, WALL_T + 10.0, 14.0), pal.TRIM_WHITE)
+    # No leaf here on purpose. The opening has to stay empty, because collision
+    # is complex-as-simple and a leaf modelled across it is a house nobody can
+    # walk into. Every house now gets an interactable AUEGT2Door hung in this
+    # opening by the gameplay stage instead, which swings and can be shut.
+    # A threshold, so the join between the boards inside and the stoop outside
+    # is not a visible seam.
+    mesh.box((cx, cy, cz + 5.0), (DOOR_W + 20.0, WALL_T + 14.0, 12.0), colour)
 
 
 def rng_choice(rng, items):

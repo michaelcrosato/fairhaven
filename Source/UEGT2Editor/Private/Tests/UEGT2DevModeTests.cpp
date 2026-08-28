@@ -139,8 +139,22 @@ bool FUEGT2TeleportTargetsTest::RunTest(const FString& Parameters)
 		// teleport there drops the player through the world.
 		TestTrue(FString::Printf(TEXT("viewpoint %s is inside the world"), *Point.Name.ToString()),
 			FMath::Abs(Point.Location.X) <= 195000.0f && FMath::Abs(Point.Location.Y) <= 195000.0f);
-		TestTrue(FString::Printf(TEXT("viewpoint %s spawns above ground"), *Point.Name.ToString()),
-			Point.HeightAboveGround > 0.0f);
+		// HeightAboveGround means two different things depending on the flag,
+		// and the units differ by a factor of a hundred, so check the range that
+		// actually applies. An indoor viewpoint that was left unflagged reads as
+		// a height of seventeen hundred metres and throws the player into orbit,
+		// which is exactly the bug this pair of assertions exists to catch.
+		if (Point.bAbsoluteHeight)
+		{
+			TestTrue(FString::Printf(TEXT("indoor viewpoint %s has a plausible world Z"),
+				*Point.Name.ToString()),
+				Point.HeightAboveGround > 0.0f && Point.HeightAboveGround < 60000.0f);
+		}
+		else
+		{
+			TestTrue(FString::Printf(TEXT("viewpoint %s spawns above ground"), *Point.Name.ToString()),
+				Point.HeightAboveGround > 0.0f && Point.HeightAboveGround < 1000.0f);
+		}
 	}
 	return true;
 }

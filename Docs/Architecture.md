@@ -39,7 +39,7 @@ dependency order regardless of the order given.
 | Stage | Module | Produces |
 |---|---|---|
 | `materials` | `uegt2/materials.py` | 5 master materials, no textures |
-| `meshes` | `uegt2/meshbuild.py` | 131 static meshes from the catalog |
+| `meshes` | `uegt2/meshbuild.py` | 155 static meshes from the catalog |
 | `audio` | `uegt2/audio.py` | sound classes, imported waves, ambience |
 | `level` | `build_content.py` | opens/resets `L_Fairhaven` |
 | `landscape` | `uegt2/landscape.py` | imports heightmap + 7 weightmaps |
@@ -113,6 +113,39 @@ must not be undone:
   in Unreal is named `""`, so only the float3 RGB pin is reachable by name and
   the alpha cannot be addressed from script.
 
+**A house is a shell plus a fit-out, on one transform.** `gen_town.house()`
+builds the outside - four wall panels with real openings punched through them by
+`meshkit.wall()`, a roof, a chimney - and `gen_interior.fit_out()` builds
+everything inside as a *separate* mesh dropped on the same actor transform. They
+are separate because an interior is 650-2,000 triangles that nobody can see from
+the street, so it is drawn only within 90 m while the shell stays visible across
+the valley. Its collision is not culled with it, so an upper floor stays solid
+under an NPC in a house nobody is looking at.
+
+Four things hold the two halves together, and all four have already been the
+cause of a bug:
+
+- *One set of constants.* `gen_town` owns `WALL_T`, `PLINTH_H` and `STOREY_H`;
+  `gen_interior` imports them. Two copies of a contract is one copy and a guess.
+- *Furniture is placed off measured geometry.* `gen_interior._measure()` builds
+  a piece and reads its real bounding box. The hand-written dimension table it
+  replaced had drifted, and put a counter through the front wall.
+- *The front doorway is sacred.* A room partition is nudged clear of it in
+  `_split`, because a 16 cm partition down the middle of a 120 cm opening leaves
+  52 cm either side and the pawn is 68 across. That made a third of the houses
+  unenterable, and every bounds check passed.
+- *The house sits on the highest ground under it*, not the lowest
+  (`town.Placer.ground_range`), with a 2.4 m foundation and a flight of steps to
+  take up the slack downhill. Sitting it on the lowest corner put the hillside
+  through the floor of 72 of 114 houses and buried 25 front doors.
+
+**Interiors are lit, not daylit.** There is no translucent material, so a window
+pane is an opaque panel and no light comes through it. Each room gets a point
+light at its ceiling lamp instead. They are unphysically bright - 45,000 lumens -
+because exposure is one global setting shared with the outdoors and floored at
+EV 7 so that night still reads as night; a room has to reach about EV 10 to be
+visible at all under that floor.
+
 **Landscape, not World Partition.** One level, one landscape, no streaming. At
 4 km with instanced scatter this loads in seconds and keeps the content build
 simple. Streaming is the obvious next step if the world grows, and nothing here
@@ -133,7 +166,18 @@ of `uegt2/water.py` for the trade-off.
 
 Target: 1920×1080, 60 fps on an RTX 3060-class GPU.
 
-- 131 unique meshes, 21,043 triangles total; the heaviest asset is 744 triangles.
+- 155 unique meshes, 45,483 triangles total; the heaviest asset is 2,204
+  triangles (`SM_Int_HouseB_1`, a two storey house's fit-out). The 24 interior
+  meshes are 20,648 of that total - as much geometry as the whole catalog was
+  before them - which is why they are separate actors on a 90 m draw distance
+  rather than being baked into the shells they sit in.
+- 114 house interiors, each two actors (the fit-out and its emissive fires and
+  bulbs) plus one point light per room, about 325 lights in all. The lights are
+  movable and cast shadows, because a shadowless light inside a house lights the
+  street through the wall; they are affordable because `max_draw_distance` is
+  42 m, so two or three are ever submitted. Interior collision is *not* culled
+  with the drawing, which is what lets the floor stay solid under an NPC upstairs
+  in a house nobody is looking at.
 - ~650,000 scattered instances across 13 species, all in hierarchical instanced
   components with per-species cull distances (grass 70 m, trees 700–900 m).
 - ~1,215 inhabitants as movable static mesh actors. Measured cost: **nothing

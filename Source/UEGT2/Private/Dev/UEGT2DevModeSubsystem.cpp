@@ -441,7 +441,17 @@ bool UUEGT2DevModeSubsystem::TeleportToGround(const FVector2D& WorldXY, float He
 		GroundZ = Hit.ImpactPoint.Z;
 	}
 
-	const FVector Target(WorldXY.X, WorldXY.Y, GroundZ + HeightMetres * 100.0f);
+	return TeleportToExactly(
+		FVector(WorldXY.X, WorldXY.Y, GroundZ + HeightMetres * 100.0f), Yaw, Pitch);
+}
+
+bool UUEGT2DevModeSubsystem::TeleportToExactly(const FVector& Target, float Yaw, float Pitch)
+{
+	AUEGT2Character* Character = GetCharacter();
+	if (!Character)
+	{
+		return false;
+	}
 
 	// Teleport rather than SetActorLocation so the movement component's state
 	// is reset; arriving mid-fall with stale velocity throws you off the cliff.
@@ -461,7 +471,15 @@ bool UUEGT2DevModeSubsystem::TeleportToViewpoint(int32 Index)
 		return false;
 	}
 	const FUEGT2Viewpoint& Point = Tour[Index];
-	if (!TeleportToGround(Point.Location, Point.HeightAboveGround, Point.Yaw, Point.Pitch))
+	// An indoor viewpoint carries a world Z, not a height above the ground, and
+	// tracing for the ground under a house finds its roof - so neither half of
+	// TeleportToGround is right for one. Sending it through anyway multiplied a
+	// world Z by a hundred and threw the player a kilometre and a half upward.
+	const bool bMoved = Point.bAbsoluteHeight
+		? TeleportToExactly(FVector(Point.Location.X, Point.Location.Y,
+			Point.HeightAboveGround), Point.Yaw, Point.Pitch)
+		: TeleportToGround(Point.Location, Point.HeightAboveGround, Point.Yaw, Point.Pitch);
+	if (!bMoved)
 	{
 		return false;
 	}

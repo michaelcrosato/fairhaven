@@ -15,6 +15,8 @@ import math
 import unreal
 
 from . import ctx
+from . import gen_interior
+from . import gen_town
 from .meshkit import _SmallRng
 
 LABEL_PREFIX = "Town "
@@ -31,12 +33,77 @@ BUILDING_FOOTPRINT = {
 TOWN_HOUSES = ["SM_House_A", "SM_House_B", "SM_House_C", "SM_House_D",
                "SM_House_E", "SM_Cottage_A"]
 
+def _interior_sizes():
+    """Footprints of the fit-out plans, read from the catalog rather than copied.
+
+    The lights have to be laid out by exactly the arithmetic that laid out the
+    rooms, and the only way to be sure of that is to ask the same table.
+    """
+    from . import meshbuild
+    return {name: (width, depth, storeys)
+            for (name, width, depth, storeys) in meshbuild.INTERIOR_PLANS}
+
+
+_INTERIOR_SIZE = None
+
+
+# Which interior fit-out belongs to which house archetype. The footprints live
+# in meshbuild.INTERIOR_PLANS; this is only the name mapping.
+HOUSE_INTERIOR = {
+    "SM_House_A": "HouseA", "SM_House_B": "HouseB", "SM_House_C": "HouseC",
+    "SM_House_D": "HouseD", "SM_House_E": "HouseE", "SM_Cottage_A": "Cottage",
+}
+
+# An interior is ~1,600 triangles that cannot be seen from outside the building
+# it is in, so it is drawn only close up. Collision is not affected by a draw
+# distance, which is what lets an NPC keep standing on an upper floor that is
+# not being rendered.
+INTERIOR_CULL = 9000.0
+GLOW_CULL = 14000.0
+
+# A room with no lamp in it is a black box. There is no static lighting here,
+# the window panes are opaque, and Lumen has nothing to carry through a sealed
+# shell, so every room gets a real point light hung where its emissive bulb is.
+# About three hundred of them over the town, which sounds like a lot until you
+# notice the draw distance: a light past forty metres is not submitted at all,
+# so two or three are ever actually lit. They cast shadows on purpose - a
+# shadowless light inside a house lights the street through the wall.
+INTERIOR_LIGHT_CULL = 4200.0
+INTERIOR_LIGHT_FADE = 900.0
+# These are not domestic numbers and they are not meant to be. Exposure is a
+# single global setting shared with the outdoors, and it is floored at EV 7 so
+# that night still looks like night - so a room has to be lit to somewhere near
+# EV 10 to read at all, and EV 10 at two and a half metres from the lamp is
+# about 34,000 lumens once the light hangs below the shade instead of inside it.
+# Measured off the screenshots, not guessed: at 3,000 the room was black, and at
+# 12,000 you could make out a window and nothing else.
+#
+# IndirectLightingIntensity is what fills the corners. Doubling the bounce is
+# far cheaper, and much better looking, than the raw intensity it would take to
+# reach a far corner directly.
+INTERIOR_LIGHT_LUMENS = 34000.0
+INTERIOR_LIGHT_RADIUS = 900.0
+INTERIOR_LIGHT_SOURCE = 30.0
+INTERIOR_LIGHT_BOUNCE = 2.5
+INTERIOR_LIGHT_COLOUR = (1.0, 0.86, 0.68)
+
 # Depth (local Y) of each house, so the gameplay stage can find its doorway.
 # Keep in step with the sizes passed to town.house() in meshbuild._catalog().
 HOUSE_DEPTH = {
     "SM_House_A": 580.0, "SM_House_B": 620.0, "SM_House_C": 560.0,
     "SM_House_D": 640.0, "SM_House_E": 700.0, "SM_Cottage_A": 460.0,
 }
+
+# Local X of each house, needed to sample the terrain under the whole footprint.
+HOUSE_WIDTH = {
+    "SM_House_A": 760.0, "SM_House_B": 700.0, "SM_House_C": 900.0,
+    "SM_House_D": 640.0, "SM_House_E": 820.0, "SM_Cottage_A": 560.0,
+}
+
+# How far the ground floor is set above the highest ground under the house.
+# Small on purpose: it is the step up through the front door on level ground,
+# and the pawn steps 45 cm without noticing.
+FLOOR_CLEAR = 12.0
 
 
 class Placer(object):
@@ -69,6 +136,29 @@ class Placer(object):
     def reserve(self, wx, wy, radius):
         self.occupied.append((wx, wy, radius))
 
+    def ground_range(self, wx, wy, yaw, half_w, half_d, margin=50.0):
+        """Lowest and highest terrain under a rotated rectangular footprint.
+
+        The five point cross ``ground`` uses is right for a barrel and wrong for
+        a house: it never samples a corner, which is exactly where a footprint
+        on a slope is highest. Setting a house by the lowest of five badly
+        chosen samples is how seventy of a hundred and fourteen of them ended up
+        with the hillside coming through the ground floor - which nobody could
+        see while a house was a solid block, and everybody can see now.
+        """
+        radians = math.radians(yaw)
+        cos_y, sin_y = math.cos(radians), math.sin(radians)
+        span_x = half_w + margin
+        span_y = half_d + margin
+        heights = []
+        for i in range(5):
+            lx = -span_x + span_x * 0.5 * i
+            for j in range(5):
+                ly = -span_y + span_y * 0.5 * j
+                heights.append(self.wd.height_uu(wx + lx * cos_y - ly * sin_y,
+                                                 wy + lx * sin_y + ly * cos_y))
+        return min(heights), max(heights)
+
     def ground(self, wx, wy, footprint=0.0):
         """Lowest terrain height across the footprint, so nothing floats."""
         if footprint <= 0.0:
@@ -77,6 +167,48 @@ class Placer(object):
                    for dx, dy in ((0, 0), (footprint, 0), (-footprint, 0),
                                   (0, footprint), (0, -footprint))]
         return min(samples)
+
+    def place_at(self, mesh_name, location, yaw, label, cull=0.0, shadow=True,
+                 collision=True):
+        """Spawn a mesh on an exact transform, off the occupancy list.
+
+        Interiors go on the same transform as the shell they belong to, so they
+        must not re-derive their height from the terrain - a fit-out half a
+        metre out of register with its own walls is worse than none.
+
+        ``cull`` is a draw distance in centimetres. An interior is 1,600
+        triangles that nobody can see from outside, so it is switched off at
+        range; collision is unaffected by it, which is what lets an NPC keep
+        standing on an upper floor that is not being drawn.
+        """
+        mesh = self.meshes.get(mesh_name)
+        if mesh is None:
+            ctx.warn("%s: mesh %s missing" % (self.prefix.strip(), mesh_name))
+            return None
+
+        actor = self.subsystem.spawn_actor_from_class(
+            unreal.StaticMeshActor, location, unreal.Rotator(0.0, 0.0, yaw))
+        if actor is None:
+            return None
+
+        component = actor.get_editor_property("static_mesh_component")
+        component.set_editor_property("static_mesh", mesh)
+        component.set_editor_property("mobility", unreal.ComponentMobility.STATIC)
+        if cull > 0.0:
+            ctx.set_prop(component, "ld_max_draw_distance", cull)
+        if not shadow:
+            ctx.set_prop(component, "cast_shadow", False)
+        if not collision:
+            # A method rather than a property, so it cannot go through
+            # ctx.set_prop; guarded the same way, because an engine rename here
+            # should cost a warning and not the whole content build.
+            try:
+                component.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+            except Exception as exc:                            # noqa: BLE001
+                ctx.warn("could not disable collision on %s: %s" % (label, exc))
+        actor.set_actor_label("%s%s" % (self.prefix, label))
+        self.count += 1
+        return actor
 
     def place(self, mesh_name, wx, wy, yaw, label, radius=0.0, z_offset=0.0,
               scale=1.0, footprint=0.0, check=True):
@@ -139,8 +271,12 @@ def _place_streets(placer, rng):
     # this the town stage would line Newhaven avenues with thatched cottages.
     streets = [r for r in placer.wd.roads
                if r["is_street"] and not r.get("is_city")]
+    global _INTERIOR_SIZE
+    if _INTERIOR_SIZE is None:
+        _INTERIOR_SIZE = _interior_sizes()
     houses = 0
     lamps = 0
+    interiors = 0
 
     for street in streets:
         half = street["width_uu"] * 0.5
@@ -161,9 +297,24 @@ def _place_streets(placer, rng):
                 jitter_y = rng.uniform(-90.0, 90.0)
                 yaw = _face_yaw(nx, ny) + rng.uniform(-4.0, 4.0)
 
-                if placer.place(name, wx + jitter_x, wy + jitter_y, yaw,
-                                "House %d" % houses, radius=radius,
-                                z_offset=-20.0, footprint=radius * 0.7):
+                # Stand the house on the *highest* ground under its footprint
+                # rather than the lowest, so the floor is a floor everywhere
+                # inside. The deep foundation in gen_town.house() takes up the
+                # slack on the downhill side, and the flight of steps at the
+                # door reaches down to meet the ground.
+                hx = wx + jitter_x
+                hy = wy + jitter_y
+                _low, high = placer.ground_range(
+                    hx, hy, yaw,
+                    HOUSE_WIDTH.get(name, radius) * 0.5,
+                    HOUSE_DEPTH.get(name, radius) * 0.5)
+                lift = (high + FLOOR_CLEAR - gen_town.PLINTH_H
+                        - placer.wd.height_uu(hx, hy))
+                built = placer.place(name, hx, hy, yaw,
+                                     "House %d" % houses, radius=radius,
+                                     z_offset=lift, footprint=0.0)
+                if built:
+                    interiors += _place_interior(placer, built, name, houses)
                     houses += 1
 
         # Street furniture on alternating sides.
@@ -177,9 +328,80 @@ def _place_streets(placer, rng):
                              z_offset=-10.0, check=False)
                 lamps += 1
 
-    ctx.log("town: %d houses, %d lamp posts along %d streets"
-            % (houses, lamps, len(streets)))
+    ctx.log("town: %d houses (%d interior meshes), %d lamp posts along %d streets"
+            % (houses, interiors, lamps, len(streets)))
     return houses
+
+
+def _place_interior(placer, house_actor, mesh_name, index):
+    """Drop a house's fit-out and its fires onto the house's own transform.
+
+    Read off the placed actor rather than recomputed: place() derives its height
+    from the lowest corner of the footprint and a z offset, and a fit-out that
+    re-derived that itself would end up a few centimetres out of register with
+    its own walls.
+    """
+    plan = HOUSE_INTERIOR.get(mesh_name)
+    if plan is None:
+        return 0
+
+    location = house_actor.get_actor_location()
+    yaw = house_actor.get_actor_rotation().yaw
+    variant = index % 2
+    placed = 0
+
+    if placer.place_at("SM_Int_%s_%d" % (plan, variant), location, yaw,
+                       "Interior %d" % index, cull=INTERIOR_CULL):
+        placed += 1
+    # The fires and lamp bulbs: emissive, so no shadow and no collision - they
+    # are light, not furniture.
+    if placer.place_at("SM_Glow_%s_%d" % (plan, variant), location, yaw,
+                       "InteriorGlow %d" % index, cull=GLOW_CULL,
+                       shadow=False, collision=False):
+        placed += 1
+    placed += _place_interior_lights(placer, location, yaw, plan, variant, index)
+    return placed
+
+
+def _place_interior_lights(placer, location, yaw, plan, variant, index):
+    """A point light in every room, at the lamp the fit-out already hung there."""
+    from . import meshbuild
+
+    size = _INTERIOR_SIZE.get(plan)
+    if size is None:
+        return 0
+    width, depth, storeys = size
+    radians = math.radians(yaw)
+    cos_y, sin_y = math.cos(radians), math.sin(radians)
+
+    placed = 0
+    for (lx, ly, lz, _storey) in gen_interior.lamp_points(
+            width, depth, storeys, 9001 + variant * 131):
+        actor = placer.subsystem.spawn_actor_from_class(
+            unreal.PointLight,
+            unreal.Vector(location.x + lx * cos_y - ly * sin_y,
+                          location.y + lx * sin_y + ly * cos_y,
+                          location.z + lz),
+            unreal.Rotator(0.0, 0.0, 0.0))
+        if actor is None:
+            continue
+        component = actor.get_component_by_class(unreal.PointLightComponent)
+        ctx.set_prop(component, "mobility", unreal.ComponentMobility.MOVABLE)
+        ctx.set_prop(component, "intensity_units", unreal.LightUnits.LUMENS)
+        ctx.set_prop(component, "intensity", INTERIOR_LIGHT_LUMENS)
+        ctx.set_prop(component, "attenuation_radius", INTERIOR_LIGHT_RADIUS)
+        ctx.set_prop(component, "source_radius", INTERIOR_LIGHT_SOURCE)
+        ctx.set_prop(component, "indirect_lighting_intensity", INTERIOR_LIGHT_BOUNCE)
+        ctx.set_prop(component, "light_color", unreal.Color(
+            int(INTERIOR_LIGHT_COLOUR[0] * 255), int(INTERIOR_LIGHT_COLOUR[1] * 255),
+            int(INTERIOR_LIGHT_COLOUR[2] * 255), 255))
+        ctx.set_prop(component, "max_draw_distance", INTERIOR_LIGHT_CULL)
+        ctx.set_prop(component, "max_distance_fade_range", INTERIOR_LIGHT_FADE)
+        ctx.set_prop(component, "volumetric_scattering_intensity", 0.0)
+        actor.set_actor_label("%sInteriorLight %d.%d" % (placer.prefix, index, placed))
+        placer.count += 1
+        placed += 1
+    return placed
 
 
 def _place_plaza(placer, rng):

@@ -137,6 +137,29 @@ ROPE_TAN = 0xBFA073
 CANVAS_WHITE = 0xEDE6D4
 PAPER_CREAM = 0xF0E6CE
 
+# --- Interiors --------------------------------------------------------------
+# Deliberately brighter than the exterior palette. There is no static lighting
+# in this project and generated meshes carry no lightmap UVs, so the inside of a
+# building is lit by whatever Lumen carries through the door and by a little
+# emissive fire and lamplight. Painting the plaster and the boards near-white is
+# what keeps a room readable in that budget - a realistically dim interior in a
+# world with a daylight exposure floor renders as a black hole.
+PLASTER_WHITE = 0xF2EDE2
+PLASTER_CREAM = 0xEDE2CB
+PLASTER_OCHRE = 0xE8D6AE
+PLASTER_SAGE = 0xD8DFCE
+FLOOR_BOARD = 0xB08A5C
+FLOOR_BOARD_DARK = 0x8E6C44
+FLOOR_FLAG = 0xB9B2A4
+FLOOR_TILE = 0xC8BFAE
+CEILING_PLASTER = 0xEFE9DC
+CEILING_BEAM = 0x6D4F32
+SKIRTING = 0xD9CDB4
+# Newhaven's interiors are cooler and harder, like its facades.
+OFFICE_FLOOR = 0x9AA0A4
+OFFICE_WALL = 0xE4E7E9
+LOBBY_STONE = 0xCFCABE
+
 # --- Water (used when the stylised fallback water is active) ----------------
 WATER_OCEAN = 0x1E5F7A
 WATER_SHALLOW = 0x3E93A8

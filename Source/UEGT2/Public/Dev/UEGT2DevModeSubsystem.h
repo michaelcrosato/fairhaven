@@ -153,6 +153,9 @@ private:
 	void RegisterConsoleCommands();
 	/** Drop to the ground under a world XY and put the player HeightMetres above it. */
 	bool TeleportToGround(const FVector2D& WorldXY, float HeightMetres, float Yaw, float Pitch);
+
+	/** Put the player at an exact world point, without tracing for a floor. */
+	bool TeleportToExactly(const FVector& Target, float Yaw, float Pitch);
 	void Notify(const FString& Message) const;
 
 	bool bDevModeEnabled = false;

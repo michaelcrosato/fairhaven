@@ -15,6 +15,7 @@ from __future__ import annotations
 from . import ctx
 from . import gen_city as city
 from . import gen_fauna as fauna
+from . import gen_interior as interior
 from . import gen_nature as nat
 from . import gen_town as town
 from . import meshkit
@@ -24,6 +25,47 @@ P_TOWN = ctx.P_MESH + "/Town"
 P_PROPS = ctx.P_MESH + "/Props"
 P_CITY = ctx.P_MESH + "/City"
 P_FAUNA = ctx.P_MESH + "/Fauna"
+P_INTERIOR = ctx.P_MESH + "/Interior"
+
+# Every building archetype that has a walkable inside, and the footprint its
+# fit-out has to match exactly. These numbers are the same ones passed to
+# town.house() below - if one moves, the interior stops fitting the shell, so
+# they are written once and read twice.
+#
+# Two variants each: a hundred and fourteen houses over six archetypes means
+# roughly ten houses share a layout, which is far enough apart to not read as
+# repetition when you can only ever see inside one at a time.
+INTERIOR_PLANS = [
+    ("HouseA", 760.0, 580.0, 1),
+    ("HouseB", 700.0, 620.0, 2),
+    ("HouseC", 900.0, 560.0, 1),
+    ("HouseD", 640.0, 640.0, 2),
+    ("HouseE", 820.0, 700.0, 1),
+    ("Cottage", 560.0, 460.0, 1),
+]
+INTERIOR_VARIANTS = 2
+
+
+def _interior_entries():
+    """Catalog rows for the interiors, generated rather than written out.
+
+    This is the one place the catalog is not a literal list. Twenty-four
+    near-identical lines that must each agree with a footprint declared
+    elsewhere is exactly the kind of table that drifts; the loop cannot.
+    """
+    rows = []
+    for (name, width, depth, storeys) in INTERIOR_PLANS:
+        for variant in range(INTERIOR_VARIANTS):
+            seed = 9001 + variant * 131
+            rows.append(("SM_Int_%s_%d" % (name, variant), P_INTERIOR,
+                         (lambda w=width, d=depth, s=storeys, sd=seed:
+                          interior.fit_out(w, d, s, sd)[0]),
+                         "prop", "complex"))
+            rows.append(("SM_Glow_%s_%d" % (name, variant), P_INTERIOR,
+                         (lambda w=width, d=depth, s=storeys, sd=seed:
+                          interior.fit_out(w, d, s, sd)[1]),
+                         "emissive", "none"))
+    return rows
 
 
 def _catalog():
@@ -81,7 +123,7 @@ def _catalog():
         ("SM_Warehouse_A", P_TOWN, lambda: town.warehouse(269), "prop", "complex"),
         ("SM_Shed_A", P_TOWN, lambda: town.shed(271), "prop", "complex"),
         ("SM_MarketStall_A", P_TOWN, lambda: town.market_stall(277), "prop", "complex"),
-        ("SM_Door_A", P_TOWN, lambda: town.door_leaf(279), "prop", "complex"),
+        ("SM_Door_A", P_TOWN, lambda: town.door_leaf(279, width=116.0, height=210.0), "prop", "complex"),
 
         # -- Props ----------------------------------------------------------
         ("SM_Fence_A", P_PROPS, lambda: town.fence_section(281), "prop", "complex"),
@@ -190,7 +232,7 @@ def _catalog():
         ("SM_Horse_B", P_FAUNA, lambda: fauna.horse(691), "prop", "complex"),
         ("SM_Seagull_A", P_FAUNA, lambda: fauna.seagull(701), "prop", "complex"),
         ("SM_Rabbit_A", P_FAUNA, lambda: fauna.rabbit(709), "prop", "complex"),
-    ]
+    ] + _interior_entries()
 
 
 def build_all(prop_material, emissive_material, foliage_material, world_data):
@@ -200,7 +242,7 @@ def build_all(prop_material, emissive_material, foliage_material, world_data):
         "emissive": emissive_material,
         "foliage": foliage_material,
     }
-    for folder in (P_NATURE, P_TOWN, P_PROPS, P_CITY, P_FAUNA):
+    for folder in (P_NATURE, P_TOWN, P_PROPS, P_CITY, P_FAUNA, P_INTERIOR):
         ctx.ensure_directory(folder)
 
     built = {}

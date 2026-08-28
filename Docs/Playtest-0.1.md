@@ -70,6 +70,23 @@ There are 7 survey landmarks. Each shows a count when you use it.
 **Scale.** Does a house feel house-sized next to you? Do the villagers read as
 people? Is the walk from town to the coast the right length, or too long/short?
 
+**Inside the houses.** The other main new question. Every house on a town
+street now opens. Walk up to a front door, press the interact key, and go in.
+What to judge:
+
+- Does the room read as somewhere a person lives, or as a box with props in it?
+- Is it the right size? A cottage is one room; the bigger houses are two or
+  three, and two of the six archetypes have a staircase and bedrooms above.
+- Can you get everywhere without fighting the geometry - through the door,
+  around the furniture, up the stairs and back down?
+- Is it bright enough to read, and does the light look like it comes from the
+  fire and the ceiling lamp you can see?
+- On a sloping street, does the house still sit on the ground properly from the
+  outside, and is the step up to its door climbable?
+
+Dev Mode -> Teleport has four buttons that put you straight inside one:
+HouseInterior, HouseUpstairs, CottageInterior and HouseHearth.
+
 **The town's day.** This is the main new question. Escape → Dev Mode → World →
 Time of Day, and drag it. Half four in the morning should be a fisher walking to
 the boats and nobody else; nine should be a working town; six in the evening
@@ -124,9 +141,18 @@ These are known. Reporting them again costs you time.
 - **You walk through people.** NPC collision is query-only, on purpose: the
   player starts in the busiest part of town and a solid crowd there means getting
   wedged.
-- **Nobody goes inside.** There are no interiors, so sleeping and eating at home
-  are modelled by the inhabitant standing on their own doorstep and vanishing.
-- **Interiors do not exist.** Doors swing open onto a solid wall.
+- **Nobody goes inside, even though inside now exists.** Sleeping and eating at
+  home are still modelled by the inhabitant walking to their own doorstep and
+  vanishing. Now that you can follow them in and see the room they are supposed
+  to be in, that reads worse than it used to. Walking them through the door and
+  sitting them at their own table is the obvious next job.
+- **Only the town houses have interiors.** Newhaven's towers, offices and
+  apartment blocks are still solid, and so are the barn, the church and the
+  warehouses. Their doors do open onto a wall.
+- **Interiors are lit by their own lamps, day and night.** The window panes are
+  opaque - one material per mesh, and this project has no translucent one - so
+  no daylight comes through the glass. Each room has a point light hung in its
+  ceiling lamp instead, which is why a house is as bright at noon as at midnight.
 - **Vegetation pops** at its cull distance rather than fading.
 - **The town is one density everywhere** — no separate districts, and building
   placement is a simple street-side rule with overlap rejection.

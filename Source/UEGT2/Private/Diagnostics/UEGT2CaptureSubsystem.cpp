@@ -74,6 +74,24 @@ const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
 			Result.Add(Point);
 		};
 
+		// Indoors: Z is an absolute world height, and the coordinates come from
+		// a house the content build placed. Like every other viewpoint in this
+		// list they are tied to the current seed - Tools/Python/uegt2 has a
+		// scratch script that re-derives them if the town ever moves.
+		auto AddIndoor = [&Result](const TCHAR* Name, float X, float Y, float Z,
+			float Yaw, float Pitch, const TCHAR* Description)
+		{
+			FUEGT2Viewpoint Point;
+			Point.Name = FName(Name);
+			Point.Location = FVector2D(X, Y);
+			Point.HeightAboveGround = Z;
+			Point.bAbsoluteHeight = true;
+			Point.Yaw = Yaw;
+			Point.Pitch = Pitch;
+			Point.Description = Description;
+			Result.Add(Point);
+		};
+
 		Add(TEXT("TownSquare"), 0.0f, 0.0f, 1.8f, 70.0f, -4.0f,
 			TEXT("Town centre looking east toward the harbour"));
 		Add(TEXT("MainStreet"), -6000.0f, -4000.0f, 1.8f, 55.0f, -2.0f,
@@ -127,6 +145,17 @@ const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
 			TEXT("Newhaven's civic square, looking across the fountain to the city hall"));
 		Add(TEXT("NewhavenAerial"), -120220.0f, -12617.0f, 260.0f, 99.0f, -30.0f,
 			TEXT("Newhaven street grid from above"));
+
+		// Inside the houses. Eye height above the floor, so these frame what a
+		// player sees on walking through a front door.
+		AddIndoor(TEXT("HouseInterior"), 3319.1f, -585.5f, 1749.3f, 179.5f, -3.0f,
+			TEXT("Inside a two storey town house, looking in from the front door"));
+		AddIndoor(TEXT("HouseUpstairs"), 3299.1f, -585.3f, 2069.3f, 179.5f, -3.0f,
+			TEXT("The bedroom floor of the same house"));
+		AddIndoor(TEXT("CottageInterior"), 4615.5f, 3536.1f, 1737.9f, 2.1f, -3.0f,
+			TEXT("Inside a one room cottage"));
+		AddIndoor(TEXT("HouseHearth"), 1515.0f, -2056.3f, 1747.7f, -89.9f, -3.0f,
+			TEXT("Looking back at the front door and windows from the far wall"));
 
 		// Development-only: the asset showcase grid (see Tools/Python/uegt2/showcase.py).
 		Add(TEXT("ShowcaseA"), 27200.0f, -57500.0f, 3.4f, 90.0f, -3.0f,
@@ -256,9 +285,11 @@ void UUEGT2CaptureSubsystem::CaptureNext()
 	}
 
 	const FUEGT2Viewpoint& Point = Tour[Index];
-	const float Ground = GroundHeightAt(Point.Location.X, Point.Location.Y);
-	const FVector Location(Point.Location.X, Point.Location.Y,
-		Ground + Point.HeightAboveGround * 100.0f);
+	const float Z = Point.bAbsoluteHeight
+		? Point.HeightAboveGround
+		: GroundHeightAt(Point.Location.X, Point.Location.Y)
+			+ Point.HeightAboveGround * 100.0f;
+	const FVector Location(Point.Location.X, Point.Location.Y, Z);
 	TourCamera->SetActorLocationAndRotation(Location, FRotator(Point.Pitch, Point.Yaw, 0.0f));
 
 	// Move first, then wait a beat so temporal effects resolve before the shot.

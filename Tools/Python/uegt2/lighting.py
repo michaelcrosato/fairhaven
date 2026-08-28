@@ -119,11 +119,21 @@ def build(world, world_data):
     # min/max brightness are EV100 stops, NOT linear multipliers. Daylight sits
     # around EV 12-15. Small values here (0.5-3) read as "almost pitch dark" and
     # blow the whole image out to white.
+    #
+    # The floor moved from 10.5 to 7.0 when the houses got insides. 10.5 is
+    # roughly an overcast afternoon, and a room lit by a lamp is nearer EV 6, so
+    # the old floor rendered every interior four stops under - which on screen
+    # is black with a white-hot rectangle where the door is. 9.0 buys back most
+    # of that without letting the night outside come up to daylight, and the
+    # interior lights in town._place_interior_lights carry the rest.
     override("auto_exposure_method", unreal.AutoExposureMethod.AEM_HISTOGRAM)
-    override("auto_exposure_min_brightness", 10.5)
+    override("auto_exposure_min_brightness", 7.0)
     override("auto_exposure_max_brightness", 14.5)
     override("auto_exposure_speed_up", 3.0)
-    override("auto_exposure_speed_down", 1.6)
+    # Walking in through a front door is the fastest brightness change in the
+    # game; at 1.6 the room was still adapting several seconds after you got
+    # there.
+    override("auto_exposure_speed_down", 3.0)
     override("auto_exposure_bias", 0.0)
 
     override("bloom_intensity", 0.5)

@@ -15,6 +15,7 @@ import math
 import unreal
 
 from . import ctx
+from . import gen_town
 from . import town as town_mod
 from .meshkit import _SmallRng
 
@@ -168,22 +169,25 @@ def _place_signs(world_data, meshes):
 
 
 def _place_doors(world_data, meshes):
-    """A working front door on some of the town houses."""
+    """A working front door on every town house.
+
+    It used to be a fifth of them, to keep the actor count down, and that was
+    fine while a door opened onto a solid wall. Now the wall behind it has a
+    hole in it and a furnished room beyond, so a house without a door is a house
+    standing permanently open - and the door is the only thing between the
+    street and the inside.
+    """
     cls = _load_class("UEGT2Door")
     leaf = meshes.get("SM_Door_A")
     if leaf is None:
         ctx.warn("gameplay: SM_Door_A missing, skipping doors")
         return 0
 
-    rng = _SmallRng(world_data.seed + 99)
     placed = 0
     for actor in _subsystem().get_all_level_actors():
         label = actor.get_actor_label()
         if not label.startswith("Town House "):
             continue
-        if rng.next() > 0.22:            # only some houses, to keep actor count low
-            continue
-
         component = actor.get_editor_property("static_mesh_component")
         mesh = component.get_editor_property("static_mesh") if component else None
         if mesh is None:
@@ -197,11 +201,14 @@ def _place_doors(world_data, meshes):
         radians = math.radians(yaw)
         cos_y, sin_y = math.cos(radians), math.sin(radians)
 
-        # Hinge at the left edge of the doorway on the house's -Y face.
-        local_x, local_y = -46.0, -(depth * 0.5 + 12.0)
+        # Hinge at the left edge of the opening, in the plane of the wall.
+        # gen_town.DOOR_W is the opening; the leaf is hung from its left jamb and
+        # extends along +X from its own origin, so the actor's yaw swings it.
+        local_x = -gen_town.DOOR_W * 0.5
+        local_y = -(depth * 0.5) + gen_town.WALL_T * 0.5
         wx = location.x + local_x * cos_y - local_y * sin_y
         wy = location.y + local_x * sin_y + local_y * cos_y
-        wz = location.z + 26.0
+        wz = location.z + gen_town.PLINTH_H
 
         if _spawn_interactable(cls, leaf, wx, wy, wz, yaw, "Door %d" % placed,
                                unreal.ComponentMobility.MOVABLE):

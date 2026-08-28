@@ -27,6 +27,7 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Screenshot-Tour.ps1                   # 20 viewpoints -> PNG
 ./Scripts/Screenshot-Tour.ps1 -Menu             # menu + settings -> PNG
 ./Scripts/Preview.ps1 -Stages lighting          # build + package + screenshot
+python Tools/Python/check_meshes.py             # every generated mesh, no editor, ~1s
 python Tools/Terrain/generate_terrain.py        # re-roll terrain (+ PNG previews)
 python Tools/Audio/generate_audio.py            # re-generate sounds
 ```
@@ -36,6 +37,11 @@ python Tools/Audio/generate_audio.py            # re-generate sounds
 1. **`-Target Both`.** The Game target rejects editor-only APIs the editor build
    accepts. `ADirectionalLight::GetComponent()` compiled fine in the editor and
    broke the game target.
+1b. **`python Tools/Python/check_meshes.py`.** Builds every mesh in the catalog
+   with the `unreal` module stubbed out and checks bounds, winding buffers,
+   degenerate triangles, doorway clearance and interior fit. One second, no
+   editor. It will not tell you anything about materials, lighting or how a
+   thing looks - only that the geometry is what you meant.
 2. **Look at a screenshot.** `./Scripts/Preview.ps1`. Several bugs here produced
    a completely clean log and a completely broken image: inverted triangle
    winding, an unconnected BaseColor, blown-out exposure.
