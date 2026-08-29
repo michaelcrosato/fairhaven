@@ -12,6 +12,8 @@
 //   -UEGT2CaptureMenu           capture the menu screens instead of the world
 //   -UEGT2CaptureLife           walk up to one amenity of each kind and use it
 //   -UEGT2SmokeWalk             inject real input and verify the player moves
+//   -UEGT2SmokeFly              fly god mode for minutes, logging every hitch
+//   -UEGT2SmokeMinutes=<n>      how long the fly soak runs (default 6)
 #pragma once
 
 #include "CoreMinimal.h"
@@ -65,6 +67,9 @@ public:
 	/** True when the amenity tour was requested on the command line. */
 	static bool IsLifeCaptureRequested();
 
+	/** True when the god-mode fly soak was requested on the command line. */
+	static bool IsFlySoakRequested();
+
 	/** The tour definition. Edit here to change what gets reviewed. */
 	static const TArray<FUEGT2Viewpoint>& GetTour();
 
@@ -89,6 +94,22 @@ private:
 	void RunLifeStep();
 	void BeginWalkSmoke();
 	bool TickWalkSmoke(float DeltaSeconds);
+
+	/**
+	 * Fly around in god mode for several minutes and report every stall.
+	 *
+	 * Exists because "it freezes after three to five minutes of flying" is not
+	 * something a screenshot or a unit test can see. It flies the real pawn
+	 * with the real dev-mode flags through the real input path, and every
+	 * second it prints the worst frame in that second alongside what was going
+	 * on - so a stall comes with its own context instead of a stopwatch and a
+	 * guess. Garbage collection is timed separately, because a level with two
+	 * thirds of a million components in it is exactly where a full purge shows
+	 * up as a freeze.
+	 */
+	void BeginFlySoak();
+	bool TickFlySoak(float DeltaSeconds);
+	void ReportFlySecond();
 	void FinishTour();
 	void HandleScreenshotCaptured(int32 Width, int32 Height, const TArray<FColor>& Bitmap);
 	float GroundHeightAt(float WorldX, float WorldY) const;
@@ -110,6 +131,29 @@ private:
 	UPROPERTY(Transient) TArray<TObjectPtr<AUEGT2Amenity>> LifeStops;
 	FVector WalkStart = FVector::ZeroVector;
 	float WalkElapsed = 0.0f;
+
+	// --- fly soak ----------------------------------------------------------
+	/** Where the circuit goes: the inhabited viewpoints, in order. */
+	TArray<FVector2D> FlyStops;
+	int32 FlyStop = 0;
+	int32 FlyLaps = 0;
+	float FlyAltitude = 1800.0f;
+	float FlyElapsed = 0.0f;
+	float FlyLimitSeconds = 360.0f;
+	float FlySecondElapsed = 0.0f;
+	int32 FlySecondFrames = 0;
+	float FlySecondWorst = 0.0f;
+	float FlyWorstEver = 0.0f;
+	int32 FlyStalls = 0;
+	/** Set by the pre-GC hook, read and cleared by the report. */
+	double FlyGcStartSeconds = 0.0;
+	float FlyGcLastMs = 0.0f;
+	float FlyGcWorstMs = 0.0f;
+	int32 FlyGcCount = 0;
+	float FlyStuckSeconds = 0.0f;
+	FVector FlyLastCheck = FVector::ZeroVector;
+	FDelegateHandle FlyGcPreHandle;
+	FDelegateHandle FlyGcPostHandle;
 
 	UPROPERTY(Transient) TObjectPtr<ACameraActor> TourCamera = nullptr;
 };

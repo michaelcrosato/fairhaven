@@ -81,6 +81,16 @@ public:
 
 	/** How many A* searches this network has run. Diagnostics only. */
 	int32 GetSearchCount() const { return SearchCount; }
+	/**
+	 * How many searches have found a cycle in their own parent links.
+	 *
+	 * Must be zero. It is a counter rather than a check() because a cycle used
+	 * to take the whole game down and the point of the guard is that it no
+	 * longer does - but a test asserts it stays at zero, so a search that
+	 * starts producing them cannot go quiet again.
+	 */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|NPC")
+	int32 GetCycleCount() const { return CycleCount; }
 
 private:
 	void BuildSpatialIndex() const;
@@ -97,10 +107,13 @@ private:
 	mutable TMap<FIntPoint, TArray<int32>> Cells;
 	mutable bool bIndexBuilt = false;
 	mutable int32 SearchCount = 0;
+	/** Parent-link cycles found and refused. Must stay zero; see GetCycleCount. */
+	mutable int32 CycleCount = 0;
 
 	/** 60 m cells: a couple of nodes each at the 25 m sampling the bake uses. */
 	static constexpr float CellSize = 6000.0f;
 
 	/** Stop a pathological query rather than stalling the frame. */
 	static constexpr int32 MaxVisitedNodes = 6000;
+
 };

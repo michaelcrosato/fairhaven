@@ -28,6 +28,7 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Screenshot-Tour.ps1 -Menu             # menu + settings -> PNG
 ./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureDialogue'   # the talk panel
 ./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'       # eat, wash, sit, work
+./Scripts/Fly-Soak.ps1 -Minutes 10                                 # god mode, ten minutes, every hitch
 ./Scripts/Preview.ps1 -Stages lighting          # build + package + screenshot
 python Tools/Python/check_meshes.py             # every generated mesh, no editor, ~1s
 python Tools/Terrain/generate_terrain.py        # re-roll terrain (+ PNG previews)
@@ -62,6 +63,20 @@ python Tools/Audio/generate_audio.py            # re-generate sounds
    second of those simulates three whole days per trade with the needs and the
    purse in the loop, which is the only way a wage change that slowly starves
    the bakers is visible before you play for an hour.
+4b. **`./Scripts/Fly-Soak.ps1`.** Flies god mode round a circuit of both
+   settlements for ten minutes and logs, every second, the worst frame in that
+   second next to the object count, the memory, the hour and how many
+   inhabitants are near. It exists because the thing it found - a four gigabyte
+   runaway allocation inside A* that froze the game for twenty seconds and then
+   killed it - produces a clean log, a clean test run and a clean screenshot.
+   Nothing else here runs for long enough to see it.
+
+   When it reports a hang, arm the engine's own hang detector to find out
+   where: put `[Core.System]` `HangDuration=8.0` and `HangsAreFatal=False` in
+   `Config/DefaultEngine.ini`, repackage, and the game logs the full callstack
+   of whichever thread stopped answering. That is how the A* freeze was found
+   and it took one run. Take it back out afterwards - eight seconds is under
+   what a cold map load can take.
 5. **Read `Saved/Logs/ContentBuild.log`** when a stage misbehaves. The build
    script echoes only the `[UEGT2]` lines; the full log has everything.
 6. **Read the population report.** Any run logs one `LogUEGT2NPC` line twelve
@@ -149,6 +164,18 @@ Do not undo these without understanding why they are there.
 - **NPC ground traces query `ECC_WorldStatic` by object type, not the Visibility
   channel.** Every NPC blocks Visibility so the interaction probe can find them,
   and a channel trace lands one NPC on another's head.
+- **Never hold a pointer into a container across a write to that container.**
+  `FindPath` took `const double* CostHere = BestCost.Find(...)` and then called
+  `BestCost.Add(...)` further down the same neighbour loop. The Add rehashes
+  the map and frees the block, so every neighbour after the first reallocation
+  read freed memory as "the cost so far". The damage was not a wrong route: a
+  garbage cost breaks the invariant that a node's parent costs less than the
+  node, which lets the parent links contain a *cycle*, and the walk back from
+  the goal then loops forever appending to an array - four gigabytes in eight
+  seconds, then the allocator asserts. It presented as "god mode flying freezes
+  after a few minutes", because flying is what makes hundreds of inhabitants
+  change tier at once and repath together, which is what rolls the dice often
+  enough to hit it. Copy the value.
 - **The player and the town share one ledger.** `UEGT2AdvanceLife` is the only
   place needs and money move, and both `AUEGT2NPCActor::AdvanceNeeds` and
   `UUEGT2NeedsComponent` call it. Do not give either a rate table of its own:

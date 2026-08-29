@@ -238,6 +238,55 @@ bool FUEGT2PopulationTest::RunTest(const FString& Parameters)
 
 		TestTrue(TEXT("a node can be found near a node"),
 			Routes->FindNearestNode(Start, 400.0f) != INDEX_NONE);
+
+		// --- the search's own parent links ---------------------------------
+		// A* builds a tree of parent pointers and then walks it backwards from
+		// the goal. If those links ever contain a cycle the walk never reaches
+		// the start, and what the player sees is the game freezing for twenty
+		// seconds and then dying inside the allocator - it was appending to an
+		// array the whole time, about four gigabytes of it.
+		//
+		// The cause was a pointer into the cost map held across an Add to that
+		// same map. Hundreds of searches across the real baked graph is what it
+		// takes to hit it: it needs the map to rehash midway through one node's
+		// neighbours, which is why it only ever showed up while flying, when
+		// hundreds of inhabitants change tier at once and all repath together.
+		int32 Repeats = 0;
+		int32 Pathed = 0;
+		const int32 Nodes = Routes->GetNodeCount();
+		for (int32 Attempt = 0; Attempt < 400 && Nodes > 1; ++Attempt)
+		{
+			// Spread across the whole graph, deterministically.
+			const int32 A = (Attempt * 7919) % Nodes;
+			const int32 B = (Attempt * 104729 + Nodes / 3) % Nodes;
+			TArray<FVector> Route;
+			if (!Routes->FindPath(Routes->GetNodeLocation(A), Routes->GetNodeLocation(B), Route))
+			{
+				continue;
+			}
+			++Pathed;
+			// A path that visits the same point twice is a cycle that happened
+			// to terminate, which is the same defect wearing a hat.
+			TSet<FVector> Seen;
+			for (const FVector& Point : Route)
+			{
+				bool bAlready = false;
+				Seen.Add(Point, &bAlready);
+				if (bAlready) { ++Repeats; break; }
+			}
+		}
+
+		AddInfo(FString::Printf(TEXT("route: %d searches, %d found a path"), 400, Pathed));
+		TestEqual(TEXT("no search found a cycle in its own parent links"),
+			Routes->GetCycleCount(), 0);
+		TestEqual(TEXT("no path visits the same node twice"), Repeats, 0);
+		// A floor, not a target. Plenty of these pairs are genuinely unreachable
+		// from each other - the town and the city are 130 km apart and the
+		// search is capped - so the number that succeed depends on the seed.
+		// What matters is that the graph paths at all, and that none of the
+		// ones that do come back with a cycle in them.
+		TestTrue(FString::Printf(TEXT("the graph paths at all (%d of 400)"), Pathed),
+			Pathed > 100);
 	}
 
 	// --- the inhabitants ----------------------------------------------------

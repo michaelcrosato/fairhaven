@@ -224,11 +224,29 @@ bool AUEGT2RouteNetwork::FindPath(const FVector& Start, const FVector& Goal,
 			break;
 		}
 
-		const double* CostHere = BestCost.Find(Current.Node);
-		if (!CostHere)
+		// By value, and this is the whole bug this function used to have.
+		//
+		// It was a pointer into BestCost, and BestCost is added to further down
+		// this very loop - which rehashes the map and frees the block the
+		// pointer was aimed at. Every neighbour after the first reallocation
+		// read freed memory as "the cost so far". Garbage there produces a
+		// garbage Candidate, which breaks the one invariant the parent links
+		// rely on - that a node's parent always costs less than the node - and
+		// once that breaks, CameFrom can contain a cycle. The walk back at the
+		// bottom of this function follows parents until it reaches the start,
+		// so a cycle there is an infinite loop appending to an array: about
+		// four gigabytes in eight seconds, and then the allocator asserts.
+		//
+		// From the outside that is "flying around in god mode freezes after a
+		// few minutes", because flying is what makes hundreds of inhabitants
+		// change tier at once and repath, which is what rolls this dice often
+		// enough to hit it.
+		const double* CostFound = BestCost.Find(Current.Node);
+		if (!CostFound)
 		{
 			continue;
 		}
+		const double CostHere = *CostFound;
 		for (int32 Next : NodeLinks[Current.Node].To)
 		{
 			if (!NodeLocations.IsValidIndex(Next))
@@ -236,7 +254,7 @@ bool AUEGT2RouteNetwork::FindPath(const FVector& Start, const FVector& Goal,
 				continue;
 			}
 			const double Step = FVector::Dist(NodeLocations[Current.Node], NodeLocations[Next]);
-			const double Candidate = *CostHere + Step;
+			const double Candidate = CostHere + Step;
 			const double* Known = BestCost.Find(Next);
 			if (Known && *Known <= Candidate)
 			{
@@ -256,9 +274,24 @@ bool AUEGT2RouteNetwork::FindPath(const FVector& Start, const FVector& Goal,
 
 	// Walk the parents back, then reverse. The start node is included: an NPC
 	// standing off the road needs to be told to get onto it first.
+	//
+	// Bounded by the node count, because a path cannot visit more nodes than
+	// exist. That is belt and braces on top of the fix above: this loop is the
+	// place where a bad parent link stops being a wrong route and becomes a
+	// frozen game, and the difference in cost between "give up and walk
+	// straight there" and "allocate until the process dies" is not close.
 	TArray<int32> Reversed;
+	Reversed.Reserve(FMath::Min(NodeLocations.Num(), 256));
 	for (int32 Node = GoalNode; Node != StartNode; )
 	{
+		if (Reversed.Num() > NodeLocations.Num())
+		{
+			++CycleCount;
+			UE_LOG(LogUEGT2NPC, Error,
+				TEXT("Route network: parent links cycle between nodes %d and %d. "
+					 "Walking straight there instead."), StartNode, GoalNode);
+			return false;
+		}
 		Reversed.Add(Node);
 		const int32* Parent = CameFrom.Find(Node);
 		if (!Parent)

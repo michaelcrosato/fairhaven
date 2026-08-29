@@ -367,6 +367,23 @@ villagers would have quietly become a ghost town when it did.
 
 ## Traps
 
+- **A* held a pointer into the map it was writing to.** `FindPath` kept
+  `const double* CostHere = BestCost.Find(Current.Node)` across
+  `BestCost.Add(...)` inside the same neighbour loop. The Add rehashes and the
+  pointer dangles, so a garbage cost gets used for the rest of that node's
+  neighbours. The consequence is not a bad path - it is that the parent links
+  can form a cycle, and the walk back from the goal is `for (Node = Goal; Node
+  != Start; )` with an `Add` in it. Four gigabytes in eight seconds, a twenty
+  second freeze, and then the process dies inside `MallocBinned3`.
+
+  It only ever showed up while flying in god mode, and that is the tell: flying
+  crosses the map fast enough to take hundreds of inhabitants from Dormant to
+  active in one `UpdateLODs`, and every one of them repaths on the spot. Walking
+  rolls that dice a few times a minute; flying rolls it hundreds of times a
+  second. `./Scripts/Fly-Soak.ps1` reproduces it in about two minutes, and
+  `UEGT2.Content.Population` now runs four hundred searches over the real graph
+  and fails if any of them produces a cycle.
+
 - **The mesh must not be the root component.** The walk cycle is a relative
   offset applied to the mesh every frame, and a relative move on the root is a
   world move: every NPC in LOD range teleports to the world origin, which is

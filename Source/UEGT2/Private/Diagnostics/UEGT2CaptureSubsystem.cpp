@@ -7,6 +7,8 @@
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "InputAction.h"
+#include "Dev/UEGT2DevModeSubsystem.h"
+#include "HAL/PlatformMemory.h"
 #include "Interaction/UEGT2Amenity.h"
 #include "Interaction/UEGT2InteractionComponent.h"
 #include "Player/UEGT2Character.h"
@@ -16,6 +18,9 @@
 #include "Kismet/GameplayStatics.h"
 #include "NPC/UEGT2Dialogue.h"
 #include "NPC/UEGT2NPCActor.h"
+#include "NPC/UEGT2NPCDirector.h"
+#include "UObject/UObjectArray.h"
+#include "UObject/UObjectGlobals.h"
 #include "EngineUtils.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
@@ -63,6 +68,11 @@ bool UUEGT2CaptureSubsystem::IsWalkSmokeRequested()
 bool UUEGT2CaptureSubsystem::IsLifeCaptureRequested()
 {
 	return FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureLife"));
+}
+
+bool UUEGT2CaptureSubsystem::IsFlySoakRequested()
+{
+	return FParse::Param(FCommandLine::Get(), TEXT("UEGT2SmokeFly"));
 }
 
 const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
@@ -227,6 +237,15 @@ void UUEGT2CaptureSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 	if (InWorld.WorldType != EWorldType::Game)
 	{
+		return;
+	}
+
+	if (IsFlySoakRequested())
+	{
+		const float SoakDelay = GetFloatArg(TEXT("UEGT2CaptureDelay="), 8.0f);
+		InWorld.GetTimerManager().SetTimer(TimerHandle,
+			FTimerDelegate::CreateUObject(this, &UUEGT2CaptureSubsystem::BeginFlySoak),
+			FMath::Max(SoakDelay, 0.5f), false);
 		return;
 	}
 
@@ -468,6 +487,235 @@ void UUEGT2CaptureSubsystem::RunDialogueStep()
 				}), 0.9f);
 			return false;
 		}), HoldSeconds);
+}
+
+// ---------------------------------------------------------------------------
+// Fly soak: reproduce the god-mode freeze and say what it was.
+// ---------------------------------------------------------------------------
+void UUEGT2CaptureSubsystem::BeginFlySoak()
+{
+	UWorld* World = GetWorld();
+	AUEGT2PlayerController* PC = World
+		? Cast<AUEGT2PlayerController>(UGameplayStatics::GetPlayerController(World, 0))
+		: nullptr;
+	AUEGT2Character* Explorer = PC ? Cast<AUEGT2Character>(PC->GetPawn()) : nullptr;
+	UUEGT2DevModeSubsystem* Dev = UUEGT2DevModeSubsystem::Get(World);
+	if (!PC || !Explorer || !Dev)
+	{
+		UE_LOG(LogUEGT2Diag, Error, TEXT("UEGT2_FLY_SOAK_FAILED: no player or dev subsystem."));
+		FinishTour();
+		return;
+	}
+
+	PC->CloseMenu();
+	FlyLimitSeconds = GetFloatArg(TEXT("UEGT2SmokeMinutes="), 6.0f) * 60.0f;
+
+	// Exactly what a person does: dev mode, god, fly, and wind the speed up.
+	Dev->SetDevModeEnabled(true);
+	Dev->SetGodMode(true);
+	Dev->SetFlyEnabled(true);
+	Dev->SetSpeedMultiplier(GetFloatArg(TEXT("UEGT2SmokeSpeed="), 8.0f));
+	// Noclip unless told otherwise. Flying with collision on wedges the pawn
+	// against the first Newhaven tower it meets, and a soak that spends six of
+	// its seven minutes hovering inside an office block measures nothing.
+	if (!FParse::Param(FCommandLine::Get(), TEXT("UEGT2SmokeCollide")))
+	{
+		Dev->SetNoclipEnabled(true);
+	}
+
+	// Time a full purge from the inside. A level this size has hundreds of
+	// thousands of objects in it, and a collection that walks all of them is
+	// indistinguishable from a freeze at the keyboard.
+	FlyGcPreHandle = FCoreUObjectDelegates::GetPreGarbageCollectDelegate().AddLambda(
+		[this]() { FlyGcStartSeconds = FPlatformTime::Seconds(); });
+	FlyGcPostHandle = FCoreUObjectDelegates::GetPostGarbageCollect().AddLambda(
+		[this]()
+		{
+			const float Took = (float)((FPlatformTime::Seconds() - FlyGcStartSeconds) * 1000.0);
+			FlyGcLastMs = FMath::Max(FlyGcLastMs, Took);
+			FlyGcWorstMs = FMath::Max(FlyGcWorstMs, Took);
+			++FlyGcCount;
+		});
+
+	// The inhabited half of the map: both settlements, the market, the quays and
+	// the farms, in an order that keeps crossing between empty ground and a
+	// crowd. Read off the tour so it follows the world if the seed moves it.
+	FlyStops.Reset();
+	static const TCHAR* Circuit[] = {
+		TEXT("TownSquare"), TEXT("Market"), TEXT("Waterfront"), TEXT("Farmland"),
+		TEXT("NewhavenPlaza"), TEXT("Newhaven"), TEXT("NewhavenWharf"),
+		TEXT("MainStreet") };
+	for (const TCHAR* Name : Circuit)
+	{
+		for (const FUEGT2Viewpoint& Point : GetTour())
+		{
+			if (Point.Name.ToString().Equals(Name, ESearchCase::IgnoreCase))
+			{
+				FlyStops.Add(Point.Location);
+				break;
+			}
+		}
+	}
+	if (FlyStops.Num() == 0)
+	{
+		UE_LOG(LogUEGT2Diag, Error, TEXT("UEGT2_FLY_SOAK_FAILED: no viewpoints to circuit."));
+		FinishTour();
+		return;
+	}
+	// Above the tallest Newhaven tower, so the circuit crosses the city rather
+	// than through it.
+	FlyAltitude = GetFloatArg(TEXT("UEGT2SmokeAltitude="), 4000.0f);
+	FlyStop = 0;
+	FlyLaps = 0;
+	FlyStuckSeconds = 0.0f;
+	FlyLastCheck = Explorer->GetActorLocation();
+
+	FlyElapsed = 0.0f;
+	FlySecondElapsed = 0.0f;
+	FlySecondFrames = 0;
+	FlySecondWorst = 0.0f;
+	FlyWorstEver = 0.0f;
+	FlyStalls = 0;
+	FlyGcCount = 0;
+
+	UE_LOG(LogUEGT2Diag, Log,
+		TEXT("UEGT2_FLY_SOAK_START %.0f s, speed %.0fx, from %s"),
+		FlyLimitSeconds, Dev->GetSpeedMultiplier(),
+		*Explorer->GetActorLocation().ToCompactString());
+
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateUObject(
+		this, &UUEGT2CaptureSubsystem::TickFlySoak), 0.0f);
+}
+
+void UUEGT2CaptureSubsystem::ReportFlySecond()
+{
+	UWorld* World = GetWorld();
+	const APawn* Pawn = World ? UGameplayStatics::GetPlayerPawn(World, 0) : nullptr;
+	const UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(World);
+	const FPlatformMemoryStats Memory = FPlatformMemory::GetStats();
+
+	const float MeanMs = FlySecondFrames > 0
+		? (FlySecondElapsed * 1000.0f / FlySecondFrames) : 0.0f;
+	// Anything past this is visible as a stutter; past a second it is a freeze.
+	const bool bStall = FlySecondWorst > 250.0f;
+	if (bStall)
+	{
+		++FlyStalls;
+	}
+
+	UE_LOG(LogUEGT2Diag, Log,
+		TEXT("%s t=%5.0fs frames=%3d mean=%6.1fms worst=%8.1fms  gc=%d last=%7.1fms  ")
+		TEXT("objects=%7d  used=%5llu MB  hour=%5.2f near=%4d out=%4d  leg=%d  at %s"),
+		bStall ? TEXT("UEGT2_FLY_STALL") : TEXT("UEGT2_FLY      "),
+		FlyElapsed, FlySecondFrames, MeanMs, FlySecondWorst,
+		FlyGcCount, FlyGcLastMs,
+		GUObjectArray.GetObjectArrayNumMinusAvailable(),
+		(uint64)(Memory.UsedPhysical / (1024 * 1024)),
+		Director ? Director->GetHour() : -1.0f,
+		Director ? Director->GetNearCount() : -1,
+		Director ? Director->GetActiveCount() : -1, FlyStop,
+		Pawn ? *Pawn->GetActorLocation().ToCompactString() : TEXT("nowhere"));
+
+	FlySecondElapsed = 0.0f;
+	FlySecondFrames = 0;
+	FlySecondWorst = 0.0f;
+	FlyGcLastMs = 0.0f;
+}
+
+bool UUEGT2CaptureSubsystem::TickFlySoak(float DeltaSeconds)
+{
+	UWorld* World = GetWorld();
+	AUEGT2PlayerController* PC = World
+		? Cast<AUEGT2PlayerController>(UGameplayStatics::GetPlayerController(World, 0))
+		: nullptr;
+	AUEGT2Character* Explorer = PC ? Cast<AUEGT2Character>(PC->GetPawn()) : nullptr;
+	UUEGT2InputConfig* Config = PC ? PC->GetInputConfig() : nullptr;
+	UEnhancedInputLocalPlayerSubsystem* Input = PC
+		? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer())
+		: nullptr;
+
+	if (!PC || !Explorer || !Config || !Config->MoveAction || !Input)
+	{
+		UE_LOG(LogUEGT2Diag, Error, TEXT("UEGT2_FLY_SOAK_FAILED: input unavailable."));
+		FinishTour();
+		return false;
+	}
+
+	// A circuit of the inhabited places, not a straight line. Flying forward on
+	// a slow turn sounds like a fair soak and is not: it leaves the map, climbs
+	// into empty sky and never sees an inhabitant again, which tests nothing.
+	// Where the people are is the whole point - the tiers, the repaths and the
+	// crowd only happen where somebody lives.
+	if (!FlyStops.IsValidIndex(FlyStop))
+	{
+		FlyStop = 0;
+	}
+	const FVector2D Target = FlyStops[FlyStop];
+	const float TargetZ = GroundHeightAt(Target.X, Target.Y) + FlyAltitude;
+	const FVector Here = Explorer->GetActorLocation();
+	const FVector To(Target.X - Here.X, Target.Y - Here.Y, TargetZ - Here.Z);
+
+	if (To.Size2D() < 6000.0f)
+	{
+		FlyStop = (FlyStop + 1) % FlyStops.Num();
+		++FlyLaps;
+	}
+
+	// Stuck detector. Even with noclip the pawn can end up going nowhere, and
+	// the failure mode is silent: the log fills with identical lines and reads
+	// like a clean flight. Move on rather than measure a hover.
+	if (FVector::Dist2D(Here, FlyLastCheck) < 500.0f)
+	{
+		FlyStuckSeconds += DeltaSeconds;
+		if (FlyStuckSeconds > 3.0f)
+		{
+			UE_LOG(LogUEGT2Diag, Warning,
+				TEXT("UEGT2_FLY stuck at %s heading for leg %d; skipping it."),
+				*Here.ToCompactString(), FlyStop);
+			FlyStop = (FlyStop + 1) % FlyStops.Num();
+			FlyStuckSeconds = 0.0f;
+			FlyLastCheck = Here;
+		}
+	}
+	else
+	{
+		FlyStuckSeconds = 0.0f;
+		FlyLastCheck = Here;
+	}
+
+	static const TArray<UInputModifier*> NoModifiers;
+	static const TArray<UInputTrigger*> NoTriggers;
+	Input->InjectInputForAction(Config->MoveAction,
+		FInputActionValue(FVector2D(0.0f, 1.0f)), NoModifiers, NoTriggers);
+	// Flight follows the full control rotation, so steering is just looking at
+	// where you want to go.
+	PC->SetControlRotation(To.Rotation());
+
+	FlyElapsed += DeltaSeconds;
+	FlySecondElapsed += DeltaSeconds;
+	++FlySecondFrames;
+	FlySecondWorst = FMath::Max(FlySecondWorst, DeltaSeconds * 1000.0f);
+	FlyWorstEver = FMath::Max(FlyWorstEver, DeltaSeconds * 1000.0f);
+
+	if (FlySecondElapsed >= 1.0f)
+	{
+		ReportFlySecond();
+	}
+
+	if (FlyElapsed < FlyLimitSeconds)
+	{
+		return true;
+	}
+
+	UE_LOG(LogUEGT2Diag, Log,
+		TEXT("UEGT2_FLY_SOAK_COMPLETE ran=%.0fs stalls=%d worst=%.1fms collections=%d "
+			 "worstgc=%.1fms legs=%d"),
+		FlyElapsed, FlyStalls, FlyWorstEver, FlyGcCount, FlyGcWorstMs, FlyLaps);
+
+	FCoreUObjectDelegates::GetPreGarbageCollectDelegate().Remove(FlyGcPreHandle);
+	FCoreUObjectDelegates::GetPostGarbageCollect().Remove(FlyGcPostHandle);
+	FinishTour();
+	return false;
 }
 
 // ---------------------------------------------------------------------------
