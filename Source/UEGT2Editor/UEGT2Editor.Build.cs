@@ -17,6 +17,10 @@ public class UEGT2Editor : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(new[]
 		{
+			// The input tests run the movement modifiers directly, and FKey
+			// itself lives in InputCore.
+			"EnhancedInput",
+			"InputCore",
 			"UnrealEd",
 			"Landscape",
 			"LandscapeEditor",

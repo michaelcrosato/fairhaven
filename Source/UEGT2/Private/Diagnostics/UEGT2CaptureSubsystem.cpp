@@ -597,7 +597,13 @@ bool UUEGT2CaptureSubsystem::TickWalkSmoke(float DeltaSeconds)
 		return false;
 	}
 
-	// Straight forward. Goes through the real mapping context and binding.
+	// Straight forward, injected as an action value.
+	//
+	// Note what this does NOT cover: injecting the action skips the key
+	// mapping and its modifiers entirely, so it cannot see a binding that
+	// points the wrong way. S moved the player forward for a long time and this
+	// test passed throughout. UEGT2.Player.MoveContext covers that layer by
+	// building the real mapping context and running the real modifier chain.
 	static const TArray<UInputModifier*> NoModifiers;
 	static const TArray<UInputTrigger*> NoTriggers;
 	Input->InjectInputForAction(Config->MoveAction,

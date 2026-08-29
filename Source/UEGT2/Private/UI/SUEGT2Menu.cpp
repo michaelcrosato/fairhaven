@@ -12,6 +12,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SSlider.h"
+#include "UI/UEGT2UIStyle.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -26,44 +27,10 @@
 // ---------------------------------------------------------------------------
 namespace UEGT2Menu
 {
-	static const FLinearColor Ink(0.94f, 0.95f, 0.97f, 1.0f);
-	static const FLinearColor Muted(0.66f, 0.69f, 0.74f, 1.0f);
-	static const FLinearColor Accent(0.42f, 0.78f, 0.80f, 1.0f);
-	static const FLinearColor Scrim(0.02f, 0.03f, 0.05f, 0.52f);
-	static const FLinearColor Panel(0.05f, 0.07f, 0.09f, 0.88f);
-	static const FLinearColor Divider(1.0f, 1.0f, 1.0f, 0.08f);
-
-	static const FSlateBrush* Box()
-	{
-		return FCoreStyle::Get().GetBrush("GenericWhiteBox");
-	}
-
-	static FSlateFontInfo Font(const ANSICHAR* Style, int32 Size)
-	{
-		return FCoreStyle::GetDefaultFontStyle(Style, Size);
-	}
-
-	static FSlateBrush Tinted(const FLinearColor& Colour)
-	{
-		FSlateBrush Brush = *Box();
-		Brush.TintColor = FSlateColor(Colour);
-		return Brush;
-	}
-
-	static const FButtonStyle& ButtonStyle()
-	{
-		static const FButtonStyle Style = []
-		{
-			FButtonStyle Result;
-			Result.SetNormal(Tinted(FLinearColor(1.0f, 1.0f, 1.0f, 0.06f)));
-			Result.SetHovered(Tinted(FLinearColor(Accent.R, Accent.G, Accent.B, 0.28f)));
-			Result.SetPressed(Tinted(FLinearColor(Accent.R, Accent.G, Accent.B, 0.46f)));
-			Result.SetNormalPadding(FMargin(16.0f, 9.0f));
-			Result.SetPressedPadding(FMargin(16.0f, 9.0f));
-			return Result;
-		}();
-		return Style;
-	}
+	// The palette, the boxes and the plain button live in UEGT2UIStyle.h so the
+	// conversation panel looks like it belongs to the same game. Only the parts
+	// that are the menu's own are defined here.
+	using namespace UEGT2UI;
 
 	static const FButtonStyle& TabStyle(bool bSelected)
 	{
@@ -78,15 +45,6 @@ namespace UEGT2Menu
 			return Result;
 		}();
 		return bSelected ? Selected : ButtonStyle();
-	}
-
-	static TSharedRef<SWidget> Label(const FText& Text, int32 Size = 13,
-		const FLinearColor& Colour = Ink, const ANSICHAR* Style = "Regular")
-	{
-		return SNew(STextBlock)
-			.Text(Text)
-			.Font(Font(Style, Size))
-			.ColorAndOpacity(FSlateColor(Colour));
 	}
 
 	static TSharedRef<SWidget> MenuButton(const FText& Text, FOnClicked OnClicked, int32 Size = 16)

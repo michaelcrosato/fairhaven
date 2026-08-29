@@ -125,7 +125,10 @@ UInputMappingContext* UUEGT2InputConfig::BuildMappingContext()
 	};
 
 	// --- Movement: four keys folded into one Axis2D -------------------------
-	// X is strafe, Y is forward. Forward/back need a swizzle to reach Y.
+	// X is strafe, Y is forward (see AUEGT2Character::OnMove). A key press
+	// arrives as (1, 0, 0), so forward and back need a swizzle to move it onto
+	// Y - and the negate that makes "back" backwards has to follow it there.
+	// Modifier order matters: swizzle first, then negate the swizzled axis.
 	struct FMoveMapping { EUEGT2InputSlot Slot; bool bSwizzle; bool bNegate; };
 	static const FMoveMapping MoveMappings[] = {
 		{ EUEGT2InputSlot::MoveForward, true,  false },
@@ -148,7 +151,12 @@ UInputMappingContext* UUEGT2InputConfig::BuildMappingContext()
 		}
 		if (Move.bNegate)
 		{
-			AddModifier(Mapping, MakeNegate(true, false, false));
+			// Negate the axis the value is actually on, which for forward and
+			// back is Y *because* the swizzle above just moved it there. Always
+			// negating X meant S negated a zero and came out identical to W:
+			// the key worked, the modifier ran, and the player walked forward.
+			AddModifier(Mapping, Move.bSwizzle ? MakeNegate(false, true, false)
+											   : MakeNegate(true, false, false));
 		}
 	}
 	MappingContext->MapKey(MoveAction, EKeys::Gamepad_Left2D);

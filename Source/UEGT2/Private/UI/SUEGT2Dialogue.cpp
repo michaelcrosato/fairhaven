@@ -12,13 +12,16 @@
 
 #define LOCTEXT_NAMESPACE "UEGT2Dialogue"
 
-using namespace UEGT2UI;
+// Deliberately not a file-scope using-directive: unity builds concatenate
+// translation units, and one leaking out of here made every colour name in
+// SUEGT2Menu.cpp ambiguous.
 
 namespace
 {
 	/** A thin bar showing one need. Green when met, amber low, red urgent. */
 	TSharedRef<SWidget> NeedBar(const FText& Caption, float Value)
 	{
+		using namespace UEGT2UI;
 		const FLinearColor Fill = Value > 0.55f ? FLinearColor(0.45f, 0.78f, 0.52f, 1.0f)
 			: Value > 0.26f ? FLinearColor(0.90f, 0.74f, 0.36f, 1.0f)
 			: FLinearColor(0.88f, 0.42f, 0.38f, 1.0f);
@@ -58,6 +61,7 @@ namespace
 // ---------------------------------------------------------------------------
 void SUEGT2Dialogue::Construct(const FArguments& InArgs)
 {
+	using namespace UEGT2UI;
 	Controller = InArgs._Controller;
 
 	ChildSlot
@@ -182,6 +186,7 @@ void SUEGT2Dialogue::SetPartner(AUEGT2NPCActor* InPartner)
 // ---------------------------------------------------------------------------
 void SUEGT2Dialogue::Refresh()
 {
+	using namespace UEGT2UI;
 	AUEGT2NPCActor* NPC = Partner.Get();
 	if (NPC == nullptr || !TopicList.IsValid())
 	{
@@ -292,6 +297,7 @@ void SUEGT2Dialogue::Refresh()
 // ---------------------------------------------------------------------------
 void SUEGT2Dialogue::AddLine(const FText& Speaker, const FText& Line, bool bPlayerSpoke)
 {
+	using namespace UEGT2UI;
 	if (!Transcript.IsValid())
 	{
 		return;
