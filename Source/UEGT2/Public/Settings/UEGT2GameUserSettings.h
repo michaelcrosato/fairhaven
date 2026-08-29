@@ -89,6 +89,14 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowInteractPrompts() const { return bShowInteractPrompts; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowInteractPrompts(bool bValue);
 
+	/** The date, clock and temperature panel in the top-left. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowAlmanac() const { return bShowAlmanac; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowAlmanac(bool bValue);
+
+	/** Temperature in Fahrenheit rather than Celsius. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetUseFahrenheit() const { return bUseFahrenheit; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetUseFahrenheit(bool bValue);
+
 	/** The text-message bubbles NPCs put over their heads. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowSpeechBubbles() const { return bShowSpeechBubbles; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowSpeechBubbles(bool bValue);
@@ -141,6 +149,8 @@ private:
 	UPROPERTY(Config) bool bShowCrosshair = true;
 	UPROPERTY(Config) bool bShowInteractPrompts = true;
 	UPROPERTY(Config) bool bShowSpeechBubbles = true;
+	UPROPERTY(Config) bool bShowAlmanac = true;
+	UPROPERTY(Config) bool bUseFahrenheit = false;
 	UPROPERTY(Config) float CrowdDensity = 1.0f;
 
 	// Controls

@@ -98,6 +98,13 @@ what it is: a grocery, a bakehouse, an ironmonger, a draper, a barber, a
 physician, a dentist, a spectacle maker, a solicitor, a bookseller, a post
 office and a bank. The church is bigger than it was and has a door you can open.
 
+**The almanac.** Top left of the screen: the time, the date and what it is
+doing outside, with the temperature. It is not a debug readout - it is how you
+tell a wet morning in Thawmoon from a wet evening in Harvest. Walk up the
+mountain road and watch the temperature fall; walk south-west into the tropics
+and watch it climb. Settings -> Gameplay turns it off, or switches it to
+Fahrenheit.
+
 **Talk to people.** Walk up to anyone and press the interact key. A panel opens
 with their name, their trade, what they are doing, and four bars showing how
 rested, fed, comfortable and sociable they are. Ask them anything: what they are

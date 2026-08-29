@@ -232,6 +232,21 @@ they go but not what they need - a companion who gets hungry still says so and
 still breaks off, because `EvaluateSchedule` only lets following win when the
 decision was not need-driven.
 
+**The date, the clock and the temperature are computed, not stored.**
+`UEGT2Almanac.h` turns the director's running day count into a calendar - six
+day weeks, thirty day months, twelve months, 360 day years - whose weekday names
+agree with `IsMarketDay` and `IsRestDay`, so the HUD never says Marketday on a
+day the market is shut. There is a test that walks 400 days checking exactly
+that.
+
+There is no thermometer in the world, so the temperature is modelled from the
+things that would actually set it: the west of the map is tropical and the
+north-east is a 440 m mountain range (both read from the same constants in
+`Tools/Terrain/world_config.py` that shaped the land), plus the standard 6.5
+degrees per kilometre lapse rate for altitude, a diurnal swing peaking at three
+in the afternoon, a seasonal swing peaking at midsummer, and an offset for the
+weather. Walk up the mountain road and it drops; walk south-west and it climbs.
+
 **Landscape, not World Partition.** One level, one landscape, no streaming. At
 4 km with instanced scatter this loads in seconds and keeps the content build
 simple. Streaming is the obvious next step if the world grows, and nothing here

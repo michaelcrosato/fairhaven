@@ -11,6 +11,8 @@
 #include "Player/UEGT2InputConfig.h"
 #include "Player/UEGT2PlayerController.h"
 #include "Settings/UEGT2GameUserSettings.h"
+#include "World/UEGT2Almanac.h"
+#include "World/UEGT2Weather.h"
 #include "UEGT2LogChannels.h"
 
 // Named rather than anonymous, and referenced qualified below. SUEGT2Menu.cpp
@@ -87,6 +89,10 @@ void AUEGT2HUD::DrawHUD()
 		DrawDiagnostics(Explorer);
 	}
 
+	if (!Settings || Settings->GetShowAlmanac())
+	{
+		DrawAlmanac(Canvas->ClipX);
+	}
 	DrawDevStatus(Canvas->ClipX);
 }
 
@@ -152,6 +158,67 @@ void AUEGT2HUD::DrawMessage(float CentreX, float ScreenHeight)
 	DrawRect(FLinearColor(UEGT2Hud::Shade.R, UEGT2Hud::Shade.G, UEGT2Hud::Shade.B, UEGT2Hud::Shade.A * Alpha),
 		X - 14.0f, Y - 7.0f, Width + 28.0f, Height + 14.0f);
 	DrawText(Text, FLinearColor(UEGT2Hud::Ink.R, UEGT2Hud::Ink.G, UEGT2Hud::Ink.B, Alpha), X, Y, Font, 1.0f, false);
+}
+
+void AUEGT2HUD::DrawAlmanac(float ScreenWidth)
+{
+	const UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(GetWorld());
+	if (!Director)
+	{
+		return;
+	}
+
+	const float Hour = Director->GetHour();
+	const FUEGT2Date Date = UEGT2DateFromDayIndex(Director->GetDayIndex());
+
+	// Temperature is where the player is standing, not where the world starts:
+	// walk up the mountain road and it drops, walk south and it climbs.
+	FVector Where = FVector::ZeroVector;
+	if (const APlayerController* PC = Cast<APlayerController>(PlayerOwner))
+	{
+		if (const APawn* Pawn = PC->GetPawn())
+		{
+			Where = Pawn->GetActorLocation();
+		}
+	}
+	const float Celsius = UEGT2TemperatureC(Where.X, Where.Y, Where.Z, Hour,
+		Director->GetDayIndex(), Director->GetWeather());
+
+	const UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get();
+	const bool bFahrenheit = Settings && Settings->GetUseFahrenheit();
+
+	const FString Clock = UEGT2FormatClock(Hour).ToString();
+	const FString DateLine = UEGT2FormatDate(Date).ToString();
+	const FString Conditions = FString::Printf(TEXT("%s  %s"),
+		*GetWeatherDisplayName(Director->GetWeather()).ToString(),
+		*UEGT2FormatTemperature(Celsius, bFahrenheit).ToString());
+
+	UFont* Big = GEngine->GetMediumFont();
+	UFont* Small = GEngine->GetSmallFont();
+
+	float ClockW = 0.0f, ClockH = 0.0f;
+	float DateW = 0.0f, DateH = 0.0f;
+	float CondW = 0.0f, CondH = 0.0f;
+	GetTextSize(Clock, ClockW, ClockH, Big, 1.0f);
+	GetTextSize(DateLine, DateW, DateH, Small, 1.0f);
+	GetTextSize(Conditions, CondW, CondH, Small, 1.0f);
+
+	const float PadX = 14.0f;
+	const float PadY = 10.0f;
+	const float Gap = 4.0f;
+	const float BoxW = FMath::Max3(ClockW, DateW, CondW) + PadX * 2.0f;
+	const float BoxH = ClockH + DateH + CondH + Gap * 2.0f + PadY * 2.0f;
+	const float X = 24.0f;
+	const float Y = 20.0f;
+
+	DrawRoundedRect(UEGT2Hud::Shade, X, Y, BoxW, BoxH, 7.0f);
+
+	float Cursor = Y + PadY;
+	DrawText(Clock, UEGT2Hud::Ink, X + PadX, Cursor, Big, 1.0f, false);
+	Cursor += ClockH + Gap;
+	DrawText(DateLine, UEGT2Hud::Muted, X + PadX, Cursor, Small, 1.0f, false);
+	Cursor += DateH + Gap;
+	DrawText(Conditions, UEGT2Hud::Accent, X + PadX, Cursor, Small, 1.0f, false);
 }
 
 void AUEGT2HUD::DrawDevStatus(float ScreenWidth)

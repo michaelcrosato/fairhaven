@@ -794,6 +794,24 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 
 	List->AddSlot().AutoHeight().Padding(0, 7)
 	[
+		Row(LOCTEXT("Almanac", "Date and Weather"), MakeToggle(
+			[S]() { return S->GetShowAlmanac(); },
+			[this, S](bool bValue) { S->SetShowAlmanac(bValue); ApplyAndSave(); }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("AlmanacHint",
+		"The clock, the date and the temperature, top left."), 11, Muted) ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		Row(LOCTEXT("Fahrenheit", "Fahrenheit"), MakeToggle(
+			[S]() { return S->GetUseFahrenheit(); },
+			[this, S](bool bValue) { S->SetUseFahrenheit(bValue); ApplyAndSave(); }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
 		Row(LOCTEXT("Crowd", "Crowd Density"), MakeSlider(
 			[S]() { return S->GetCrowdDensity(); },
 			[this, S](float Value) { S->SetCrowdDensity(Value); ApplyAndSave(); },

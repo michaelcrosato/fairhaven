@@ -169,6 +169,16 @@ void UUEGT2GameUserSettings::SetToggleSprint(bool bValue) { bToggleSprint = bVal
 void UUEGT2GameUserSettings::SetShowCrosshair(bool bValue) { bShowCrosshair = bValue; }
 void UUEGT2GameUserSettings::SetShowInteractPrompts(bool bValue) { bShowInteractPrompts = bValue; }
 void UUEGT2GameUserSettings::SetShowSpeechBubbles(bool bValue) { bShowSpeechBubbles = bValue; }
+
+void UUEGT2GameUserSettings::SetShowAlmanac(bool bValue)
+{
+	bShowAlmanac = bValue;
+}
+
+void UUEGT2GameUserSettings::SetUseFahrenheit(bool bValue)
+{
+	bUseFahrenheit = bValue;
+}
 void UUEGT2GameUserSettings::SetCrowdDensity(float Value) { CrowdDensity = FMath::Clamp(Value, 0.1f, 1.0f); }
 
 // ---- Controls --------------------------------------------------------------

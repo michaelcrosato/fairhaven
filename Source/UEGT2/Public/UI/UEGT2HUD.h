@@ -31,6 +31,15 @@ private:
 	void DrawPrompt(float CentreX, float CentreY);
 	void DrawMessage(float CentreX, float ScreenHeight);
 	void DrawDiagnostics(AUEGT2Character* Explorer);
+	/**
+	 * Top-left: the clock, the date and what it is doing outside.
+	 *
+	 * Always on rather than a dev readout, because a world with a day, a
+	 * calendar and weather in it is hard to read without one - you cannot tell
+	 * a wet morning in Thawmoon from a wet evening in Harvest by looking.
+	 */
+	void DrawAlmanac(float ScreenWidth);
+
 	/** Top-right banner listing whatever dev mode currently has switched on. */
 	void DrawDevStatus(float ScreenWidth);
 
