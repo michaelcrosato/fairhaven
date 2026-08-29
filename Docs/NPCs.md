@@ -123,6 +123,73 @@ moves like a parade.
 
 ---
 
+## Money, and the player's own day
+
+The player is an inhabitant. Not "the player has a hunger bar too" - the same
+`FUEGT2NPCNeeds`, the same `FUEGT2Purse`, and the same function advancing both:
+
+```cpp
+bool UEGT2AdvanceLife(float InHours, EUEGT2Activity Activity, EUEGT2NPCRole Role,
+                      FUEGT2NPCNeeds& Needs, FUEGT2Purse& Purse);
+```
+
+`AUEGT2NPCActor::AdvanceNeeds` calls it. `UUEGT2NeedsComponent::TickComponent`
+calls it. Neither has a table of its own, so a change to what a meal costs
+changes it for nine hundred people and for you, in the same commit.
+
+**What is charged.** Coins per world hour, for the fraction of an hour actually
+spent:
+
+| Activity | | Why |
+|---|---|---|
+| Eat | 5 an hour | the off-schedule one: hungry, out, and at a counter |
+| Tavern | 6 an hour | a round costs more than a meal |
+| Market | 3 an hour | unless you are the merchant, who is paid instead |
+| Washroom | 1 an hour | a public convenience takes a penny |
+| Breakfast, Lunch, Dinner | free | the scheduled meals happen at home |
+
+**What is paid.** `Work` and `Patrol` pay the trade's rate, 4 to 12 an hour; a
+clerk earns most, a busker least, a child at lessons nothing, an elder a parish
+allowance of two. Everyone starts with about a working day's pay, jittered by
+their seed so the town is not uniformly solvent.
+
+An empty purse means something: `UEGT2AdvanceLife` returns false, the needs
+advance as though idling, and the meal does not happen. That is true of the
+baker as much as of you.
+
+**What the player uses.** `AUEGT2Amenity` - an invisible interaction volume
+standing on a point the npc stage already resolves an anchor to. There is no
+second list of places. The bakehouse doorstep the player eats at is the
+bakehouse doorstep in `survey.town_food`; the bench they sit on is in
+`survey.town_seats`; the quay they work is in `survey.town_docks`.
+
+| Kind | Activity | Stands on |
+|---|---|---|
+| Food | Eat | food-trade shop fronts, half the market stalls |
+| Market | Market | the other half of the stalls, hiring at a merchant's rate |
+| Tavern | Tavern | the inn, and Newhaven's |
+| Washroom | Washroom | every privy and public convenience |
+| Seat | Rest | every bench in both settlements |
+| Bed | Sleep | the house nearest where the player wakes up |
+| Work | Work | warehouses, farms, the piers, the wharf, the offices, the shops |
+| Worship | Worship | the church |
+
+It is a volume rather than a prop on purpose. The bench, the privy and the
+stall are already standing there, and replacing them with interactable copies
+would change their collision object type from `WorldStatic` to `WorldDynamic` -
+which is exactly what the NPC ground trace queries by.
+
+Talking to somebody answers Company for both of you: the player controller puts
+the pawn into `Socialise` for as long as the conversation is open, which is the
+activity the person they are talking to is already in.
+
+Low energy is the one need the player can *feel* without reading the panel: it
+scales walking speed down to 55% and stops sprinting working at all. An NPC
+shows you they are worn out by walking off to sit down; the player has no such
+tell, so it is in the legs instead.
+
+---
+
 ## The bubbles
 
 Lines are written to read like a text message rather than dialogue: lower case,
@@ -290,6 +357,9 @@ the market held five stalls, a hundred and forty people shared them.
 | Where a crowd stands | `UEGT2NPCActorLocal::AnchorSpread` |
 | How far a wanderer roams | the `wander` argument in `npc.py`, and the hop count in `GetWanderTarget` |
 | How often anyone speaks | the budget constants on `UUEGT2NPCDirector` |
+| What a trade earns | `UEGT2WagePerHour` in `UEGT2NPCTypes.cpp` |
+| What anything costs | `UEGT2PriceFor` in the same file |
+| Somewhere new for the player to eat, sit or earn | an `EUEGT2AmenityKind` entry, its activity in `UEGT2ActivityForAmenity`, and a placement loop in `gameplay._place_amenities` |
 
 Population is expressed as **fractions of the available anchors**, never as fixed
 counts. The town grew from 2 km to 4 km once already, and a hard-coded forty

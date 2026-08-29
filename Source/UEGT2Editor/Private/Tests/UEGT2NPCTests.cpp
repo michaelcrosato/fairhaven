@@ -416,9 +416,16 @@ bool FUEGT2NeedDecisionTest::RunTest(const FString& Parameters)
 
 	FUEGT2NPCContext Exhausted = Plain(21.5f);
 	Exhausted.Needs.Energy = 0.03f;
-	TestEqual(TEXT("but at night goes home to bed"),
-		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Exhausted).Activity,
-		EUEGT2Activity::HomeTime);
+	const FUEGT2ActivityDecision Nightly = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Person, Exhausted);
+	// At night the *place* changes and the activity must not. It used to become
+	// HomeTime, which restores nothing - so Energy stayed the worst need for
+	// ever, the answer never came, and Fed and Relief ran to zero behind it
+	// while the villager walked home for six hours. UEGT2.Economy.LivingWage is
+	// what found that; this is what stops it coming back.
+	TestEqual(TEXT("but at night rests at home"), Nightly.Activity, EUEGT2Activity::Rest);
+	TestEqual(TEXT("in their own chair, not on a bench in the dark"),
+		Nightly.Anchor, EUEGT2Anchor::Home);
 
 	// Company.
 	FUEGT2NPCContext Lonely = Plain(10.0f);
@@ -444,6 +451,27 @@ bool FUEGT2NeedDecisionTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("a contented villager just works"),
 		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, Content).Activity,
 		EUEGT2Activity::Work);
+
+	// Money changes what you can do about a need. Somebody who cannot pay for
+	// the answer goes and earns instead of standing at a counter being refused.
+	FUEGT2NPCContext Broke = Plain(12.0f);
+	Broke.Needs.Fed = 0.05f;
+	Broke.Purse.Coins = 0.0f;
+	const FUEGT2ActivityDecision Skint = ResolveActivity(EUEGT2NPCRole::Villager,
+		EUEGT2NPCSpecies::Person, Broke);
+	TestEqual(TEXT("a hungry villager with no coin goes to work"),
+		Skint.Activity, EUEGT2Activity::Work);
+	TestEqual(TEXT("at their workplace"), Skint.Anchor, EUEGT2Anchor::Work);
+	TestEqual(TEXT("and it is still the need driving it"),
+		Skint.Reason, EUEGT2ActivityReason::Need);
+
+	// The free answers are unaffected by an empty purse: a bench costs nothing.
+	FUEGT2NPCContext BrokeAndTired = Plain(13.0f);
+	BrokeAndTired.Needs.Energy = 0.03f;
+	BrokeAndTired.Purse.Coins = 0.0f;
+	TestEqual(TEXT("but sitting down is still free"),
+		ResolveActivity(EUEGT2NPCRole::Villager, EUEGT2NPCSpecies::Person, BrokeAndTired).Activity,
+		EUEGT2Activity::Rest);
 
 	// The bathroom need does not run down while you are asleep.
 	FUEGT2NPCNeeds Sleeping;

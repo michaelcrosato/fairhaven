@@ -71,6 +71,16 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|NPC") int32 GetDayIndex() const { return DayIndex; }
 	FVector GetPlayerLocation() const { return PlayerLocation; }
 
+	/**
+	 * World hours per real second, at the current day length. Zero when the
+	 * clock is frozen.
+	 *
+	 * The player's needs run off this rather than off their own conversion, so
+	 * a day that is twenty minutes long makes the player hungry exactly as
+	 * often as it makes the town hungry.
+	 */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|NPC") float GetWorldHoursPerSecond() const;
+
 	/** "market day", "rest day" or an empty string. For the dev readout. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|NPC") FText GetDayLabel() const;
 

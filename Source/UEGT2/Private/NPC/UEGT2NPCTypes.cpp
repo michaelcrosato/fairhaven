@@ -175,6 +175,8 @@ FText GetActivityDisplayName(EUEGT2Activity Activity)
 	case EUEGT2Activity::Forage:    return LOCTEXT("ActForage", "foraging");
 	case EUEGT2Activity::Patrol:    return LOCTEXT("ActPatrol", "on patrol");
 	case EUEGT2Activity::Scavenge:  return LOCTEXT("ActScavenge", "scavenging");
+	case EUEGT2Activity::Eat:       return LOCTEXT("ActEat", "eating");
+	case EUEGT2Activity::Washroom:  return LOCTEXT("ActWashroom", "in the washroom");
 	default:                        return LOCTEXT("ActIdle", "idling");
 	}
 }
@@ -321,6 +323,155 @@ float GetActivityPace(EUEGT2Activity Activity)
 	case EUEGT2Activity::Forage:    return 0.45f;
 	case EUEGT2Activity::Scavenge:  return 0.6f;
 	default:                        return 1.0f;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// The economy
+// ---------------------------------------------------------------------------
+bool FUEGT2Purse::Spend(float Amount)
+{
+	if (Amount <= 0.0f)
+	{
+		return true;
+	}
+	if (Coins < Amount)
+	{
+		return false;
+	}
+	Coins -= Amount;
+	return true;
+}
+
+float UEGT2WagePerHour(EUEGT2NPCRole Role)
+{
+	// Coins an hour. The spread is small on purpose: the point of the numbers
+	// is that a day's work covers a day's living with something over, not that
+	// one trade is a career and another is a trap.
+	switch (Role)
+	{
+	case EUEGT2NPCRole::Farmer:     return 7.0f;
+	case EUEGT2NPCRole::Fisher:     return 8.0f;
+	case EUEGT2NPCRole::Merchant:   return 10.0f;
+	case EUEGT2NPCRole::Baker:      return 8.0f;
+	case EUEGT2NPCRole::Innkeeper:  return 9.0f;
+	case EUEGT2NPCRole::Priest:     return 4.0f;
+	case EUEGT2NPCRole::Smith:      return 11.0f;
+	case EUEGT2NPCRole::Dockhand:   return 8.0f;
+	// Lessons in the church hall are the child's "Work" entry. Nobody pays a
+	// seven year old to go to school.
+	case EUEGT2NPCRole::Child:      return 0.0f;
+	// Not a wage: what the parish pays somebody who has stopped working.
+	case EUEGT2NPCRole::Elder:      return 2.0f;
+	case EUEGT2NPCRole::Clerk:      return 12.0f;
+	case EUEGT2NPCRole::Shopkeeper: return 10.0f;
+	case EUEGT2NPCRole::Courier:    return 9.0f;
+	case EUEGT2NPCRole::Officer:    return 10.0f;
+	// Whatever lands in the hat.
+	case EUEGT2NPCRole::Busker:     return 3.0f;
+	case EUEGT2NPCRole::Gardener:   return 6.0f;
+	case EUEGT2NPCRole::Sailor:     return 9.0f;
+	default:                        return 6.0f;   // casual labour
+	}
+}
+
+float UEGT2AllowancePerHour(EUEGT2NPCRole Role)
+{
+	switch (Role)
+	{
+	case EUEGT2NPCRole::Child: return 0.6f;
+	case EUEGT2NPCRole::Elder: return 2.0f;
+	default:                   return 0.0f;
+	}
+}
+
+float UEGT2WageFor(EUEGT2NPCRole Role, EUEGT2Activity Activity)
+{
+	// Nobody is paid in their sleep, allowance or not.
+	const float Allowance = Activity == EUEGT2Activity::Sleep
+		? 0.0f : UEGT2AllowancePerHour(Role);
+
+	switch (Activity)
+	{
+	case EUEGT2Activity::Work:
+	case EUEGT2Activity::Patrol:
+		return FMath::Max(Allowance, UEGT2WagePerHour(Role));
+	case EUEGT2Activity::Errand:
+		// For everybody else an errand is an interruption to the day. For a
+		// courier it *is* the day: their routine is nine hours of Errand and
+		// not one row of Work, so without this they are the one trade in
+		// Fairhaven that works full time for nothing.
+		return Role == EUEGT2NPCRole::Courier
+			? FMath::Max(Allowance, UEGT2WagePerHour(Role)) : Allowance;
+	case EUEGT2Activity::Market:
+		// The one activity that is work for some people and shopping for the
+		// rest. A merchant at the market is standing behind the stall.
+		return (Role == EUEGT2NPCRole::Merchant || Role == EUEGT2NPCRole::Shopkeeper)
+			? FMath::Max(Allowance, UEGT2WagePerHour(Role)) : Allowance;
+	default:
+		return Allowance;
+	}
+}
+
+float UEGT2PriceFor(EUEGT2NPCRole Role, EUEGT2Activity Activity)
+{
+	// Coins an hour, charged for the fraction of an hour actually spent. Only
+	// what you buy from somebody else costs: Breakfast, Lunch and Dinner are
+	// the scheduled meals and they happen at home, out of a larder that is not
+	// modelled. Eat is the off-schedule one - hungry, out, and at a counter.
+	switch (Activity)
+	{
+	case EUEGT2Activity::Eat:      return 5.0f;
+	case EUEGT2Activity::Tavern:   return 6.0f;
+	case EUEGT2Activity::Washroom: return 1.0f;
+	case EUEGT2Activity::Market:
+		return (Role == EUEGT2NPCRole::Merchant || Role == EUEGT2NPCRole::Shopkeeper)
+			? 0.0f : 3.0f;
+	default:                       return 0.0f;
+	}
+}
+
+float UEGT2StartingCoins(EUEGT2NPCRole Role)
+{
+	// About a working day's pay, and never nothing: a child with an empty
+	// purse cannot use a public convenience, and that is not a simulation of
+	// anything, it is a soft lock with a bladder.
+	return FMath::Max(24.0f,
+		FMath::Max(UEGT2WagePerHour(Role), UEGT2AllowancePerHour(Role)) * 6.0f);
+}
+
+bool UEGT2AdvanceLife(float InHours, EUEGT2Activity Activity, EUEGT2NPCRole Role,
+	FUEGT2NPCNeeds& Needs, FUEGT2Purse& Purse)
+{
+	if (InHours <= 0.0f)
+	{
+		return true;
+	}
+
+	const float Price = UEGT2PriceFor(Role, Activity) * InHours;
+	const bool bPaid = Purse.Spend(Price);
+
+	// Idle, not the activity: you are standing at the counter without the
+	// money for what is on it, so time passes and the need does not move.
+	Needs.Advance(InHours, bPaid ? Activity : EUEGT2Activity::Idle);
+
+	Purse.Earn(UEGT2WageFor(Role, Activity) * InHours);
+	return bPaid;
+}
+
+EUEGT2NPCRole UEGT2RoleForWorkAnchor(EUEGT2Anchor Anchor)
+{
+	switch (Anchor)
+	{
+	case EUEGT2Anchor::Field:   return EUEGT2NPCRole::Farmer;
+	case EUEGT2Anchor::Dock:    return EUEGT2NPCRole::Dockhand;
+	case EUEGT2Anchor::Shore:   return EUEGT2NPCRole::Fisher;
+	case EUEGT2Anchor::Market:  return EUEGT2NPCRole::Merchant;
+	case EUEGT2Anchor::Church:  return EUEGT2NPCRole::Priest;
+	case EUEGT2Anchor::Tavern:  return EUEGT2NPCRole::Innkeeper;
+	case EUEGT2Anchor::Park:    return EUEGT2NPCRole::Gardener;
+	case EUEGT2Anchor::Plaza:   return EUEGT2NPCRole::Busker;
+	default:                    return EUEGT2NPCRole::Villager;
 	}
 }
 

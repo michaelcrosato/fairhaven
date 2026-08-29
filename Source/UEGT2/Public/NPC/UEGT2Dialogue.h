@@ -27,6 +27,7 @@ enum class EUEGT2DialogueTopic : uint8
 	Comfort,     // the bathroom need, asked politely
 	Company,
 	Trade,       // what do you do
+	Coin,        // how are you off for money, and what does the work pay
 	Place,       // tell me about here
 	World,       // what is out there
 	Follow,      // walk with me
@@ -63,6 +64,8 @@ struct UEGT2_API FUEGT2DialogueState
 	EUEGT2NPCRole Role = EUEGT2NPCRole::Villager;
 	EUEGT2NPCSpecies Species = EUEGT2NPCSpecies::Person;
 	FUEGT2NPCNeeds Needs;
+	/** What they actually have on them. The answer about money comes off this. */
+	FUEGT2Purse Purse;
 	EUEGT2Activity Activity = EUEGT2Activity::Idle;
 	EUEGT2ActivityReason Reason = EUEGT2ActivityReason::Schedule;
 	EUEGT2Anchor Anchor = EUEGT2Anchor::Home;

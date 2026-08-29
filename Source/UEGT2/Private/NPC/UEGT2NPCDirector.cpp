@@ -214,6 +214,12 @@ void UUEGT2NPCDirector::Tick(float DeltaTime)
 	}
 }
 
+float UUEGT2NPCDirector::GetWorldHoursPerSecond() const
+{
+	const float DayLengthMinutes = Sky ? Sky->GetDayLengthMinutes() : 0.0f;
+	return DayLengthMinutes > KINDA_SMALL_NUMBER ? 24.0f / (DayLengthMinutes * 60.0f) : 0.0f;
+}
+
 void UUEGT2NPCDirector::RefreshWorldFacts(float DeltaTime)
 {
 	if (!Sky)
@@ -242,11 +248,7 @@ void UUEGT2NPCDirector::RefreshWorldFacts(float DeltaTime)
 	// World hours elapsed, for the needs model. Uses the same conversion the
 	// sky controller advances the clock by, so a 20 minute day means an NPC
 	// gets hungry three times in an hour of play.
-	const float DayLengthMinutes = Sky ? Sky->GetDayLengthMinutes() : 0.0f;
-	if (DayLengthMinutes > KINDA_SMALL_NUMBER)
-	{
-		HoursSinceLastSlice += DeltaTime * 24.0f / (DayLengthMinutes * 60.0f);
-	}
+	HoursSinceLastSlice += DeltaTime * GetWorldHoursPerSecond();
 
 	// The view point, not the pawn.
 	//

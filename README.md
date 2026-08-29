@@ -16,6 +16,14 @@ beat until six in the morning, gulls follow the boats in at dawn and the market
 at noon, and a storm sends everyone under the nearest awning. They occasionally
 say what they are about to go and do. See [Docs/NPCs.md](Docs/NPCs.md).
 
+**You live there too.** The player has the same four needs every inhabitant has
+— fed, rested, relief, company — the same purse, and the same places to answer
+them: eat at the bakehouse the villagers eat at, sit on their benches, use their
+privies, take a shift on the quay beside the dockhands and get paid the
+dockhand's rate. One function advances a life, and it does not know whether the
+life is yours. Run out of coin and the counter will not serve you; run out of
+sleep and it is in your legs.
+
 ![The farmland west of town](Docs/Images/farmland.png)
 
 | | |

@@ -13,6 +13,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Player/UEGT2Character.h"
 #include "Player/UEGT2InputConfig.h"
+#include "Player/UEGT2NeedsComponent.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "UEGT2LogChannels.h"
 #include "NPC/UEGT2NPCActor.h"
@@ -199,11 +200,13 @@ void AUEGT2PlayerController::OpenDialogue(AUEGT2NPCActor* NPC)
 		DialogueWidget->SetPartner(NPC);
 	}
 	ApplyDialogueInputMode();
+	SetPlayerConversing(true);
 	UE_LOG(LogUEGT2UI, Log, TEXT("Talking to %s."), *NPC->GetDisplayName().ToString());
 }
 
 void AUEGT2PlayerController::CloseDialogue()
 {
+	SetPlayerConversing(false);
 	DialoguePartner.Reset();
 	if (DialogueWidget.IsValid())
 	{
@@ -211,6 +214,20 @@ void AUEGT2PlayerController::CloseDialogue()
 		DialogueWidget->SetVisibility(EVisibility::Collapsed);
 	}
 	ApplyDialogueInputMode();
+}
+
+void AUEGT2PlayerController::SetPlayerConversing(bool bTalking)
+{
+	// Company is a need, and standing talking to somebody is how it is
+	// answered - for the player exactly as for the person they are talking to,
+	// who is in Socialise for the same reason at the same moment.
+	if (const AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn()))
+	{
+		if (UUEGT2NeedsComponent* Life = Explorer->GetLife())
+		{
+			Life->SetConversing(bTalking);
+		}
+	}
 }
 
 void AUEGT2PlayerController::AskDialogueTopic(int32 Topic)

@@ -67,8 +67,25 @@ Flight follows the full camera rotation, so looking up and holding W climbs.
 
 ## Life tab
 
-The world's nine hundred people and three hundred animals. See
-[NPCs.md](NPCs.md) for what they are actually doing.
+The world's nine hundred people and three hundred animals - and you, who have
+the same four needs and the same purse they do. See [NPCs.md](NPCs.md) for what
+they are actually doing and what any of it costs.
+
+### Your day
+
+| Control | Effect |
+|---|---|
+| (readout) | your trade, your purse, what you are doing, all four needs as percentages |
+| +50 Coins | into your own pocket |
+| Empty Purse | down to nothing, so you can watch a counter refuse to serve you |
+| Fill Needs | all four to full |
+| Empty Needs | all four to 0.1, which is under every interrupt threshold |
+
+A need takes world *hours* to run down and a day is twenty minutes, so waiting
+for hunger in real time is not a debugging strategy. These four buttons are how
+you get to the interesting state without living through it.
+
+### The population
 
 | Control | Effect |
 |---|---|

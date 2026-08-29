@@ -27,6 +27,7 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Screenshot-Tour.ps1                   # 20 viewpoints -> PNG
 ./Scripts/Screenshot-Tour.ps1 -Menu             # menu + settings -> PNG
 ./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureDialogue'   # the talk panel
+./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'       # eat, wash, sit, work
 ./Scripts/Preview.ps1 -Stages lighting          # build + package + screenshot
 python Tools/Python/check_meshes.py             # every generated mesh, no editor, ~1s
 python Tools/Terrain/generate_terrain.py        # re-roll terrain (+ PNG previews)
@@ -46,13 +47,21 @@ python Tools/Audio/generate_audio.py            # re-generate sounds
 2. **Look at a screenshot.** `./Scripts/Preview.ps1`. Several bugs here produced
    a completely clean log and a completely broken image: inverted triangle
    winding, an unconnected BaseColor, blown-out exposure.
+2b. **`-UEGT2CaptureLife`.** Walks the player up to one amenity of each kind,
+   uses it through the real interaction probe, and logs the needs and the purse
+   either side. It is the only check that covers the whole path the player
+   takes rather than the pieces of it: the arithmetic tests cannot tell you
+   that pressing the key does anything.
 3. **Package it.** The cook is the only place material shaders actually compile
    and the only place bad physics collision is reported. `Build-Content.ps1` and
    `Package.ps1` both fail the build on a material that does not compile.
 4. **`./Scripts/Test.ps1`.** Guards materials, vertex colours, world composition,
    and the whole NPC behaviour model - the routines, the rules that override
    them, the speech pools and the baked population.
-   `UEGT2.NPC.*` needs no map and runs in seconds.
+   `UEGT2.NPC.*` and `UEGT2.Economy.*` need no map and run in seconds. The
+   second of those simulates three whole days per trade with the needs and the
+   purse in the loop, which is the only way a wage change that slowly starves
+   the bakers is visible before you play for an hour.
 5. **Read `Saved/Logs/ContentBuild.log`** when a stage misbehaves. The build
    script echoes only the `[UEGT2]` lines; the full log has everything.
 6. **Read the population report.** Any run logs one `LogUEGT2NPC` line twelve
@@ -140,6 +149,18 @@ Do not undo these without understanding why they are there.
 - **NPC ground traces query `ECC_WorldStatic` by object type, not the Visibility
   channel.** Every NPC blocks Visibility so the interaction probe can find them,
   and a channel trace lands one NPC on another's head.
+- **The player and the town share one ledger.** `UEGT2AdvanceLife` is the only
+  place needs and money move, and both `AUEGT2NPCActor::AdvanceNeeds` and
+  `UUEGT2NeedsComponent` call it. Do not give either a rate table of its own:
+  the point of the player having needs at all is that they are the same needs,
+  and a second table drifts silently. `UEGT2.Economy.LivingWage` runs every
+  trade through three closed-loop days and fails if the numbers stop adding up.
+- **An amenity is a place, not a prop.** `AUEGT2Amenity` is an invisible query
+  volume standing on an anchor point, and it must stay that way. Converting the
+  bench, privy or stall props into interactable actors changes their collision
+  object type from `WorldStatic` to `WorldDynamic`, and the NPC ground trace
+  queries `ECC_WorldStatic` **by object type** - so the whole square would stop
+  being standable on the same day the benches became usable.
 - **NPCs do not block the player.** Query-only collision, Visibility alone. The
   player starts in the town square where the crowd is thickest, and a solid crowd
   there means getting wedged between four villagers - and a packaged walk smoke
@@ -177,6 +198,8 @@ Do not undo these without understanding why they are there.
 | A world feature (road, region, river) | `Tools/Terrain/world_config.py`, then re-run the terrain script |
 | A screenshot viewpoint | `UUEGT2CaptureSubsystem::GetTour()` |
 | A trade, or a change to one's day | A routine in `UEGT2NPCRoutines.cpp`, plus a `_ROLE_LOOK` row in `npc.py` |
+| Somewhere the player can eat, wash, sit, sleep or earn | An `EUEGT2AmenityKind` entry, its activity in `UEGT2ActivityForAmenity`, and a placement loop in `gameplay._place_amenities` |
+| A price or a wage | `UEGT2PriceFor` / `UEGT2WagePerHour` in `UEGT2NPCTypes.cpp`; `UEGT2.Economy.LivingWage` checks the result still feeds the town |
 | An animal | A generator in `gen_fauna.py`, a `meshbuild._catalog()` line, a species routine |
 | Something an NPC says | A pool in `UEGT2NPCSpeech.cpp`; the tests check every pool is filled |
 | A rule that overrides a routine | `ResolveActivity` in `UEGT2NPCRoutines.cpp` |

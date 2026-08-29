@@ -8,6 +8,7 @@
 #include "Interaction/UEGT2InteractionComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Player/UEGT2InputConfig.h"
+#include "Player/UEGT2NeedsComponent.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "Sound/SoundBase.h"
 #include "UEGT2LogChannels.h"
@@ -41,6 +42,7 @@ AUEGT2Character::AUEGT2Character()
 	Camera->SetFieldOfView(90.0f);
 
 	Interaction = CreateDefaultSubobject<UUEGT2InteractionComponent>(TEXT("Interaction"));
+	Life = CreateDefaultSubobject<UUEGT2NeedsComponent>(TEXT("Life"));
 
 	bUseControllerRotationPitch = false;
 	bUseControllerRotationYaw = true;
@@ -104,11 +106,16 @@ float AUEGT2Character::GetHorizontalSpeed() const
 
 float AUEGT2Character::DesiredMaxSpeed() const
 {
+	// Tiredness is in the legs. An NPC with no energy left walks off to sit
+	// down and you can see them do it; the player's only tell is their own
+	// pace, so an empty Energy need is worth about half a walking speed.
+	const float Exertion = Life ? Life->GetExertionScale() : 1.0f;
 	if (bIsCrouched)
 	{
-		return CrouchSpeed;
+		return CrouchSpeed * Exertion;
 	}
-	return bSprinting ? SprintSpeed : WalkSpeed;
+	const bool bCanSprint = !Life || Life->CanSprint();
+	return (bSprinting && bCanSprint ? SprintSpeed : WalkSpeed) * Exertion;
 }
 
 void AUEGT2Character::BindInputActions(UEnhancedInputComponent* Input, UUEGT2InputConfig* Config)
@@ -192,6 +199,13 @@ void AUEGT2Character::OnSprintStarted()
 	{
 		UnCrouch();
 	}
+}
+
+bool AUEGT2Character::IsSprinting() const
+{
+	// Holding the key with nothing left in the tank is not sprinting, and the
+	// HUD and the field of view should not pretend otherwise.
+	return bSprinting && (!Life || Life->CanSprint());
 }
 
 void AUEGT2Character::OnSprintStopped()
@@ -361,7 +375,7 @@ void AUEGT2Character::PlayFootstep()
 	{
 		return;
 	}
-	const float Volume = bSprinting ? 0.55f : 0.38f;
+	const float Volume = IsSprinting() ? 0.55f : 0.38f;
 	const float Pitch = FMath::FRandRange(0.92f, 1.08f);
 	UGameplayStatics::PlaySoundAtLocation(this, Sound, GetActorLocation(), Volume, Pitch);
 }
@@ -374,7 +388,7 @@ void AUEGT2Character::UpdateFieldOfView(float DeltaSeconds)
 	}
 	const UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get();
 	const float BaseFov = Settings ? Settings->GetFieldOfView() : 90.0f;
-	const bool bFast = bSprinting && GetHorizontalSpeed() > WalkSpeed * 1.05f;
+	const bool bFast = IsSprinting() && GetHorizontalSpeed() > WalkSpeed * 1.05f;
 	const float Target = BaseFov + (bFast ? SprintFovBonus : 0.0f);
 
 	CurrentFov = FMath::FInterpTo(CurrentFov, Target, DeltaSeconds, 6.0f);
@@ -389,6 +403,7 @@ void AUEGT2Character::Tick(float DeltaSeconds)
 	Movement->MaxWalkSpeed = DesiredMaxSpeed() * SpeedMultiplier;
 	Movement->MaxWalkSpeedCrouched = CrouchSpeed * SpeedMultiplier;
 	Movement->MaxSwimSpeed = SwimSpeed * SpeedMultiplier;
+	// Flight is a dev tool and does not care how tired the player is.
 	Movement->MaxFlySpeed = FlySpeed * SpeedMultiplier * (bSprinting ? FlySprintScale : 1.0f);
 
 	UpdateHeadBob(DeltaSeconds);

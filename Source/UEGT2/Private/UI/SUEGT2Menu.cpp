@@ -794,6 +794,17 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 
 	List->AddSlot().AutoHeight().Padding(0, 7)
 	[
+		Row(LOCTEXT("Needs", "Needs and Purse"), MakeToggle(
+			[S]() { return S->GetShowNeeds(); },
+			[this, S](bool bValue) { S->SetShowNeeds(bValue); ApplyAndSave(); }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("NeedsHint",
+		"How you are keeping, and what is in your pocket."), 11, Muted) ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
 		Row(LOCTEXT("Almanac", "Date and Weather"), MakeToggle(
 			[S]() { return S->GetShowAlmanac(); },
 			[this, S](bool bValue) { S->SetShowAlmanac(bValue); ApplyAndSave(); }))
@@ -1080,7 +1091,82 @@ TSharedRef<SWidget> SUEGT2Menu::BuildDevLifeTab()
 		return List;
 	}
 
+	// The player's own day comes first, and above the population check: the
+	// player has needs and a purse whether or not the npc stage has been run.
 	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
+	[ Label(LOCTEXT("DevHeadingYou", "YOUR DAY"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([D]()
+		{
+			UUEGT2DevModeSubsystem* Dev = D();
+			return Dev ? Dev->GetPlayerLifeSummary() : FText::GetEmpty();
+		})
+		.Font(Font("Regular", 12))
+		.ColorAndOpacity(FSlateColor(Muted))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 4)
+	[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
+		[
+			SNew(SBox).WidthOverride(150.0f).HeightOverride(36.0f)
+			[
+				MenuButton(LOCTEXT("DevGiveCoin", "+50 Coins"), FOnClicked::CreateLambda([D]()
+				{
+					if (UUEGT2DevModeSubsystem* Dev = D())
+					{
+						Dev->SetPlayerCoins(Dev->GetPlayerCoins() + 50);
+					}
+					return FReply::Handled();
+				}), 12)
+			]
+		]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
+		[
+			SNew(SBox).WidthOverride(150.0f).HeightOverride(36.0f)
+			[
+				MenuButton(LOCTEXT("DevBroke", "Empty Purse"), FOnClicked::CreateLambda([D]()
+				{
+					if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetPlayerCoins(0); }
+					return FReply::Handled();
+				}), 12)
+			]
+		]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(0, 0, 8, 0)
+		[
+			SNew(SBox).WidthOverride(150.0f).HeightOverride(36.0f)
+			[
+				MenuButton(LOCTEXT("DevFillNeeds", "Fill Needs"), FOnClicked::CreateLambda([D]()
+				{
+					if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetPlayerNeedsSatisfied(true); }
+					return FReply::Handled();
+				}), 12)
+			]
+		]
+		+ SHorizontalBox::Slot().AutoWidth()
+		[
+			SNew(SBox).WidthOverride(150.0f).HeightOverride(36.0f)
+			[
+				MenuButton(LOCTEXT("DevDrainNeeds", "Empty Needs"), FOnClicked::CreateLambda([D]()
+				{
+					if (UUEGT2DevModeSubsystem* Dev = D()) { Dev->SetPlayerNeedsSatisfied(false); }
+					return FReply::Handled();
+				}), 12)
+			]
+		]
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 8)
+	[ Label(LOCTEXT("DevYourDayHint",
+		"A need takes world hours to run down, and a day is twenty minutes. "
+		"These are for getting to the interesting state without living through it."),
+		11, Muted) ];
+
+	List->AddSlot().AutoHeight().Padding(0, 12, 0, 10)
 	[ Label(LOCTEXT("DevHeadingPopulation", "POPULATION"), 12, Accent, "Bold") ];
 
 	if (!D()->HasPopulation())

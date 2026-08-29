@@ -169,6 +169,7 @@ void UUEGT2GameUserSettings::SetToggleSprint(bool bValue) { bToggleSprint = bVal
 void UUEGT2GameUserSettings::SetShowCrosshair(bool bValue) { bShowCrosshair = bValue; }
 void UUEGT2GameUserSettings::SetShowInteractPrompts(bool bValue) { bShowInteractPrompts = bValue; }
 void UUEGT2GameUserSettings::SetShowSpeechBubbles(bool bValue) { bShowSpeechBubbles = bValue; }
+void UUEGT2GameUserSettings::SetShowNeeds(bool bValue) { bShowNeeds = bValue; }
 
 void UUEGT2GameUserSettings::SetShowAlmanac(bool bValue)
 {

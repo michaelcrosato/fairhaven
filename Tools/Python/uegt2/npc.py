@@ -26,9 +26,10 @@ import math
 
 import unreal
 
+from . import city as city_mod
 from . import ctx
 from .meshkit import _SmallRng
-from .town import HOUSE_DEPTH, _coast_y_at, _walk
+from .town import HOUSE_DEPTH, SERVICE_NAMES, _coast_y_at, _walk
 
 LABEL_PREFIX = "Life "
 
@@ -165,6 +166,19 @@ FOOD_TRADES = frozenset((
 WASH_TRADES = frozenset(("gym", "apartment_lobby", "office_lobby"))
 
 
+def _venue_phrase(name):
+    """A shop name that reads after a preposition: "Work at the Solicitor".
+
+    The sign tables are written for signs, where "Solicitor" and "Bank" are
+    exactly right. In a sentence they are not, and the amenity prompts and the
+    HUD both put them in one. Anything already starting with "The" is a proper
+    name and is left alone.
+    """
+    if not name:
+        return name
+    return name if name.startswith("The ") else "the " + name
+
+
 def _front_of(location, yaw, depth, clearance):
     """The point in front of a building's door face (local -Y), on the ground."""
     radians = math.radians(yaw)
@@ -289,6 +303,27 @@ class _Survey(object):
         self.town_food = []
         self.town_washrooms = []
         self.town_seats = []
+        # Named places, for the amenities the gameplay stage puts down so the
+        # player can use the same food, work and washrooms the routines send
+        # everybody else to. Same points as the anchor lists above; the extra
+        # field is what the interaction prompt says out loud. Town and city are
+        # kept apart for the reason every other pair in this class is: the town
+        # has three food shops and Newhaven has forty, so one shared list under
+        # a sensible cap is a cap that falls entirely on the town.
+        self.food_venues = []         # (x, y, z, name)
+        self.trade_venues = []        # (x, y, z, name, role name)
+        self.city_food_venues = []
+        self.city_trade_venues = []
+        # Benches and privies get the same treatment as buildings: the amenity
+        # stands in *front* of the thing, not inside it. A bench has a 155 cm
+        # backrest and a privy is a shed with one door, and an interaction
+        # volume buried in either is one the player's probe can never reach -
+        # it stops at the first thing that blocks Visibility, and that is the
+        # bench. The NPC anchors above keep using the prop's own position,
+        # which is what they want: they walk to the bench, not to the seat.
+        self.seat_venues = []              # (x, y, z) in front of a bench
+        self.town_wash_venues = []         # (x, y, z) outside a privy door
+        self.city_wash_venues = []
         # Everywhere it is reasonable to stand "in the square": the benches, the
         # stall fronts and the well. A single square anchor put seventy-five
         # people on one coordinate.
@@ -368,17 +403,32 @@ class _Survey(object):
 
         if label.startswith("Town Privy "):
             self.town_washrooms.append(point)
+            self.town_wash_venues.append(_front_of(location, yaw, 190.0, 130.0))
         elif label.startswith("City WC "):
             self.city_washrooms.append(point)
+            self.city_wash_venues.append(_front_of(location, yaw, 210.0, 130.0))
         elif label.startswith("Town Shop "):
             trade = label.split()[2] if len(label.split()) > 2 else ""
+            front = _front_of(location, yaw, 560.0, 190.0)
+            venue = _venue_phrase(SERVICE_NAMES.get(trade, trade.replace("_", " ")
+                                                     or "shop"))
             if trade in FOOD_TRADES:
-                self.town_food.append(_front_of(location, yaw, 560.0, 190.0))
+                self.town_food.append(front)
+                self.food_venues.append(front + (venue,))
+            else:
+                # Somewhere with a counter and somebody behind it is somewhere
+                # a person can be taken on for the afternoon.
+                self.trade_venues.append(front + (venue, "Shopkeeper"))
         elif label.startswith("City Interior "):
             parts = label.split()
             trade = parts[3] if len(parts) > 3 else ""
+            venue = _venue_phrase(city_mod.VENUE_NAMES.get(
+                trade, trade.replace("_", " ") or "shop"))
             if trade in FOOD_TRADES:
                 self.city_food.append(point)
+                self.city_food_venues.append(point + (venue,))
+            elif trade not in WASH_TRADES:
+                self.city_trade_venues.append(point + (venue, "Shopkeeper"))
             if trade in WASH_TRADES:
                 self.city_washrooms.append(point)
         elif label.startswith("Town House "):
@@ -386,9 +436,13 @@ class _Survey(object):
             self.town_homes.append(_front_of(location, yaw, depth, 190.0))
         elif label.startswith("Town Farm "):
             depth = _EXTRA_DEPTH.get(name, 500.0)
-            self.town_farms.append(_front_of(location, yaw, depth, 260.0))
+            front = _front_of(location, yaw, depth, 260.0)
+            self.town_farms.append(front)
+            self.trade_venues.append(front + ("the farm", "Farmer"))
         elif label.startswith("Town Warehouse "):
-            self.town_work.append(_front_of(location, yaw, 900.0, 260.0))
+            front = _front_of(location, yaw, 900.0, 260.0)
+            self.town_work.append(front)
+            self.trade_venues.append(front + ("the warehouse", "Dockhand"))
             self.town_shelters.append(point)
         elif label.startswith("Town Stall "):
             front = _front_of(location, yaw, 300.0, 170.0)
@@ -397,6 +451,8 @@ class _Survey(object):
             self.town_shelters.append(point)
         elif label.startswith("Town Bench "):
             self.town_benches.append(point)
+            self.town_seats.append(point)
+            self.seat_venues.append(_front_of(location, yaw, 140.0, 90.0))
             self.town_square_spots.append(point)
         elif label.startswith("Town Dock "):
             self.town_docks.append(point)
@@ -410,15 +466,27 @@ class _Survey(object):
                     self.city_shops.append(_front_of(location, yaw, 1500.0, 320.0))
             elif (name.startswith("SM_Tower") or name.startswith("SM_Office")
                   or name.startswith("SM_ParkingDeck")):
-                self.city_work.append(_front_of(location, yaw, 1800.0, 340.0))
+                front = _front_of(location, yaw, 1800.0, 340.0)
+                self.city_work.append(front)
+                self.city_trade_venues.append(front + ("the offices", "Clerk"))
         elif label == "City CityHall":
-            self.city_work.append(_front_of(location, yaw, 3410.0, 420.0))
+            front = _front_of(location, yaw, 3410.0, 420.0)
+            self.city_work.append(front)
+            self.city_trade_venues.append(front + ("the City Hall", "Clerk"))
         elif label == "City Fountain":
             self.city_plaza = point
         elif label.startswith("City ParkBench ") or label.startswith("City ParkTree "):
             self.city_parks.append(point)
+            # Only the benches are somewhere to sit. A tree is somewhere to
+            # stand about, which is what city_parks is for.
+            if label.startswith("City ParkBench "):
+                self.city_seats.append(point)
+                self.seat_venues.append(_front_of(location, yaw, 140.0, 90.0))
         elif label.startswith("City PlazaBench ") or label.startswith("City PlazaPlanter "):
             self.city_plaza_spots.append(point)
+            if label.startswith("City PlazaBench "):
+                self.city_seats.append(point)
+                self.seat_venues.append(_front_of(location, yaw, 140.0, 90.0))
         elif label.startswith("City Corner ") or label.startswith("City Warehouse "):
             self.city_shelters.append(point)
         elif label.startswith("City Quay "):
@@ -456,6 +524,16 @@ class _Survey(object):
                    len(self.town_docks), len(self.town_square_spots),
                    len(self.city_homes), len(self.city_work),
                    len(self.city_parks), len(self.city_plaza_spots)))
+
+
+def survey_world(world_data, subsystem):
+    """Read the placed world back into anchor sets.
+
+    Public because the gameplay stage needs it too: the amenities the player
+    uses have to stand on the same points the population's anchors resolve to,
+    or the player would be eating somewhere the town has never heard of.
+    """
+    return _Survey(world_data, subsystem)
 
 
 # ---------------------------------------------------------------------------

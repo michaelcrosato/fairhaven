@@ -197,6 +197,12 @@ void AUEGT2NPCActor::ConfigureNPC(const FString& InDisplayName, EUEGT2NPCRole In
 	Species = InSpecies;
 	Seed = InSeed;
 	Personality = FUEGT2Personality::FromSeed(Seed);
+	// Everybody starts the day with something in their pocket, jittered by the
+	// seed so the town is not uniformly solvent. Animals keep the zero they
+	// were born with: nothing charges them and nothing pays them.
+	Purse.Coins = IsAnimal()
+		? 0.0f
+		: UEGT2StartingCoins(NPCRole) * (0.55f + UEGT2HashUnit((uint32)Seed, 0xC01Eu) * 0.9f);
 
 	// Draw cost scales with how big the thing actually is. A chicken's shadow
 	// is not worth a virtual shadow map page, and a chicken at two hundred
@@ -325,6 +331,7 @@ FUEGT2DialogueState AUEGT2NPCActor::MakeDialogueState() const
 	State.Hour = Director ? Director->GetHour() : 12.0f;
 	State.Seed = Seed;
 	State.bFollowing = IsFollowing();
+	State.Purse = Purse;
 	State.DisplayName = DisplayName.IsEmpty() ? GetRoleDisplayName(NPCRole) : DisplayName;
 	// Newhaven is far to the west; anybody out there is a city dweller. Cheaper
 	// and steadier than asking the world which settlement owns this actor.
@@ -502,6 +509,7 @@ void AUEGT2NPCActor::EvaluateSchedule(const FUEGT2NPCContext& Context, bool bFor
 	FUEGT2NPCContext Local = Context;
 	Local.Personality = Personality;
 	Local.Needs = Needs;
+	Local.Purse = Purse;
 	Local.Seed = Seed;
 	Local.bExposed = !bIndoors;
 
@@ -598,7 +606,15 @@ void AUEGT2NPCActor::SnapToSchedule(const FUEGT2NPCContext& Context)
 
 void AUEGT2NPCActor::AdvanceNeeds(float WorldHours)
 {
-	Needs.Advance(WorldHours, Decision.Activity);
+	if (IsAnimal())
+	{
+		// No purse, no wages, no prices. A goat grazes for free.
+		Needs.Advance(WorldHours, Decision.Activity);
+		return;
+	}
+	// The same call the player's needs component makes, with the same numbers.
+	// An inhabitant who cannot pay for their lunch does not get one either.
+	UEGT2AdvanceLife(WorldHours, Decision.Activity, NPCRole, Needs, Purse);
 }
 
 void AUEGT2NPCActor::RepathTo(const FVector& Goal)

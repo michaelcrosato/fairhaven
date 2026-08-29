@@ -7,7 +7,10 @@
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "InputAction.h"
+#include "Interaction/UEGT2Amenity.h"
+#include "Interaction/UEGT2InteractionComponent.h"
 #include "Player/UEGT2Character.h"
+#include "Player/UEGT2NeedsComponent.h"
 #include "Player/UEGT2InputConfig.h"
 #include "Player/UEGT2PlayerController.h"
 #include "Kismet/GameplayStatics.h"
@@ -55,6 +58,11 @@ bool UUEGT2CaptureSubsystem::IsCaptureRequested()
 bool UUEGT2CaptureSubsystem::IsWalkSmokeRequested()
 {
 	return FParse::Param(FCommandLine::Get(), TEXT("UEGT2SmokeWalk"));
+}
+
+bool UUEGT2CaptureSubsystem::IsLifeCaptureRequested()
+{
+	return FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureLife"));
 }
 
 const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
@@ -259,14 +267,17 @@ void UUEGT2CaptureSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 
 	bMenuMode = FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureMenu"));
 	bDialogueMode = FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureDialogue"));
+	bLifeMode = IsLifeCaptureRequested();
 
 	// Give Lumen, virtual shadow maps and streaming time to settle first.
 	InWorld.GetTimerManager().SetTimer(TimerHandle,
-		FTimerDelegate::CreateUObject(this, bDialogueMode
-			? &UUEGT2CaptureSubsystem::BeginDialogueTour
-			: bMenuMode
-				? &UUEGT2CaptureSubsystem::BeginMenuTour
-				: &UUEGT2CaptureSubsystem::BeginTour),
+		FTimerDelegate::CreateUObject(this, bLifeMode
+			? &UUEGT2CaptureSubsystem::BeginLifeTour
+			: bDialogueMode
+				? &UUEGT2CaptureSubsystem::BeginDialogueTour
+				: bMenuMode
+					? &UUEGT2CaptureSubsystem::BeginMenuTour
+					: &UUEGT2CaptureSubsystem::BeginTour),
 		FMath::Max(Delay, 0.5f), false);
 }
 
@@ -457,6 +468,187 @@ void UUEGT2CaptureSubsystem::RunDialogueStep()
 				}), 0.9f);
 			return false;
 		}), HoldSeconds);
+}
+
+// ---------------------------------------------------------------------------
+// Amenity capture: proves the player can actually live here.
+// ---------------------------------------------------------------------------
+namespace UEGT2Capture
+{
+	/** The kinds worth photographing, and the order to visit them in. */
+	const EUEGT2AmenityKind LifeKinds[] = {
+		EUEGT2AmenityKind::Work,      // earn it first, which is rather the point
+		EUEGT2AmenityKind::Food,
+		EUEGT2AmenityKind::Washroom,
+		EUEGT2AmenityKind::Seat,
+		EUEGT2AmenityKind::Tavern,
+		EUEGT2AmenityKind::Bed,
+	};
+
+	/**
+	 * World hours charged at each stop.
+	 *
+	 * A fixed slice rather than elapsed time, because the clock is frozen
+	 * during a capture and because a screenshot that depends on how long the
+	 * machine took to render the last one is not one you can compare against
+	 * last week's.
+	 */
+	constexpr float LifeHoursPerStop = 0.55f;
+}
+
+void UUEGT2CaptureSubsystem::BeginLifeTour()
+{
+	UWorld* World = GetWorld();
+	APlayerController* PC = World ? UGameplayStatics::GetPlayerController(World, 0) : nullptr;
+	AUEGT2Character* Explorer = PC ? Cast<AUEGT2Character>(PC->GetPawn()) : nullptr;
+	UUEGT2NeedsComponent* Life = Explorer ? Explorer->GetLife() : nullptr;
+	if (!Life)
+	{
+		UE_LOG(LogUEGT2Diag, Error, TEXT("Amenity capture: no player with needs."));
+		FinishTour();
+		return;
+	}
+
+	// The nearest one of each kind to where the player woke up. Nearest rather
+	// than named, so re-rolling the seed does not break the tour.
+	const FVector From = Explorer->GetActorLocation();
+	for (EUEGT2AmenityKind Kind : UEGT2Capture::LifeKinds)
+	{
+		AUEGT2Amenity* Best = nullptr;
+		double BestDistance = TNumericLimits<double>::Max();
+		for (TActorIterator<AUEGT2Amenity> It(World); It; ++It)
+		{
+			AUEGT2Amenity* Amenity = *It;
+			if (!Amenity || Amenity->GetKind() != Kind)
+			{
+				continue;
+			}
+			const double Distance = FVector::DistSquared(From, Amenity->GetActorLocation());
+			if (Distance < BestDistance)
+			{
+				BestDistance = Distance;
+				Best = Amenity;
+			}
+		}
+		if (Best)
+		{
+			LifeStops.Add(Best);
+		}
+		else
+		{
+			UE_LOG(LogUEGT2Diag, Warning, TEXT("Amenity capture: no %s anywhere in the world."),
+				UEGT2AmenityKindName(Kind));
+		}
+	}
+
+	// Start hungry, tired and caught short, so each stop has something visible
+	// to do. A full set of bars proves nothing.
+	Life->SetNeedsSatisfied(false);
+	Life->SetCoins(40.0f);
+
+	LifeIndex = 0;
+	UE_LOG(LogUEGT2Diag, Log, TEXT("Amenity capture: %d stops -> %s"),
+		LifeStops.Num(), *OutputDirectory);
+	RunLifeStep();
+}
+
+void UUEGT2CaptureSubsystem::RunLifeStep()
+{
+	UWorld* World = GetWorld();
+	if (!World || !LifeStops.IsValidIndex(LifeIndex))
+	{
+		FinishTour();
+		return;
+	}
+
+	APlayerController* PC = UGameplayStatics::GetPlayerController(World, 0);
+	AUEGT2Character* Explorer = PC ? Cast<AUEGT2Character>(PC->GetPawn()) : nullptr;
+	AUEGT2Amenity* Amenity = LifeStops[LifeIndex];
+	UUEGT2NeedsComponent* Life = Explorer ? Explorer->GetLife() : nullptr;
+	if (!Life || !Amenity)
+	{
+		FinishTour();
+		return;
+	}
+
+	// Stand a stride back from it and look at it, so the interaction probe -
+	// the real one, sweeping on Visibility from the real camera - has to find
+	// it exactly as it would if somebody had walked up.
+	//
+	// Which side to stand on is not a free choice. A bench has a 155 cm
+	// backrest and a privy is a shed: from the wrong side the thing itself is
+	// between the camera and the volume, the probe stops at the first blocking
+	// hit, and the tour reports a working amenity as broken. So try eight
+	// approaches and take the first with a clear line - which is what a person
+	// walking up to a bench does without thinking about it.
+	const FVector Point = Amenity->GetInteractionPoint();
+	const FVector Ground = Amenity->GetActorLocation();
+	const float Reach = 175.0f;      // inside the 320 cm probe and every use range
+
+	FVector Stand = Point + FVector(Reach, 0.0f, 0.0f);
+	for (int32 Step = 0; Step < 8; ++Step)
+	{
+		const float Angle = FMath::DegreesToRadians(Step * 45.0f);
+		const FVector Candidate(Point.X + FMath::Cos(Angle) * Reach,
+			Point.Y + FMath::Sin(Angle) * Reach, Ground.Z + 95.0f);
+		// Eye height, so this is the line the probe will actually sweep.
+		const FVector Eye = Candidate + FVector(0.0f, 0.0f, 68.0f);
+
+		FCollisionQueryParams Params(SCENE_QUERY_STAT(UEGT2CaptureLife), false, Explorer);
+		FHitResult Hit;
+		const bool bBlocked = World->LineTraceSingleByChannel(
+			Hit, Eye, Point, ECC_Visibility, Params) && Hit.GetActor() != Amenity;
+		if (!bBlocked)
+		{
+			Stand = Candidate;
+			break;
+		}
+	}
+
+	Explorer->TeleportTo(Stand, Explorer->GetActorRotation(), false, true);
+	PC->SetControlRotation((Point - Explorer->GetPawnViewLocation()).Rotation());
+
+	const FUEGT2NPCNeeds Before = Life->GetNeeds();
+	const int32 CoinsBefore = Life->GetCoins();
+
+	// A beat for the probe to notice what is in front of it, then use it.
+	FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+		[this, Amenity, Life, Explorer, Before, CoinsBefore](float) -> bool
+		{
+			UUEGT2InteractionComponent* Probe = Explorer->GetInteraction();
+			const bool bFound = Probe && Probe->GetFocusedActor() == Amenity;
+			const bool bUsed = Probe && Probe->TryInteract();
+
+			// A fixed slice of world time, charged through the same function
+			// the whole town runs on.
+			Life->AdvanceLife(UEGT2Capture::LifeHoursPerStop);
+
+			const FUEGT2NPCNeeds& After = Life->GetNeeds();
+			UE_LOG(LogUEGT2Diag, Log,
+				TEXT("Amenity capture %02d: %s '%s' - %s, %s. %s. ")
+				TEXT("fed %.2f->%.2f energy %.2f->%.2f relief %.2f->%.2f coins %d->%d"),
+				LifeIndex + 1, UEGT2AmenityKindName(Amenity->GetKind()),
+				*Amenity->GetVenueName().ToString(),
+				bFound ? TEXT("found by the probe") : TEXT("NOT FOUND BY THE PROBE"),
+				bUsed ? TEXT("used") : TEXT("NOT USED"),
+				*Life->GetActivityText().ToString(),
+				Before.Fed, After.Fed, Before.Energy, After.Energy,
+				Before.Relief, After.Relief, CoinsBefore, Life->GetCoins());
+
+			PendingFileName = FString::Printf(TEXT("%s/life_%02d_%s.png"),
+				*OutputDirectory, LifeIndex + 1,
+				UEGT2AmenityKindName(Amenity->GetKind()));
+			FScreenshotRequest::RequestScreenshot(true);
+
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda(
+				[this](float) -> bool
+				{
+					++LifeIndex;
+					RunLifeStep();
+					return false;
+				}), 0.9f);
+			return false;
+		}), FMath::Max(HoldSeconds, 0.4f));
 }
 
 // ---------------------------------------------------------------------------

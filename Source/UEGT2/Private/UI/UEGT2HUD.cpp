@@ -9,6 +9,7 @@
 #include "NPC/UEGT2NPCDirector.h"
 #include "Player/UEGT2Character.h"
 #include "Player/UEGT2InputConfig.h"
+#include "Player/UEGT2NeedsComponent.h"
 #include "Player/UEGT2PlayerController.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "World/UEGT2Almanac.h"
@@ -92,6 +93,10 @@ void AUEGT2HUD::DrawHUD()
 	if (!Settings || Settings->GetShowAlmanac())
 	{
 		DrawAlmanac(Canvas->ClipX);
+	}
+	if (!Settings || Settings->GetShowNeeds())
+	{
+		DrawLife(Canvas->ClipY);
 	}
 	DrawDevStatus(Canvas->ClipX);
 }
@@ -219,6 +224,83 @@ void AUEGT2HUD::DrawAlmanac(float ScreenWidth)
 	DrawText(DateLine, UEGT2Hud::Muted, X + PadX, Cursor, Small, 1.0f, false);
 	Cursor += DateH + Gap;
 	DrawText(Conditions, UEGT2Hud::Accent, X + PadX, Cursor, Small, 1.0f, false);
+}
+
+float AUEGT2HUD::DrawNeedBar(const FString& Label, float Value, float X, float Y, float Width)
+{
+	UFont* Font = GEngine->GetSmallFont();
+	float LabelW = 0.0f, LabelH = 0.0f;
+	GetTextSize(Label, LabelW, LabelH, Font, 1.0f);
+
+	// Warm through to alarming, at the same thresholds the needs model uses to
+	// decide an NPC should stop what they are doing about it.
+	const float Clamped = FMath::Clamp(Value, 0.0f, 1.0f);
+	const FLinearColor Fill = Clamped < 0.18f ? FLinearColor(0.86f, 0.32f, 0.28f, 1.0f)
+		: Clamped < 0.34f ? FLinearColor(0.90f, 0.68f, 0.30f, 1.0f)
+		: UEGT2Hud::Accent;
+
+	const float TrackX = X + 62.0f;
+	const float TrackW = FMath::Max(24.0f, Width - 62.0f);
+	const float TrackH = 6.0f;
+	const float TrackY = Y + FMath::Max(0.0f, (LabelH - TrackH) * 0.5f);
+
+	DrawText(Label, UEGT2Hud::Muted, X, Y, Font, 1.0f, false);
+	DrawRect(FLinearColor(1.0f, 1.0f, 1.0f, 0.16f), TrackX, TrackY, TrackW, TrackH);
+	DrawRect(Fill, TrackX, TrackY, TrackW * Clamped, TrackH);
+	return LabelH;
+}
+
+void AUEGT2HUD::DrawLife(float ScreenHeight)
+{
+	const AUEGT2PlayerController* PC = Cast<AUEGT2PlayerController>(PlayerOwner);
+	const AUEGT2Character* Explorer = PC ? Cast<AUEGT2Character>(PC->GetPawn()) : nullptr;
+	const UUEGT2NeedsComponent* Life = Explorer ? Explorer->GetLife() : nullptr;
+	if (!Life)
+	{
+		return;
+	}
+
+	const FUEGT2NPCNeeds& Needs = Life->GetNeeds();
+	const FString Purse = FString::Printf(TEXT("%s    %d coins"),
+		*GetRoleDisplayName(Life->GetTrade()).ToString(), Life->GetCoins());
+	const FString Doing = Life->GetActivityText().ToString();
+
+	UFont* Big = GEngine->GetMediumFont();
+	UFont* Small = GEngine->GetSmallFont();
+
+	float PurseW = 0.0f, PurseH = 0.0f;
+	float DoingW = 0.0f, DoingH = 0.0f;
+	GetTextSize(Purse, PurseW, PurseH, Big, 1.0f);
+	GetTextSize(Doing, DoingW, DoingH, Small, 1.0f);
+
+	const float PadX = 14.0f;
+	const float PadY = 10.0f;
+	const float Gap = 5.0f;
+	const float BarWidth = 186.0f;
+	const float BodyW = FMath::Max3(PurseW, DoingW, BarWidth);
+	const float BoxW = BodyW + PadX * 2.0f;
+	// Four bars at small-font height, plus the two text rows above them.
+	float SampleW = 0.0f, RowH = 0.0f;
+	GetTextSize(TEXT("Ag"), SampleW, RowH, Small, 1.0f);
+	const float BoxH = PurseH + DoingH + RowH * 4.0f + Gap * 5.0f + PadY * 2.0f;
+
+	const float X = 24.0f;
+	const float Y = ScreenHeight - BoxH - 26.0f;
+
+	DrawRoundedRect(UEGT2Hud::Shade, X, Y, BoxW, BoxH, 7.0f);
+
+	float Cursor = Y + PadY;
+	DrawText(Purse, UEGT2Hud::Ink, X + PadX, Cursor, Big, 1.0f, false);
+	Cursor += PurseH + Gap;
+	DrawText(Doing, UEGT2Hud::Muted, X + PadX, Cursor, Small, 1.0f, false);
+	Cursor += DoingH + Gap;
+
+	// Same order as FUEGT2NPCNeeds::Worst tests them: the one that interrupts
+	// a plan first is read first.
+	Cursor += DrawNeedBar(TEXT("Relief"), Needs.Relief, X + PadX, Cursor, BodyW) + Gap;
+	Cursor += DrawNeedBar(TEXT("Fed"), Needs.Fed, X + PadX, Cursor, BodyW) + Gap;
+	Cursor += DrawNeedBar(TEXT("Rested"), Needs.Energy, X + PadX, Cursor, BodyW) + Gap;
+	DrawNeedBar(TEXT("Company"), Needs.Company, X + PadX, Cursor, BodyW);
 }
 
 void AUEGT2HUD::DrawDevStatus(float ScreenWidth)

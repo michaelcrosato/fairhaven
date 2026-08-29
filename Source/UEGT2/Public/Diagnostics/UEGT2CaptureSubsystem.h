@@ -10,6 +10,7 @@
 //   -UEGT2CaptureHold=<sec>     settle time at each viewpoint (default 1.6)
 //   -UEGT2CaptureOnly=<name>    capture just one named viewpoint
 //   -UEGT2CaptureMenu           capture the menu screens instead of the world
+//   -UEGT2CaptureLife           walk up to one amenity of each kind and use it
 //   -UEGT2SmokeWalk             inject real input and verify the player moves
 #pragma once
 
@@ -18,6 +19,7 @@
 #include "UEGT2CaptureSubsystem.generated.h"
 
 class ACameraActor;
+class AUEGT2Amenity;
 
 /** One stop on the tour. Position is world XY; Z is metres above the ground. */
 USTRUCT()
@@ -60,6 +62,9 @@ public:
 	/** True when the walk smoke test was requested on the command line. */
 	static bool IsWalkSmokeRequested();
 
+	/** True when the amenity tour was requested on the command line. */
+	static bool IsLifeCaptureRequested();
+
 	/** The tour definition. Edit here to change what gets reviewed. */
 	static const TArray<FUEGT2Viewpoint>& GetTour();
 
@@ -70,6 +75,18 @@ private:
 	void RunMenuStep();
 	void BeginDialogueTour();
 	void RunDialogueStep();
+	/**
+	 * Stand at one amenity of each kind, use it, and photograph the result.
+	 *
+	 * This is the only check that covers the whole path the player actually
+	 * takes - probe, prompt, use, activity, purse, HUD - rather than the pieces
+	 * of it. UEGT2.Economy proves the arithmetic and UEGT2.Content proves the
+	 * amenities were placed; neither can tell you that pressing the key does
+	 * anything, and that is exactly the sort of thing that produces a clean log
+	 * over a broken game.
+	 */
+	void BeginLifeTour();
+	void RunLifeStep();
 	void BeginWalkSmoke();
 	bool TickWalkSmoke(float DeltaSeconds);
 	void FinishTour();
@@ -88,6 +105,9 @@ private:
 	bool bDialogueMode = false;
 	int32 DialogueIndex = 0;
 	TWeakObjectPtr<class AUEGT2NPCActor> DialoguePartner;
+	bool bLifeMode = false;
+	int32 LifeIndex = 0;
+	UPROPERTY(Transient) TArray<TObjectPtr<AUEGT2Amenity>> LifeStops;
 	FVector WalkStart = FVector::ZeroVector;
 	float WalkElapsed = 0.0f;
 

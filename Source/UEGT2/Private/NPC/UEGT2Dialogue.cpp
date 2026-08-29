@@ -216,6 +216,36 @@ FText UEGT2DialogueAnswer(const FUEGT2DialogueState& State, EUEGT2DialogueTopic 
 				LOCTEXT("Trade3", "You are talking to the {0}.") }),
 			GetRoleDisplayName(State.Role));
 
+	case EUEGT2DialogueTopic::Coin:
+	{
+		// Straight off the purse and the wage table, like everything else
+		// here. A town where everybody claims to be comfortable is a town
+		// where the money is decoration.
+		const int32 Coins = State.Purse.Whole();
+		const int32 Wage = FMath::RoundToInt(UEGT2WagePerHour(State.Role));
+		if (Coins < 8)
+		{
+			return Choose(State.Seed, 0x801u, TArray<FText>{
+				LOCTEXT("CoinBroke1", "Down to nothing, if I am honest. It is a lean week."),
+				LOCTEXT("CoinBroke2", "Not a coin worth counting. I need a shift more than I need a chat."),
+				LOCTEXT("CoinBroke3", "Empty. I shall have to work before I eat.") });
+		}
+		if (Wage <= 0)
+		{
+			// Children earn nothing and know it; this is the only honest
+			// answer the wage table can give for them.
+			return FText::Format(LOCTEXT("CoinNoWage",
+				"I have {0} coins, and nobody pays me for anything. It came from somewhere."),
+				FText::AsNumber(Coins));
+		}
+		return FText::Format(
+			Choose(State.Seed, 0x802u, TArray<FText>{
+				LOCTEXT("CoinOk1", "About {0} on me. The work pays {1} an hour, which is fair enough."),
+				LOCTEXT("CoinOk2", "{0} coins, and {1} an hour when I am at it. It keeps me fed."),
+				LOCTEXT("CoinOk3", "I am carrying {0}. {1} an hour is what the trade goes for here.") }),
+			FText::AsNumber(Coins), FText::AsNumber(Wage));
+	}
+
 	case EUEGT2DialogueTopic::Place:
 		return State.bCityDweller
 			? Choose(State.Seed, 0x401u, TArray<FText>{
@@ -270,6 +300,7 @@ FText UEGT2DialoguePrompt(EUEGT2DialogueTopic Topic)
 	case EUEGT2DialogueTopic::Comfort:   return LOCTEXT("AskComfort", "Do you need a moment?");
 	case EUEGT2DialogueTopic::Company:   return LOCTEXT("AskCompany", "Have you had company today?");
 	case EUEGT2DialogueTopic::Trade:     return LOCTEXT("AskTrade", "What do you do here?");
+	case EUEGT2DialogueTopic::Coin:      return LOCTEXT("AskCoin", "How are you off for coin?");
 	case EUEGT2DialogueTopic::Place:     return LOCTEXT("AskPlace", "Tell me about this place.");
 	case EUEGT2DialogueTopic::World:     return LOCTEXT("AskWorld", "What is out there, beyond here?");
 	case EUEGT2DialogueTopic::Follow:    return LOCTEXT("AskFollow", "Will you walk with me?");
@@ -313,6 +344,7 @@ void UEGT2DialogueTopics(const FUEGT2DialogueState& State,
 	Add(EUEGT2DialogueTopic::Comfort);
 	Add(EUEGT2DialogueTopic::Company);
 	Add(EUEGT2DialogueTopic::Trade);
+	Add(EUEGT2DialogueTopic::Coin);
 	Add(EUEGT2DialogueTopic::Place);
 	Add(EUEGT2DialogueTopic::World);
 	Add(State.bFollowing ? EUEGT2DialogueTopic::Dismiss : EUEGT2DialogueTopic::Follow);

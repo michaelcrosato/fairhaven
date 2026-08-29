@@ -127,6 +127,20 @@ public:
 	/** False before the world has a population, so the menu can say so. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") bool HasPopulation() const;
 
+	// ---- The player's own day ---------------------------------------------
+	// The player has the same four needs and the same purse as everybody else,
+	// and a need takes real world hours to run down. Waiting out a hunger bug
+	// at twenty minutes to the day is not a debugging strategy.
+
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") int32 GetPlayerCoins() const;
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Dev") void SetPlayerCoins(int32 Coins);
+
+	/** Fill all four of the player's needs, or empty them. */
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Dev") void SetPlayerNeedsSatisfied(bool bFull);
+
+	/** "Villager    42 coins    eating at The Bakehouse", for the dev readout. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Dev") FText GetPlayerLifeSummary() const;
+
 	// ---- Teleport ---------------------------------------------------------
 	/** Teleport to a tour viewpoint by index into UUEGT2CaptureSubsystem::GetTour(). */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Dev") bool TeleportToViewpoint(int32 Index);

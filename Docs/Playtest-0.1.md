@@ -35,6 +35,34 @@ You will land on the main menu, shown over a live view of the town. Choose
 Every one of those can be rebound in **Settings → Controls**. Sprint can be made
 a toggle in the same place.
 
+## You live here
+
+You have the same four needs every inhabitant has, the same purse, and the same
+places to answer them. The panel bottom left is your trade, your coin, what you
+are doing, and how you are keeping. Turn it off in **Settings → Gameplay**.
+
+Press **E** at any of these. Pressing it again, or walking away, stops.
+
+| Where | What it does | Cost |
+|---|---|---|
+| A shop doorway or a market stall | eat | 5 an hour |
+| Your own lodgings | eat at home | free |
+| Your own bed | sleep, and it is the fastest way to rest | free |
+| A privy or a public convenience | relief | 1 an hour |
+| Any bench | sit down | free |
+| The inn | a drink: feeds you and keeps you company | 6 an hour |
+| The church | sit quietly | free |
+| A warehouse, farm, pier, wharf, office or shop | put in a shift | **pays 6-12 an hour** |
+| A market stall | mind it, as a merchant would | **pays 10 an hour** |
+
+Taking work changes your trade for good, and the wage with it. Talking to
+anybody keeps you company while the conversation is open - which is why they
+stop to talk too. Ask them how they are off for coin and the answer is their
+real purse.
+
+Run out and the counter will not serve you: go and earn. Run yourself into the
+ground and you will feel it in your legs long before you read it on the panel.
+
 Useful console commands (backtick to open the console):
 
 | Command | Effect |

@@ -97,6 +97,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetUseFahrenheit() const { return bUseFahrenheit; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetUseFahrenheit(bool bValue);
 
+	/** The player's own needs, trade and purse, bottom left. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowNeeds() const { return bShowNeeds; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowNeeds(bool bValue);
+
 	/** The text-message bubbles NPCs put over their heads. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowSpeechBubbles() const { return bShowSpeechBubbles; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowSpeechBubbles(bool bValue);
@@ -150,6 +154,7 @@ private:
 	UPROPERTY(Config) bool bShowInteractPrompts = true;
 	UPROPERTY(Config) bool bShowSpeechBubbles = true;
 	UPROPERTY(Config) bool bShowAlmanac = true;
+	UPROPERTY(Config) bool bShowNeeds = true;
 	UPROPERTY(Config) bool bUseFahrenheit = false;
 	UPROPERTY(Config) float CrowdDensity = 1.0f;
 

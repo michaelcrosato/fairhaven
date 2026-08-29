@@ -108,6 +108,8 @@ private:
 	void EnsureMenuWidget();
 	void EnsureDialogueWidget();
 	void ApplyDialogueInputMode();
+	/** Put the pawn in or out of Socialise, so talking answers Company. */
+	void SetPlayerConversing(bool bTalking);
 
 	UPROPERTY(Transient) TObjectPtr<UUEGT2InputConfig> InputConfig = nullptr;
 

@@ -8,6 +8,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "NPC/UEGT2NPCDirector.h"
 #include "Player/UEGT2Character.h"
+#include "Player/UEGT2NeedsComponent.h"
 #include "Player/UEGT2PlayerController.h"
 #include "UEGT2LogChannels.h"
 #include "UI/UEGT2HUD.h"
@@ -413,6 +414,57 @@ bool UUEGT2DevModeSubsystem::HasPopulation() const
 {
 	const UUEGT2NPCDirector* NPCs = GetNPCs();
 	return NPCs && NPCs->GetPopulation() > 0;
+}
+
+// ---------------------------------------------------------------------------
+// The player's own day
+// ---------------------------------------------------------------------------
+namespace UEGT2Dev
+{
+	UUEGT2NeedsComponent* LifeOf(AUEGT2Character* Character)
+	{
+		return Character ? Character->GetLife() : nullptr;
+	}
+}
+
+int32 UUEGT2DevModeSubsystem::GetPlayerCoins() const
+{
+	const UUEGT2NeedsComponent* Life = UEGT2Dev::LifeOf(GetCharacter());
+	return Life ? Life->GetCoins() : 0;
+}
+
+void UUEGT2DevModeSubsystem::SetPlayerCoins(int32 Coins)
+{
+	if (UUEGT2NeedsComponent* Life = UEGT2Dev::LifeOf(GetCharacter()))
+	{
+		Life->SetCoins((float)FMath::Max(0, Coins));
+		Notify(FString::Printf(TEXT("Purse set to %d coins."), Life->GetCoins()));
+	}
+}
+
+void UUEGT2DevModeSubsystem::SetPlayerNeedsSatisfied(bool bFull)
+{
+	if (UUEGT2NeedsComponent* Life = UEGT2Dev::LifeOf(GetCharacter()))
+	{
+		Life->SetNeedsSatisfied(bFull);
+		Notify(bFull ? TEXT("Needs filled.") : TEXT("Needs emptied."));
+	}
+}
+
+FText UUEGT2DevModeSubsystem::GetPlayerLifeSummary() const
+{
+	const UUEGT2NeedsComponent* Life = UEGT2Dev::LifeOf(GetCharacter());
+	if (!Life)
+	{
+		return FText::GetEmpty();
+	}
+	const FUEGT2NPCNeeds& Needs = Life->GetNeeds();
+	return FText::FromString(FString::Printf(
+		TEXT("%s    %d coins    %s%sfed %.0f%%   rested %.0f%%   relief %.0f%%   company %.0f%%"),
+		*GetRoleDisplayName(Life->GetTrade()).ToString(), Life->GetCoins(),
+		*Life->GetActivityText().ToString(), LINE_TERMINATOR,
+		Needs.Fed * 100.0f, Needs.Energy * 100.0f,
+		Needs.Relief * 100.0f, Needs.Company * 100.0f));
 }
 
 // ---------------------------------------------------------------------------

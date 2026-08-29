@@ -618,13 +618,31 @@ FUEGT2ActivityDecision ResolveActivity(EUEGT2NPCRole Role, EUEGT2NPCSpecies Spec
 			EUEGT2Anchor NeedAnchor = EUEGT2Anchor::Home;
 			if (Context.Needs.Worst(NeedActivity, NeedAnchor) > 0.0f)
 			{
-				// Tiredness at night is answered by going to bed, not by
-				// sitting on a bench in the dark.
+				// Tiredness at night is answered at home, not on a bench in
+				// the dark. The anchor moves; the activity must not. It used to
+				// become HomeTime, and HomeTime restores nothing - so once
+				// Energy was the worst need it stayed the worst need, the
+				// answer never arrived, and Fed and Relief ran to zero behind
+				// it while the poor soul walked home for six hours. Resting in
+				// your own chair actually rests you, which lets the next need
+				// have its turn.
 				if (NeedActivity == EUEGT2Activity::Rest
 					&& (Context.Hour >= 21.0f || Context.Hour < 5.0f))
 				{
-					NeedActivity = EUEGT2Activity::HomeTime;
 					NeedAnchor = EUEGT2Anchor::Home;
+				}
+				// If the answer costs money there is none of, the answer is a
+				// shift instead. Without this an empty purse is a trap rather
+				// than a problem: somebody stands at a counter they cannot
+				// afford, is refused, gets hungrier, and asks for the same meal
+				// again for the rest of their life. Going and earning is what a
+				// person does, and it is the only way back out.
+				const float Price = UEGT2PriceFor(Role, NeedActivity);
+				if (Price > 0.0f && !Context.Purse.CanAfford(Price)
+					&& UEGT2WagePerHour(Role) > 0.0f)
+				{
+					NeedActivity = EUEGT2Activity::Work;
+					NeedAnchor = EUEGT2Anchor::Work;
 				}
 				Decision.Activity = NeedActivity;
 				Decision.Anchor = NeedAnchor;

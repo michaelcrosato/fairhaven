@@ -215,6 +215,35 @@ struct UEGT2_API FUEGT2NPCNeeds
 	void Advance(float InHours, EUEGT2Activity Activity);
 };
 
+/**
+ * What somebody has in their pocket.
+ *
+ * A float rather than an integer because everything else in this file is a
+ * rate: a wage is coins per hour and a meal is charged for the fraction of an
+ * hour you spend eating it, and rounding either to whole coins every tick
+ * either pays nobody or pays them twice. Only the display rounds.
+ */
+USTRUCT(BlueprintType)
+struct UEGT2_API FUEGT2Purse
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "UEGT2|NPC") float Coins = 0.0f;
+
+	FUEGT2Purse() = default;
+	explicit FUEGT2Purse(float InCoins) : Coins(InCoins) {}
+
+	/** Whole coins, which is the only form anyone ever sees. */
+	int32 Whole() const { return FMath::FloorToInt(Coins); }
+
+	bool CanAfford(float Amount) const { return Amount <= 0.0f || Coins >= Amount; }
+
+	/** Take Amount if it is there. All or nothing: no tabs, no credit. */
+	bool Spend(float Amount);
+
+	void Earn(float Amount) { Coins = FMath::Max(0.0f, Coins + FMath::Max(0.0f, Amount)); }
+};
+
 /** One row of a routine: from StartHour, do Activity at Anchor. */
 USTRUCT(BlueprintType)
 struct UEGT2_API FUEGT2ScheduleEntry
@@ -286,6 +315,22 @@ struct UEGT2_API FUEGT2NPCContext
 	UPROPERTY(BlueprintReadWrite, Category = "UEGT2|NPC") FUEGT2Personality Personality;
 	UPROPERTY(BlueprintReadWrite, Category = "UEGT2|NPC") FUEGT2NPCNeeds Needs;
 
+	/**
+	 * What they have on them, because it changes what they can do about a need.
+	 *
+	 * Without this, somebody who cannot afford the meal their hunger is asking
+	 * for stands at the counter being refused, gets hungrier, and asks for the
+	 * same meal again - forever. Money that can only ever stop you is a trap;
+	 * money you can go and earn is a decision.
+	 *
+	 * It defaults to comfortable rather than to empty, for exactly the reason
+	 * PlayerDistance defaults to a thousand kilometres: an unfilled field must
+	 * mean "this is not a factor here". A default of nothing would mean any
+	 * caller who forgot to fill it in got a town that goes to work instead of
+	 * eating, and it would do it silently.
+	 */
+	UPROPERTY(BlueprintReadWrite, Category = "UEGT2|NPC") FUEGT2Purse Purse = FUEGT2Purse(1000.0f);
+
 	/** Per-NPC seed, so "which villagers skip church" is stable across runs. */
 	UPROPERTY(BlueprintReadWrite, Category = "UEGT2|NPC") int32 Seed = 0;
 };
@@ -331,6 +376,57 @@ UEGT2_API bool IsIndoorActivity(EUEGT2Activity Activity);
 
 /** Walk speed scale for an activity: hurrying home beats an evening stroll. */
 UEGT2_API float GetActivityPace(EUEGT2Activity Activity);
+
+// --- The economy ------------------------------------------------------------
+// Three pure functions and the one procedure that uses them. Everything about
+// money in Fairhaven is here, so the player and the town cannot drift apart:
+// they are charged by the same code for the same activities.
+
+/**
+ * Coins per world hour this activity pays whoever is doing it.
+ *
+ * Role matters for exactly one activity. A villager at the market is shopping;
+ * a merchant at the market is behind the stall, and gets paid for it.
+ */
+UEGT2_API float UEGT2WageFor(EUEGT2NPCRole Role, EUEGT2Activity Activity);
+
+/** Coins per world hour this activity costs. Role matters for the same reason. */
+UEGT2_API float UEGT2PriceFor(EUEGT2NPCRole Role, EUEGT2Activity Activity);
+
+/** What an hour of this trade is worth, ignoring what they are doing. */
+UEGT2_API float UEGT2WagePerHour(EUEGT2NPCRole Role);
+
+/**
+ * Coins an hour for somebody with no trade to be paid for.
+ *
+ * A child's pocket money and an elder's parish allowance, paid for any waking
+ * hour rather than for work. Both of their routines have no paid Work row - a
+ * child's "Work" is lessons in the church hall and an elder has retired - so
+ * without this they are the only two people in Fairhaven whose purse can only
+ * ever go down, and they end up unable to afford a public convenience.
+ */
+UEGT2_API float UEGT2AllowancePerHour(EUEGT2NPCRole Role);
+
+/** What somebody of this trade starts the game holding. */
+UEGT2_API float UEGT2StartingCoins(EUEGT2NPCRole Role);
+
+/**
+ * Advance one life - needs and purse together - by InHours of Activity.
+ *
+ * The single place anybody's day is charged for, whether they are an
+ * inhabitant or the player. That is the whole point of it being one function:
+ * a player who eats for free while the town pays for lunch is not living in
+ * the same world as the town.
+ *
+ * Returns false when the activity had to be paid for and the purse could not
+ * cover it. The needs then advance as though idling, because a meal you cannot
+ * pay for is not a meal - which is what makes an empty purse mean something.
+ */
+UEGT2_API bool UEGT2AdvanceLife(float InHours, EUEGT2Activity Activity,
+	EUEGT2NPCRole Role, FUEGT2NPCNeeds& Needs, FUEGT2Purse& Purse);
+
+/** The trade a given workplace hires for, so the player can take the job. */
+UEGT2_API EUEGT2NPCRole UEGT2RoleForWorkAnchor(EUEGT2Anchor Anchor);
 
 /**
  * A cheap stable hash. Used everywhere a choice has to be repeatable without

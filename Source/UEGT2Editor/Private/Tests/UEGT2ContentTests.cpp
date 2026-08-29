@@ -12,6 +12,7 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerStart.h"
+#include "Interaction/UEGT2Amenity.h"
 #include "Interaction/UEGT2InteractableActor.h"
 #include "Landscape.h"
 #include "Materials/Material.h"
@@ -148,9 +149,41 @@ bool FUEGT2WorldTest::RunTest(const FString& Parameters)
 	TestTrue(FString::Printf(TEXT("interactables placed (got %d)"), Interactables),
 		Interactables >= 20);
 
+	// The amenities, by kind. This is the check that catches the quiet failure
+	// the whole survey is prone to: a label prefix changes in the town stage,
+	// an anchor set comes back empty, and the world builds cleanly with nowhere
+	// in it for anybody - player included - to eat.
+	int32 ByKind[(int32)EUEGT2AmenityKind::Count] = {};
+	for (TActorIterator<AUEGT2Amenity> It(World); It; ++It)
+	{
+		const int32 Index = (int32)It->GetKind();
+		if (Index >= 0 && Index < (int32)EUEGT2AmenityKind::Count)
+		{
+			++ByKind[Index];
+		}
+	}
+
+	// Every need the player has must have somewhere to answer it, and there
+	// must be somewhere to earn what answering them costs.
+	for (EUEGT2AmenityKind Required : { EUEGT2AmenityKind::Food, EUEGT2AmenityKind::Washroom,
+		EUEGT2AmenityKind::Seat, EUEGT2AmenityKind::Work, EUEGT2AmenityKind::Bed })
+	{
+		TestTrue(FString::Printf(TEXT("%s amenities placed (got %d)"),
+			UEGT2AmenityKindName(Required), ByKind[(int32)Required]),
+			ByKind[(int32)Required] > 0);
+	}
+
+	FString Amenities;
+	for (int32 Index = 0; Index < (int32)EUEGT2AmenityKind::Count; ++Index)
+	{
+		Amenities += FString::Printf(TEXT("%s %d  "),
+			UEGT2AmenityKindName((EUEGT2AmenityKind)Index), ByKind[Index]);
+	}
+
 	AddInfo(FString::Printf(
 		TEXT("world: %d landscape, %d starts, %d scatter fields, %d instances, %d interactables"),
 		Landscapes, PlayerStarts, ScatterFields, Instances, Interactables));
+	AddInfo(FString::Printf(TEXT("amenities: %s"), *Amenities));
 	return true;
 }
 

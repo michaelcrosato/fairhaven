@@ -156,6 +156,7 @@ public:
 	EUEGT2NPCSpecies GetSpecies() const { return Species; }
 	const FUEGT2Personality& GetPersonality() const { return Personality; }
 	const FUEGT2NPCNeeds& GetNeeds() const { return Needs; }
+	const FUEGT2Purse& GetPurse() const { return Purse; }
 	int32 GetSeed() const { return Seed; }
 	FText GetDisplayName() const { return DisplayName; }
 	bool IsAnimal() const { return IsAnimalSpecies(Species); }
@@ -247,6 +248,8 @@ private:
 	/** Cached because the personality is a pure function of the seed. */
 	FUEGT2Personality Personality;
 	FUEGT2NPCNeeds Needs;
+	/** Wages in, meals and rounds out. Rolled from the seed in ConfigureNPC. */
+	FUEGT2Purse Purse;
 
 	/** Who this NPC is walking with, if anyone. */
 	TWeakObjectPtr<AActor> FollowTarget;

@@ -44,6 +44,20 @@ private:
 	void DrawDevStatus(float ScreenWidth);
 
 	/**
+	 * Bottom-left: the player's trade, their purse, what they are doing and
+	 * the four needs driving them.
+	 *
+	 * The same four an NPC has, drawn from the same struct. It is the only
+	 * place in the game that says out loud that the player is an inhabitant
+	 * too - without it, hunger is an invisible number that eventually slows
+	 * your legs down for no stated reason.
+	 */
+	void DrawLife(float ScreenHeight);
+
+	/** One labelled 0..1 bar. Returns the height it used. */
+	float DrawNeedBar(const FString& Label, float Value, float X, float Y, float Width);
+
+	/**
 	 * The NPC speech bubbles.
 	 *
 	 * Canvas rather than a world-space widget on purpose, and for the same

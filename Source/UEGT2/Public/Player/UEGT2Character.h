@@ -11,6 +11,7 @@
 class UCameraComponent;
 class UInputAction;
 class UUEGT2InteractionComponent;
+class UUEGT2NeedsComponent;
 class USoundBase;
 struct FInputActionValue;
 
@@ -35,8 +36,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Player")
 	UCameraComponent* GetCamera() const { return Camera; }
 
+	/** The player's four needs, their trade and their purse. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Player")
-	bool IsSprinting() const { return bSprinting; }
+	UUEGT2NeedsComponent* GetLife() const { return Life; }
+
+	/** Holding sprint and actually able to: an exhausted player is not. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Player")
+	bool IsSprinting() const;
 
 	/** Horizontal speed in cm/s, for the diagnostics overlay. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Player")
@@ -100,6 +106,7 @@ private:
 
 	UPROPERTY(VisibleAnywhere, Category = "UEGT2") TObjectPtr<UCameraComponent> Camera;
 	UPROPERTY(VisibleAnywhere, Category = "UEGT2") TObjectPtr<UUEGT2InteractionComponent> Interaction;
+	UPROPERTY(VisibleAnywhere, Category = "UEGT2") TObjectPtr<UUEGT2NeedsComponent> Life;
 
 	UPROPERTY(Transient) TObjectPtr<USoundBase> FootstepSound;
 	UPROPERTY(Transient) TObjectPtr<USoundBase> FootstepWaterSound;
