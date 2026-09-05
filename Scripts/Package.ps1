@@ -50,10 +50,9 @@ $uatArgs = @(
     '-UbtArgs=-WaitMutex',
     '-platform=Win64',
     "-clientconfig=$Configuration",
-    # -nozenstore matters: without it an incremental cook can stage a build that
-    # streams content from a local Zen server, which then fails to launch
-    # standalone. We always want self-contained pak files.
-    '-build', '-cook', '-stage', '-pak', '-iostore', '-nozenstore',
+    # UAT does not forward -nozenstore. Tell the cooker to write local payloads
+    # so staging does not depend on its transient Zen oplog. Zen DDC is separate.
+    '-build', '-cook', '-stage', '-pak', '-iostore', '-AdditionalCookerOptions=-SkipZenStore',
     '-package', '-archive', '-compressed',
     # A final backslash escapes the closing quote in the native argv parser.
     # Forward slashes preserve trailing separators, including drive/UNC roots.

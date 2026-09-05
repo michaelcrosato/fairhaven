@@ -267,3 +267,37 @@ pass. Evidence is in `CrossingTraversal.log`, `CrossingContractRegression.log`,
 and distant-NPC underfoot diagnostics remain visible and are described earlier
 in this audit. The crossing wrapper passed nine mocked failure/isolation checks
 under both PowerShell 7 and Windows PowerShell 5.1.
+
+## Explicit disk-backed cooking, 2026-09-05
+
+The bridge package briefly lost its local Zen connection between cooking and
+staging. UAT recovered by attaching a staging sponsor and retrying the store
+read, and the resulting package passed the packaged checks. The log does not
+establish that another project caused the service transition.
+
+Inspecting the installed UE 5.8 source revealed that the wrapper's `-nozenstore`
+argument had no effect. `ProjectParams` recognizes only the positive `zenstore`
+flag. Without an explicit cooker override, `CookCommandlet` uses the packaging
+setting, whose engine default enables Zen. Staging then reads the cook's
+`ue.projectstore` marker and fetches the payloads from Zen before creating the
+self-contained IoStore containers. This build-time dependency is separate from
+whether the resulting game can run without Zen.
+
+`Package.ps1` now passes `-AdditionalCookerOptions=-SkipZenStore`. UAT forwards
+that value to the cook commandlet, whose explicit `SkipZenStore` check overrides
+the enabled packaging setting. The cook writes its payloads to disk; the
+derived-data cache and the existing UBT mutex wait are unchanged.
+
+The tracked verification harness passes 35 simulated cases and six native
+argument checks in both PowerShell 7 and Windows PowerShell 5.1. It checks the
+complete cooker option through the batch-file boundary, rejects the obsolete
+argument and preserves the mutex wait, including paths with spaces and trailing
+separators.
+
+The real package completed in 1 minute 8 seconds. Its cook command includes
+`-SkipZenStore`; the old `ue.projectstore` marker is gone, 804 cooked assets are
+present on disk, and IoStore receives the local `packagestore.manifest`. Staging
+performs no Zen oplog read. The resulting game passes the ordinary packaged
+walk and the lower-bridge round trip with normal input and floor support.
+Local evidence uses `Saved/Logs/DiskCook*`; the installed-source investigation
+is in `Saved/Notes/Zen-CookStore-Audit.md`.

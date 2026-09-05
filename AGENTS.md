@@ -122,8 +122,10 @@ Do not undo these without understanding why they are there.
   cannot be simulated and the cook fails.
 - **Never pass the `.uproject` to a packaged build.** It makes the game look for
   uncooked content through a Zen server and fail to start.
-- **`-nozenstore` in `Package.ps1`** keeps incremental cooks producing
-  self-contained pak files.
+- **`-AdditionalCookerOptions=-SkipZenStore` in `Package.ps1`** writes cooked
+  payloads to disk so staging does not depend on a temporary Zen cook store.
+  UE 5.8 ignores the old `-nozenstore` argument. Pak/IoStore still produces the
+  self-contained game; Zen's derived-data cache is a separate concern.
 - **UAT needs `-UbtArgs=-WaitMutex` to wait for another project build.** Without
   it, packaging's child UBT fails with `ConflictingInstance` if another local
   project holds the engine's shared build lock. UAT labels that exit code 10

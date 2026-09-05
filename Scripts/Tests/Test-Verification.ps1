@@ -151,6 +151,12 @@ function Invoke-ScriptCase {
         Assert-True (-not (Test-Path -LiteralPath (Join-Path $fixture.shotDirectory '01_Previous.png'))) "${Name}: retained stale capture evidence."
         Assert-True (($fixture.launchedArguments -join ' ') -match '-UEGT2Capture="[^"\r\n]+capture output"') "${Name}: capture path with spaces is not quoted."
     }
+    if ($ScriptName -eq 'Package.ps1') {
+        $packageArguments = $fixture.launchedArguments -join ' '
+        Assert-True ($packageArguments -match '(?:^| )-AdditionalCookerOptions=-SkipZenStore(?: |$)') "${Name}: local cook-store option not forwarded."
+        Assert-True ($packageArguments -notmatch '(?:^| )-nozenstore(?: |$)') "${Name}: ineffective nozenstore option retained."
+        Assert-True ($packageArguments -match '(?:^| )-UbtArgs=-WaitMutex(?: |$)') "${Name}: UBT mutex wait not forwarded."
+    }
     Write-Host "PASS $Name"
 }
 
@@ -245,6 +251,9 @@ try {
             $nativeArgs = Get-Content -LiteralPath $batchArguments -Raw | ConvertFrom-Json
             Assert-True ($nativeArgs -contains ('-project=' + (Join-Path $fixture.caseDirectory 'UEGT2.uproject'))) 'Batch project path lost quoting.'
             Assert-True ($nativeArgs -contains ('-archivedirectory=' + $expectedArchive)) 'Batch archive path lost its trailing separator or quote boundary.'
+            Assert-True ($nativeArgs -contains '-AdditionalCookerOptions=-SkipZenStore') 'Native cooker option was split or lost.'
+            Assert-True ($nativeArgs -notcontains '-nozenstore') 'Native package invocation retained ineffective nozenstore.'
+            Assert-True ($nativeArgs -contains '-UbtArgs=-WaitMutex') 'Native UBT mutex forwarding was split or lost.'
             Assert-True ($batchText.Contains('UAT_STDERR')) 'Batch stderr did not reach the package log.'
         } finally {
             if (-not $probe.HasExited) { Microsoft.PowerShell.Management\Stop-Process -Id $probe.Id -Force }
