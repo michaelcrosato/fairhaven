@@ -5,6 +5,7 @@
 #include "Contracts/UEGT2SurveyContractSubsystem.h"
 #include "Diagnostics/UEGT2CaptureSubsystem.h"
 #include "Diagnostics/UEGT2ContractWalkSmokeSubsystem.h"
+#include "Diagnostics/UEGT2NeedsRemindersSmokeSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -249,6 +250,7 @@ bool UUEGT2ProgressSubsystem::IsAvailable() const
 		&& !FParse::Param(FCommandLine::Get(), TEXT("UEGT2ServicesSmoke"))
 		&& !FParse::Param(FCommandLine::Get(), TEXT("UEGT2CrossingSmoke"))
 		&& !UUEGT2ContractWalkSmokeSubsystem::IsRequested()
+		&& !UUEGT2NeedsRemindersSmokeSubsystem::IsRequested()
 		&& ResolveSlot(Slot);
 }
 

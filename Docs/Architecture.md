@@ -169,6 +169,15 @@ pixels. Normal and the independent HUD config gate retain the original layout.
 Slate keeps its existing DPI curve, and the crosshair and dev diagnostics retain
 their original size. No content assets or per-frame settings writes are needed.
 
+**Needs reminders are transient HUD state.** One half-second world timer samples
+the owning pawn's four needs. A four-bit hysteresis policy coalesces low values
+into an infrequent notice on a separate, lower-priority message channel. It
+never queries world actors or changes the life ledger. Pawn identity and the
+needs component's restore revision invalidate stale notices before drawing;
+neither reminder history nor that revision belongs in a checkpoint. Both the
+HUD config gate and player preference suppress reminders while retaining the
+ordinary needs panel and interaction messages.
+
 **Auto-walk is transient player input.** The character owns an optional forward
 walk latch, gated by its own config switch and an Off-by-default player setting.
 The controller adds its input after normal input and camera rotation and before

@@ -19,6 +19,7 @@ live in `Config/DefaultGame.ini`; set the named property to `False` under its
 | [F006 · Optional auto-walk](#f006--optional-auto-walk) | Auto-walk Control | `UEGT2Character.bAutoWalkFeatureEnabled` |
 | [F007 · Nearby services](#f007--nearby-services) | Nearby Services | `UEGT2ServicesSubsystem.bFeatureEnabled` |
 | [F008 · Town survey contract](#f008--town-survey-contract) | Town Survey Contract | `UEGT2SurveyContractSubsystem.bFeatureEnabled` |
+| [F009 · Needs reminders](#f009--needs-reminders) | Needs Reminders | `UEGT2HUD.bNeedsRemindersEnabled` |
 
 ## F001 — Player progress
 
@@ -680,3 +681,87 @@ trip cost now measured. The audit also repaired blocked street junctions and
 missing optician/bank work amenities. See [Audit.md](Audit.md#ordinary-survey-circuit-and-street-junctions)
 for the route, limits and verification. The diagnostic is inactive without its
 flag and its wrapper isolates the run from player data.
+
+## F009 — Needs reminders
+
+Status: implemented and verified on `feature/needs-reminders`, 2026-09-05.
+
+**What it adds.** Occasional messages draw attention to low player needs without
+requiring the Needs and Purse panel to stay visible. A need becomes eligible
+strictly below 0.34 and can warn again only after recovering to at least 0.50.
+Eligible low needs are combined into one five-second notice, with at least
+30 unpaused world seconds between deliveries. Initial play, re-enabling reminders
+and a valid needs restore each start a five-second grace period. An already-low
+restored need can warn once after that grace period.
+If a pending need recovers above the low threshold before its notice can appear,
+that notice is discarded; the same episode still needs 0.50 recovery to re-arm.
+
+Ordinary interaction messages take priority and retire a visible reminder.
+Menus and dialogue hide visible reminders and defer pending ones; pausing keeps
+pending state, while returning to the main menu resets it. An interrupted notice
+still counts as delivered, so it does not immediately repeat. Hints mention
+Nearby Services only when that guide is enabled; low company points to talking
+with townsfolk because the guide has no social category. Reminders read the real
+needs snapshot and never choose an activity or tracking target. They do not change
+the shared ledger, prices, activities or checkpoint data.
+
+**Player switch.** Settings → Gameplay → Needs Reminders, beside Needs and Purse,
+defaults to On. It is independent of the panel's visibility. The persisted
+preference is `bNeedsRemindersEnabled` in the
+`[/Script/UEGT2.UEGT2GameUserSettings]` section of `GameUserSettings.ini`.
+Turning reminders off leaves needs, money, discoveries and saved progress intact.
+Either off switch clears only the transient reminder state.
+
+**Maintainer switch.** In `Config/DefaultGame.ini`:
+
+```ini
+[/Script/UEGT2.UEGT2HUD]
+bNeedsRemindersEnabled=False
+```
+
+Set it back to `True` to permit reminders again. This HUD gate is independent of
+the player preference. While it is off, the menu disables the checkbox and
+explains that the preference is kept. The HUD-size gate in the same section is
+separate. Settings logs include the reminder preference.
+
+**Implementation.** The HUD owns a half-second world timer and transient
+hysteresis state. Rendering does not deliver reminders. Weak component identity
+and a needs revision retire stale text after a valid restore, dev replacement or
+pawn change, including changes made while paused. `LogUEGT2UI` records deliveries;
+ordinary messages keep their existing storage and priority. No content rebuild
+or save-schema migration is required.
+
+**Research.** Microsoft's
+[Xbox Accessibility Guideline 109](https://learn.microsoft.com/en-us/xbox/accessibility/xbox-accessibility-guidelines/109)
+recommends allowing players to suppress notifications unrelated to their current
+objective. This supports a separate reminder control so a player can keep useful
+HUD information while choosing fewer interruptions; it is a design rationale,
+not a claim of accessibility compliance.
+
+**Verification.** Both Development targets compile with adaptive unity disabled.
+All 119 automation tests pass. Four reminder tests cover strict thresholds,
+coalescing, canceled pending episodes, cooldown and recovery, real HUD-owned timer
+delivery, ordinary-message priority, dialogue/pause suppression, valid and invalid
+restores, hidden needs panels, both off gates and pawn/HUD lifetime. The timer
+checks retain exact needs, fractional purse, trade and activity. A separate test
+verifies that the diagnostic disables both manual and automatic checkpoint IO.
+
+Packaging completed in 73 seconds at 1087.4 MB. The packaged reminder smoke passes
+at 1920×1080 and 1280×720 using the real shared ledger to cross all four thresholds
+and the ordinary HUD timer to deliver one notice. It verifies primary-message priority,
+interruption without replay, restore/re-enable grace, both off switches, retained
+preference and the native disabled settings row. The isolated runs write no save
+files. All ten captures were inspected: the reminder, ordinary message, both
+disabled states and the setting fit; the ordinary HUD remains visible when
+reminders are disabled. The live display state is checked before capture and in
+the screenshot callback, so an expired notice cannot pass as a reminder image.
+
+`Scripts/Tests/Test-NeedsReminders.ps1` passes 20 simulated cases and two native
+command-line checks under PowerShell 7 and Windows PowerShell 5.1. The final
+ordinary packaged walk regression also passes over 23.04 m. No generated content
+changed for this feature.
+
+Local evidence is under `Saved/Logs/NeedsRemindersSmoke-<run>.log` and
+`Saved/Screenshots/NeedsRemindersSmoke/<run>/`: run
+`7eaced8cffbf426e828e99700c59740f` at 1080p and
+`5a4808783e1a4771940a8f39f31a0cee` at 720p.

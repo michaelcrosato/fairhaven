@@ -64,6 +64,7 @@ void UUEGT2GameUserSettings::SetToDefaults()
 	bShowSpeechBubbles = true;
 	bShowAlmanac = true;
 	bShowNeeds = true;
+	bNeedsRemindersEnabled = true;
 	bSaveProgressEnabled = true;
 	bAutosaveEnabled = false;
 	bSurveyJournalEnabled = true;
@@ -89,7 +90,7 @@ void UUEGT2GameUserSettings::ApplyNonResolutionSettings()
 	ApplyAudioSettings();
 
 	UE_LOG(LogUEGT2Settings, Log,
-		TEXT("Settings applied: fov=%.0f resScale=%.0f%% quality(view=%d shadow=%d gi=%d refl=%d pp=%d tex=%d fx=%d foliage=%d) master=%.2f progress=%s journal=%s sleepUntil=%s autosave=%s hud=%.0f%% autoWalk=%s services=%s contract=%s"),
+		TEXT("Settings applied: fov=%.0f resScale=%.0f%% quality(view=%d shadow=%d gi=%d refl=%d pp=%d tex=%d fx=%d foliage=%d) master=%.2f progress=%s journal=%s sleepUntil=%s autosave=%s hud=%.0f%% autoWalk=%s services=%s contract=%s needsReminders=%s"),
 		FieldOfView, ResolutionScalePercent,
 		GetViewDistanceQuality(), GetShadowQuality(), GetGlobalIlluminationQuality(),
 		GetReflectionQuality(), GetPostProcessingQuality(), GetTextureQuality(),
@@ -97,7 +98,8 @@ void UUEGT2GameUserSettings::ApplyNonResolutionSettings()
 		GetAudioVolume(EUEGT2AudioBus::Master), bSaveProgressEnabled ? TEXT("on") : TEXT("off"),
 		bSurveyJournalEnabled ? TEXT("on") : TEXT("off"), bSleepUntilEnabled ? TEXT("on") : TEXT("off"),
 		bAutosaveEnabled ? TEXT("on") : TEXT("off"), GetHudScale() * 100.0f, bAutoWalkEnabled ? TEXT("on") : TEXT("off"),
-		bNearbyServicesEnabled ? TEXT("on") : TEXT("off"), bTownSurveyContractEnabled ? TEXT("on") : TEXT("off"));
+		bNearbyServicesEnabled ? TEXT("on") : TEXT("off"), bTownSurveyContractEnabled ? TEXT("on") : TEXT("off"),
+		bNeedsRemindersEnabled ? TEXT("on") : TEXT("off"));
 
 	OnSettingsApplied.Broadcast();
 }
@@ -194,6 +196,7 @@ void UUEGT2GameUserSettings::SetShowCrosshair(bool bValue) { bShowCrosshair = bV
 void UUEGT2GameUserSettings::SetShowInteractPrompts(bool bValue) { bShowInteractPrompts = bValue; }
 void UUEGT2GameUserSettings::SetShowSpeechBubbles(bool bValue) { bShowSpeechBubbles = bValue; }
 void UUEGT2GameUserSettings::SetShowNeeds(bool bValue) { bShowNeeds = bValue; }
+void UUEGT2GameUserSettings::SetNeedsRemindersEnabled(bool bValue) { bNeedsRemindersEnabled = bValue; }
 void UUEGT2GameUserSettings::SetSaveProgressEnabled(bool bValue)
 {
 	if (bSaveProgressEnabled != bValue) { bSaveProgressEnabled = bValue; ++PersistenceRevision; }

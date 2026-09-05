@@ -5,6 +5,7 @@
 #include "Autosave/UEGT2AutosaveSubsystem.h"
 #include "Contracts/UEGT2SurveyContractSubsystem.h"
 #include "Diagnostics/UEGT2ContractWalkSmokeSubsystem.h"
+#include "Diagnostics/UEGT2NeedsRemindersSmokeSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -614,91 +615,110 @@ bool FUEGT2AutosaveContractTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+namespace UEGT2AutosaveTests
+{
+	bool CheckDiagnosticPersistenceGate(FAutomationTestBase& Test, const TCHAR* Diagnostic, bool (*IsRequested)())
+	{
+		FFixture Sim;
+		if (!Test.TestTrue(TEXT("real gameplay fixture is ordinarily eligible"), Sim.Ready())) { return false; }
+		const FUEGT2NPCNeeds Before = Sim.Player->GetLife()->GetNeeds();
+		const float CoinsBefore = Sim.Player->GetLife()->GetPurse().Coins;
+		const FVector PositionBefore = Sim.Player->GetActorLocation();
+
+		const FString Option = FString(TEXT("-")) + Diagnostic;
+		struct FCase { const TCHAR* Name; FString Command; };
+		const FCase Cases[] = {
+			{ TEXT("bare"), Option },
+			{ TEXT("whole quoted bare"), FString::Printf(TEXT("\"%s\""), *Option) },
+			{ TEXT("lowercase"), Option.ToLower() },
+			{ TEXT("valued"), Option + TEXT("=invalid") },
+			{ TEXT("empty value"), Option + TEXT("=") },
+			{ TEXT("quoted empty value"), Option + TEXT("=\"\"") },
+			{ TEXT("duplicate bare"), Option + TEXT(" ") + Option },
+			{ TEXT("valued and bare"), Option + TEXT("=invalid ") + Option },
+			{ TEXT("whole quoted valued"), FString::Printf(TEXT("\"%s=invalid\""), *Option) }
+		};
+		for (const FCase& Case : Cases)
+		{
+			FCommandLine::Set(*Case.Command);
+			const FString Prefix = FString(Case.Name) + TEXT(": ");
+			Test.TestTrue(Prefix + TEXT("presence requests the diagnostic even if arguments are invalid"), IsRequested());
+			Test.TestFalse(Prefix + TEXT("manual persistence is unavailable"), Sim.Progress->IsAvailable());
+			Test.TestFalse(Prefix + TEXT("player preference cannot enable persistence"), Sim.Progress->IsEnabled());
+			Test.TestFalse(Prefix + TEXT("autosave is unavailable"), Sim.Timer->IsAvailable());
+			Test.TestFalse(Prefix + TEXT("autosave timer is disabled"), Sim.Timer->IsEnabled());
+
+			// Exercise each entry point from its otherwise eligible input owner.
+			// A rejected call from the wrong menu would not prove the IO gate.
+			Sim.Resume();
+			Test.TestTrue(Prefix + TEXT("ordinary visit is active and unpaused"),
+				Sim.Progress->IsJourneyActive(Sim.World) && !Sim.World->IsPaused()
+				&& Sim.Controller->GetMenuState() == EUEGT2MenuState::None);
+			Test.TestFalse(Prefix + TEXT("automatic write is rejected"), Sim.Progress->RequestAutosave(Sim.Controller));
+			Sim.Timer->Tick(Sim.Timer->GetIntervalSeconds() + 1.0f);
+
+			Sim.Pause();
+			Test.TestTrue(Prefix + TEXT("manual save has a paused active visit"),
+				Sim.World->IsPaused() && Sim.Controller->GetMenuState() == EUEGT2MenuState::Pause
+				&& Sim.Progress->IsJourneyActive(Sim.World));
+			Test.TestFalse(Prefix + TEXT("paused manual save is rejected"), Sim.Progress->SaveProgress(Sim.Controller));
+
+			Sim.Main();
+			Test.TestEqual(Prefix + TEXT("availability and Continue use Main"), Sim.Controller->GetMenuState(), EUEGT2MenuState::Main);
+			Test.TestFalse(Prefix + TEXT("manual availability performs no lookup"), Sim.Progress->HasSavedProgress());
+			Test.TestFalse(Prefix + TEXT("manual Continue is rejected"), Sim.Progress->LoadProgress(Sim.Controller));
+			Sim.Progress->RefreshAutosaveAvailability(Sim.Controller);
+			Test.TestFalse(Prefix + TEXT("automatic Continue is rejected"), Sim.Progress->LoadAutosavedProgress(Sim.Controller));
+			const FUEGT2AutosaveStatus Status = Sim.Progress->GetAutosaveStatus();
+			Test.TestFalse(Prefix + TEXT("no automatic availability is exposed"), Status.bAvailable);
+			Test.TestFalse(Prefix + TEXT("no asynchronous operation is busy"), Status.bBusy);
+			Test.TestEqual(Prefix + TEXT("no synchronous storage calls"), Sim.Storage->SyncCalls, 0);
+			Test.TestEqual(Prefix + TEXT("no asynchronous existence calls"), Sim.Storage->AsyncReads, 0);
+			Test.TestEqual(Prefix + TEXT("no asynchronous byte reads"), Sim.Storage->ByteReads, 0);
+			Test.TestEqual(Prefix + TEXT("no asynchronous writes"), Sim.Storage->AsyncWrites, 0);
+			Test.TestEqual(Prefix + TEXT("no held callbacks"), Sim.Storage->Pending.Num(), 0);
+		}
+
+		// Exact option names matter: an unrelated suffix must preserve normal play.
+		const FString Controls[] = { FString(), Option + TEXT("Extra"), Option + TEXT("Extra=invalid") };
+		for (const FString& Control : Controls)
+		{
+			FCommandLine::Set(*Control);
+			Sim.Resume();
+			Test.TestFalse(TEXT("absent or suffixed flag is not requested"), IsRequested());
+			Test.TestTrue(TEXT("absent or suffixed flag preserves manual availability"), Sim.Progress->IsAvailable());
+			Test.TestTrue(TEXT("absent or suffixed flag preserves manual preference"), Sim.Progress->IsEnabled());
+			Test.TestTrue(TEXT("absent or suffixed flag preserves actual automatic eligibility"), Sim.Timer->CanAutosaveNow(Sim.Controller));
+		}
+		const FUEGT2NPCNeeds& After = Sim.Player->GetLife()->GetNeeds();
+		Test.TestTrue(TEXT("blocked persistence preserved all four needs"), Before.Energy == After.Energy && Before.Fed == After.Fed
+			&& Before.Relief == After.Relief && Before.Company == After.Company);
+		Test.TestEqual(TEXT("blocked persistence preserved exact purse"), Sim.Player->GetLife()->GetPurse().Coins, CoinsBefore);
+		Test.TestEqual(TEXT("blocked persistence preserved trade"), Sim.Player->GetLife()->GetTrade(), EUEGT2NPCRole::Smith);
+		Test.TestTrue(TEXT("blocked persistence preserved location"), Sim.Player->GetActorLocation().Equals(PositionBefore, 0.0));
+		Test.TestTrue(TEXT("blocked persistence preserved existing discovery"), Sim.Square->IsDiscovered());
+		Test.TestTrue(TEXT("guard and control checks never touched the byte boundary"), Sim.Storage->SyncCalls == 0
+			&& Sim.Storage->AsyncReads == 0 && Sim.Storage->ByteReads == 0 && Sim.Storage->AsyncWrites == 0 && Sim.Storage->Pending.IsEmpty());
+		return true;
+	}
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2ContractWalkPersistenceGateTest, "UEGT2.Autosave.ContractWalkDiagnosticExclusion",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FUEGT2ContractWalkPersistenceGateTest::RunTest(const FString& Parameters)
 {
-	using namespace UEGT2AutosaveTests;
-	FFixture Sim;
-	if (!TestTrue(TEXT("real gameplay fixture is ordinarily eligible"), Sim.Ready())) { return false; }
-	const FUEGT2NPCNeeds Before = Sim.Player->GetLife()->GetNeeds();
-	const float CoinsBefore = Sim.Player->GetLife()->GetPurse().Coins;
-	const FVector PositionBefore = Sim.Player->GetActorLocation();
+	return UEGT2AutosaveTests::CheckDiagnosticPersistenceGate(*this, TEXT("UEGT2ContractWalkSmoke"),
+		&UUEGT2ContractWalkSmokeSubsystem::IsRequested);
+}
 
-	struct FCase { const TCHAR* Name; const TCHAR* Command; };
-	const FCase Cases[] = {
-		{ TEXT("bare"), TEXT("-UEGT2ContractWalkSmoke") },
-		{ TEXT("whole quoted bare"), TEXT("\"-UEGT2ContractWalkSmoke\"") },
-		{ TEXT("lowercase"), TEXT("-uegt2contractwalksmoke") },
-		{ TEXT("valued"), TEXT("-UEGT2ContractWalkSmoke=invalid") },
-		{ TEXT("empty value"), TEXT("-UEGT2ContractWalkSmoke=") },
-		{ TEXT("quoted empty value"), TEXT("-UEGT2ContractWalkSmoke=\"\"") },
-		{ TEXT("duplicate bare"), TEXT("-UEGT2ContractWalkSmoke -UEGT2ContractWalkSmoke") },
-		{ TEXT("valued and bare"), TEXT("-UEGT2ContractWalkSmoke=invalid -UEGT2ContractWalkSmoke") },
-		{ TEXT("whole quoted valued"), TEXT("\"-UEGT2ContractWalkSmoke=invalid\"") }
-	};
-	for (const FCase& Case : Cases)
-	{
-		FCommandLine::Set(Case.Command);
-		const FString Prefix = FString(Case.Name) + TEXT(": ");
-		TestTrue(Prefix + TEXT("presence requests the diagnostic even if arguments are invalid"), UUEGT2ContractWalkSmokeSubsystem::IsRequested());
-		TestFalse(Prefix + TEXT("manual persistence is unavailable"), Sim.Progress->IsAvailable());
-		TestFalse(Prefix + TEXT("player preference cannot enable persistence"), Sim.Progress->IsEnabled());
-		TestFalse(Prefix + TEXT("autosave is unavailable"), Sim.Timer->IsAvailable());
-		TestFalse(Prefix + TEXT("autosave timer is disabled"), Sim.Timer->IsEnabled());
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2NeedsRemindersPersistenceGateTest, "UEGT2.Autosave.NeedsRemindersDiagnosticExclusion",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-		// Exercise each entry point from its otherwise eligible input owner.
-		// A rejected call from the wrong menu would not prove the IO gate.
-		Sim.Resume();
-		TestTrue(Prefix + TEXT("ordinary visit is active and unpaused"),
-			Sim.Progress->IsJourneyActive(Sim.World) && !Sim.World->IsPaused()
-			&& Sim.Controller->GetMenuState() == EUEGT2MenuState::None);
-		TestFalse(Prefix + TEXT("automatic write is rejected"), Sim.Progress->RequestAutosave(Sim.Controller));
-		Sim.Timer->Tick(Sim.Timer->GetIntervalSeconds() + 1.0f);
-
-		Sim.Pause();
-		TestTrue(Prefix + TEXT("manual save has a paused active visit"),
-			Sim.World->IsPaused() && Sim.Controller->GetMenuState() == EUEGT2MenuState::Pause
-			&& Sim.Progress->IsJourneyActive(Sim.World));
-		TestFalse(Prefix + TEXT("paused manual save is rejected"), Sim.Progress->SaveProgress(Sim.Controller));
-
-		Sim.Main();
-		TestEqual(Prefix + TEXT("availability and Continue use Main"), Sim.Controller->GetMenuState(), EUEGT2MenuState::Main);
-		TestFalse(Prefix + TEXT("manual availability performs no lookup"), Sim.Progress->HasSavedProgress());
-		TestFalse(Prefix + TEXT("manual Continue is rejected"), Sim.Progress->LoadProgress(Sim.Controller));
-		Sim.Progress->RefreshAutosaveAvailability(Sim.Controller);
-		TestFalse(Prefix + TEXT("automatic Continue is rejected"), Sim.Progress->LoadAutosavedProgress(Sim.Controller));
-		const FUEGT2AutosaveStatus Status = Sim.Progress->GetAutosaveStatus();
-		TestFalse(Prefix + TEXT("no automatic availability is exposed"), Status.bAvailable);
-		TestFalse(Prefix + TEXT("no asynchronous operation is busy"), Status.bBusy);
-		TestEqual(Prefix + TEXT("no synchronous storage calls"), Sim.Storage->SyncCalls, 0);
-		TestEqual(Prefix + TEXT("no asynchronous existence calls"), Sim.Storage->AsyncReads, 0);
-		TestEqual(Prefix + TEXT("no asynchronous byte reads"), Sim.Storage->ByteReads, 0);
-		TestEqual(Prefix + TEXT("no asynchronous writes"), Sim.Storage->AsyncWrites, 0);
-		TestEqual(Prefix + TEXT("no held callbacks"), Sim.Storage->Pending.Num(), 0);
-	}
-
-	// Exact option names matter: an unrelated suffix must preserve normal play.
-	for (const TCHAR* Control : { TEXT(""), TEXT("-UEGT2ContractWalkSmokeExtra"), TEXT("-UEGT2ContractWalkSmokeExtra=invalid") })
-	{
-		FCommandLine::Set(Control);
-		Sim.Resume();
-		TestFalse(TEXT("absent or suffixed flag is not requested"), UUEGT2ContractWalkSmokeSubsystem::IsRequested());
-		TestTrue(TEXT("absent or suffixed flag preserves manual availability"), Sim.Progress->IsAvailable());
-		TestTrue(TEXT("absent or suffixed flag preserves manual preference"), Sim.Progress->IsEnabled());
-		TestTrue(TEXT("absent or suffixed flag preserves actual automatic eligibility"), Sim.Timer->CanAutosaveNow(Sim.Controller));
-	}
-	const FUEGT2NPCNeeds& After = Sim.Player->GetLife()->GetNeeds();
-	TestTrue(TEXT("blocked persistence preserved all four needs"), Before.Energy == After.Energy && Before.Fed == After.Fed
-		&& Before.Relief == After.Relief && Before.Company == After.Company);
-	TestEqual(TEXT("blocked persistence preserved exact purse"), Sim.Player->GetLife()->GetPurse().Coins, CoinsBefore);
-	TestEqual(TEXT("blocked persistence preserved trade"), Sim.Player->GetLife()->GetTrade(), EUEGT2NPCRole::Smith);
-	TestTrue(TEXT("blocked persistence preserved location"), Sim.Player->GetActorLocation().Equals(PositionBefore, 0.0));
-	TestTrue(TEXT("blocked persistence preserved existing discovery"), Sim.Square->IsDiscovered());
-	TestTrue(TEXT("guard and control checks never touched the byte boundary"), Sim.Storage->SyncCalls == 0
-		&& Sim.Storage->AsyncReads == 0 && Sim.Storage->ByteReads == 0 && Sim.Storage->AsyncWrites == 0 && Sim.Storage->Pending.IsEmpty());
-	return true;
+bool FUEGT2NeedsRemindersPersistenceGateTest::RunTest(const FString& Parameters)
+{
+	return UEGT2AutosaveTests::CheckDiagnosticPersistenceGate(*this, TEXT("UEGT2NeedsRemindersSmoke"),
+		&UUEGT2NeedsRemindersSmokeSubsystem::IsRequested);
 }
 
 #endif

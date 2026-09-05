@@ -110,6 +110,9 @@ public:
 	/** The player's own needs, trade and purse, bottom left. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowNeeds() const { return bShowNeeds; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowNeeds(bool bValue);
+	/** Occasional low-need messages, independent of the needs panel. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetNeedsRemindersEnabled() const { return bNeedsRemindersEnabled; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetNeedsRemindersEnabled(bool bValue);
 
 	/** Manual checkpoints and Continue; disabling leaves saved progress intact. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetSaveProgressEnabled() const { return bSaveProgressEnabled; }
@@ -187,6 +190,7 @@ private:
 	UPROPERTY(Config) bool bShowSpeechBubbles = true;
 	UPROPERTY(Config) bool bShowAlmanac = true;
 	UPROPERTY(Config) bool bShowNeeds = true;
+	UPROPERTY(Config) bool bNeedsRemindersEnabled = true;
 	UPROPERTY(Config) bool bSaveProgressEnabled = true;
 	UPROPERTY(Config) bool bAutosaveEnabled = false;
 	UPROPERTY(Config) bool bSurveyJournalEnabled = true;

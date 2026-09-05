@@ -1188,6 +1188,28 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 
 	List->AddSlot().AutoHeight().Padding(0, 7)
 	[
+		SNew(SBox)
+		.IsEnabled_Lambda([]() { return GetDefault<AUEGT2HUD>()->bNeedsRemindersEnabled; })
+		[
+			Row(LOCTEXT("NeedsRemindersSetting", "Needs Reminders"), MakeToggle(
+				[S]() { return S->GetNeedsRemindersEnabled(); },
+				[this, S](bool bValue) { S->SetNeedsRemindersEnabled(bValue); ApplyAndSave(); }))
+		]
+	];
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 12)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([]()
+		{
+			return GetDefault<AUEGT2HUD>()->bNeedsRemindersEnabled
+				? LOCTEXT("NeedsRemindersHint", "Occasional reminders when a need is low. Turn these off independently of the Needs and Purse panel.")
+				: LOCTEXT("NeedsRemindersUnavailable", "Needs reminders are disabled for this session. Your preference is kept.");
+		})
+		.Font(Font("Regular", 11)).ColorAndOpacity(FSlateColor(Muted)).AutoWrapText(true)
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
 		Row(LOCTEXT("Almanac", "Date and Weather"), MakeToggle(
 			[S]() { return S->GetShowAlmanac(); },
 			[this, S](bool bValue) { S->SetShowAlmanac(bValue); ApplyAndSave(); }))

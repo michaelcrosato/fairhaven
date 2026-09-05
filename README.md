@@ -45,6 +45,11 @@ nearest usable places and their service rates, including free food and sleep at
 your lodgings. Track one for straight-line directions, then use the normal
 interaction prompt. Settings → Gameplay has its own Nearby Services switch.
 
+**Get a reminder when needs run low.** A short notice points to food, rest,
+washrooms or company, then stays quiet until those needs recover. Settings →
+Gameplay → Needs Reminders turns these notices off independently of the needs
+bars. Action messages always take priority.
+
 **Make the HUD easier to read.** Settings → Gameplay → HUD Size offers Normal,
 125% and 150% sizes for in-game labels, needs, directions and speech. Normal is
 the default; larger sizes fit to the viewport.
@@ -140,6 +145,8 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Smoke-Rest.ps1 -Capture` | Check the bed panel, a full day of sleep, resumed life and both off switches |
 | `./Scripts/Smoke-Autosave.ps1 -Capture` | Check periodic recovery saves, separate-process Continue Autosave and the off switches |
 | `./Scripts/Smoke-HudSize.ps1 -Capture` | Compare HUD sizes and the off switch in one frozen scene |
+| `./Scripts/Smoke-NeedsReminders.ps1 -Capture` | Check the real reminder timer, action-message priority, restore and both off switches |
+| `./Scripts/Tests/Test-NeedsReminders.ps1` | Check isolated launches, timeout/failure handling and capture evidence without Unreal |
 | `./Scripts/Smoke-AutoWalk.ps1 -Capture` | Check assisted walking, cancellation, input and both off switches |
 | `./Scripts/Smoke-Services.ps1 -Capture` | Check nearby services, real amenity use, directions and both off switches |
 | `./Scripts/Smoke-Contract.ps1 -Capture` | Check survey eligibility, one-time payment, saved state and both off switches |

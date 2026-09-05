@@ -477,3 +477,25 @@ wrapper's twelve simulated cases and two native argument probes pass under
 both PowerShell 7 and Windows PowerShell 5.1. Independent placement replay
 confirms all sixteen original interactive-lamp sources keep their positions
 and order without new overlaps. No generated asset changes are required.
+
+## Needs reminder verification
+
+F009 adds a HUD-only reminder policy after the complete survey walk exposed how
+easily several needs can run out during a long trip. The feature and both off
+switches are recorded in [Features.md](Features.md#f009--needs-reminders).
+
+The first new headless fixture called `DrawHUD` without a Canvas. Unreal's base
+`AHUD::DrawHUD` dereferences that Canvas, so the automation process crashed.
+The fixture now uses the real reminder display queries and owned world timer;
+packaged captures cover the actual rendering path. Both targets compile with
+adaptive unity disabled and all 119 tests pass after that fixture correction.
+
+The final package took 73 seconds. Reminder checks at 1920×1080 and 1280×720 use
+the shared life ledger to cross all four thresholds, then observe the ordinary
+HUD timer, message priority, interrupted-notice latching, restore grace and both
+off paths. All ten images were inspected. Capture callbacks verify the live
+display state as well as the image dimensions, so a late blank capture fails.
+The packaged movement smoke then covered 23.04 metres. The packaged game binary
+matches the compiled binary byte for byte; the launcher is
+`LocalBuilds/Windows-Development/UEGT2.exe`. Local evidence is under
+`Saved/Logs/NeedsReminders*` and `Saved/Screenshots/NeedsRemindersSmoke/`.

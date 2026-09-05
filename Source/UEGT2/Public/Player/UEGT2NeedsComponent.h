@@ -112,6 +112,8 @@ public:
 	/** Restore after BeginPlay, idle and unoccupied, without charging for offline time. */
 	bool RestoreProgress(const FUEGT2NPCNeeds& InNeeds, const FUEGT2Purse& InPurse,
 		EUEGT2NPCRole InTrade);
+	/** Transient discontinuity, not elapsed life: lets reminders discard pre-load state. */
+	uint64 GetNeedsRevision() const { return NeedsRevision; }
 	/** One-off shared-ledger payment. No needs, activity, trade or delegate changes. */
 	bool TryCredit(float Amount);
 
@@ -148,6 +150,7 @@ private:
 
 	FUEGT2NPCNeeds Needs;
 	FUEGT2Purse Purse;
+	uint64 NeedsRevision = 0;
 
 	EUEGT2Activity Activity = EUEGT2Activity::Idle;
 	EUEGT2NPCRole Trade = EUEGT2NPCRole::Villager;

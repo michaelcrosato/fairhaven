@@ -3,6 +3,7 @@
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
+#include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Dev/UEGT2DevModeSubsystem.h"
 #include "Interaction/UEGT2InteractionComponent.h"
@@ -34,6 +35,26 @@ namespace UEGT2Hud
 	const float BubbleFadeStart = 3000.0f;
 	const float BubbleFadeEnd = 4600.0f;
 	const float BubbleMaxWidth = 300.0f;
+
+	FText ReminderText(uint8 Mask, bool bServicesEnabled)
+	{
+		using namespace UEGT2NeedReminders;
+		TArray<FText> Names, Actions;
+		if (Mask & Energy) { Names.Add(NSLOCTEXT("UEGT2NeedsReminders", "Energy", "energy")); Actions.Add(NSLOCTEXT("UEGT2NeedsReminders", "Rest", "rest")); }
+		if (Mask & Fed) { Names.Add(NSLOCTEXT("UEGT2NeedsReminders", "Food", "food")); Actions.Add(NSLOCTEXT("UEGT2NeedsReminders", "Eat", "eat")); }
+		if (Mask & Relief) { Names.Add(NSLOCTEXT("UEGT2NeedsReminders", "Washroom", "washroom")); Actions.Add(NSLOCTEXT("UEGT2NeedsReminders", "UseWashroom", "use a washroom")); }
+		if (Mask & Company) { Names.Add(NSLOCTEXT("UEGT2NeedsReminders", "Company", "company")); Actions.Add(NSLOCTEXT("UEGT2NeedsReminders", "Talk", "talk to someone")); }
+		const FText Separator = NSLOCTEXT("UEGT2NeedsReminders", "ListSeparator", ", ");
+		FText Hint;
+		if (bServicesEnabled && (Mask & (Energy | Fed | Relief)))
+		{
+			Hint = (Mask & Company)
+				? NSLOCTEXT("UEGT2NeedsReminders", "GuideAndTalk", "Pause \u2192 Nearby Services. Talk to someone for company.")
+				: NSLOCTEXT("UEGT2NeedsReminders", "Guide", "Pause \u2192 Nearby Services.");
+		}
+		else { Hint = FText::Format(NSLOCTEXT("UEGT2NeedsReminders", "Actions", "You can {0}."), FText::Join(Separator, Actions)); }
+		return FText::Format(NSLOCTEXT("UEGT2NeedsReminders", "Summary", "Low needs: {0}. {1}"), FText::Join(Separator, Names), Hint);
+	}
 }
 
 /** Prepared once per draw, shared by placement and rendering. Never retained. */
@@ -61,8 +82,121 @@ AUEGT2HUD::AUEGT2HUD()
 	PrimaryActorTick.bCanEverTick = false;
 }
 
+void AUEGT2HUD::BeginPlay()
+{
+	Super::BeginPlay();
+	bReminderEnded = false;
+	UUEGT2GameUserSettings::OnSettingsApplied.AddUObject(this, &AUEGT2HUD::RefreshNeedsReminderSettings);
+	RefreshNeedsReminderSettings();
+	if (UWorld* World = GetWorld())
+	{
+		FTimerManagerTimerParameters Parameters;
+		Parameters.bLoop = true;
+		Parameters.bMaxOncePerFrame = true;
+		World->GetTimerManager().SetTimer(NeedsReminderTimer, this, &AUEGT2HUD::PollNeedsReminders, 0.5f, Parameters);
+	}
+}
+
+void AUEGT2HUD::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	bReminderEnded = true;
+	if (UWorld* World = GetWorld()) { World->GetTimerManager().ClearTimer(NeedsReminderTimer); }
+	UUEGT2GameUserSettings::OnSettingsApplied.RemoveAll(this);
+	ResetNeedsReminders();
+	Super::EndPlay(EndPlayReason);
+}
+
+void AUEGT2HUD::RetireNeedsReminder() const
+{
+	NeedsReminderText = FText::GetEmpty();
+	NeedsReminderMask = 0;
+	NeedsReminderExpiry = 0.0;
+}
+
+void AUEGT2HUD::ResetNeedsReminders() const
+{
+	RetireNeedsReminder();
+	ReminderLife.Reset();
+	ReminderNeedsRevision = 0;
+	ReminderState.Reset(GetWorld() ? GetWorld()->GetTimeSeconds() : 0.0);
+}
+
+bool AUEGT2HUD::IsNeedsReminderQuiet() const
+{
+	const AUEGT2PlayerController* PC = Cast<AUEGT2PlayerController>(PlayerOwner);
+	return !PC || !GetWorld() || GetWorld()->IsPaused() || PC->IsMenuOpen() || PC->IsDialogueOpen();
+}
+
+UUEGT2NeedsComponent* AUEGT2HUD::RefreshNeedsReminderContext() const
+{
+	const UWorld* World = GetWorld();
+	const UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get();
+	const AUEGT2PlayerController* PC = Cast<AUEGT2PlayerController>(PlayerOwner);
+	const AUEGT2Character* Explorer = IsValid(PC) ? Cast<AUEGT2Character>(PC->GetPawn()) : nullptr;
+	UUEGT2NeedsComponent* Life = IsValid(Explorer) ? Explorer->GetLife() : nullptr;
+	if (bReminderEnded || !bNeedsRemindersEnabled || !Settings || !Settings->GetNeedsRemindersEnabled()
+		|| !World || !PC || PC->IsActorBeingDestroyed() || PC->GetWorld() != World || !PC->IsLocalController()
+		|| PC->GetMenuState() == EUEGT2MenuState::Main || !Life || !Life->HasBegunPlay()
+		|| Explorer->IsActorBeingDestroyed() || Explorer->GetWorld() != World)
+	{
+		ResetNeedsReminders();
+		return nullptr;
+	}
+	if (ReminderLife.Get() != Life || ReminderNeedsRevision != Life->GetNeedsRevision())
+	{
+		RetireNeedsReminder();
+		ReminderLife = Life;
+		ReminderNeedsRevision = Life->GetNeedsRevision();
+		ReminderState.Reset(World->GetTimeSeconds());
+	}
+	if (IsNeedsReminderQuiet()) { RetireNeedsReminder(); }
+	return Life;
+}
+
+void AUEGT2HUD::RefreshNeedsReminderSettings()
+{
+	RefreshNeedsReminderContext();
+}
+
+FText AUEGT2HUD::GetOrdinaryMessageText() const
+{
+	return GetWorld() && GetWorld()->GetTimeSeconds() <= MessageExpiry ? CurrentMessage : FText::GetEmpty();
+}
+
+FText AUEGT2HUD::GetNeedsReminderText() const
+{
+	if (!RefreshNeedsReminderContext() || IsNeedsReminderQuiet() || !GetOrdinaryMessageText().IsEmpty()
+		|| GetWorld()->GetTimeSeconds() >= NeedsReminderExpiry) { return FText::GetEmpty(); }
+	return NeedsReminderText;
+}
+
+uint8 AUEGT2HUD::GetNeedsReminderMask() const
+{
+	return GetNeedsReminderText().IsEmpty() ? 0 : NeedsReminderMask;
+}
+
+void AUEGT2HUD::PollNeedsReminders()
+{
+	UUEGT2NeedsComponent* Life = RefreshNeedsReminderContext();
+	if (!Life) { return; }
+	if (!ReminderState.Observe(Life->GetNeeds())) { ResetNeedsReminders(); return; }
+	if (IsNeedsReminderQuiet() || !GetOrdinaryMessageText().IsEmpty()) { return; }
+	const double Now = GetWorld()->GetTimeSeconds();
+	const uint8 Pending = ReminderState.Ready(Now);
+	if (!Pending) { return; }
+	const AUEGT2PlayerController* PC = Cast<AUEGT2PlayerController>(PlayerOwner);
+	NeedsReminderText = UEGT2Hud::ReminderText(Pending, PC && PC->IsServicesEnabled());
+	NeedsReminderMask = Pending;
+	NeedsReminderExpiry = Now + UEGT2NeedReminders::DisplaySeconds;
+	ReminderState.Delivered(Pending, Now);
+	UE_LOG(LogUEGT2UI, Log, TEXT("Needs reminder mask=%u: %s"), Pending, *NeedsReminderText.ToString());
+}
+
 void AUEGT2HUD::ShowMessage(const FText& Message, float Duration)
 {
+	// A notice about the player's action always wins. An interrupted reminder
+	// stays latched, so it cannot reappear as soon as that notice fades.
+	RetireNeedsReminder();
 	CurrentMessage = Message;
 	MessageExpiry = GetWorld() ? GetWorld()->GetTimeSeconds() + Duration : 0.0f;
 	UE_LOG(LogUEGT2UI, Log, TEXT("HUD message: %s"), *Message.ToString());
@@ -71,6 +205,9 @@ void AUEGT2HUD::ShowMessage(const FText& Message, float Duration)
 void AUEGT2HUD::DrawHUD()
 {
 	Super::DrawHUD();
+	// Loads, settings and ownership can change while timers are paused. Retire
+	// stale text before the first resumed draw, without observing or delivering.
+	RefreshNeedsReminderContext();
 
 	if (!Canvas)
 	{
@@ -291,17 +428,21 @@ FBox2D AUEGT2HUD::DrawPrompt(float CentreX, float CentreY)
 
 FBox2D AUEGT2HUD::DrawMessage(const TArray<FBox2D>& BottomPanels, bool bFitBounds)
 {
-	if (CurrentMessage.IsEmpty() || !GetWorld() || GetWorld()->GetTimeSeconds() > MessageExpiry)
+	const FText Ordinary = GetOrdinaryMessageText();
+	const bool bReminder = Ordinary.IsEmpty();
+	const FText Display = bReminder ? GetNeedsReminderText() : Ordinary;
+	if (Display.IsEmpty() || !GetWorld())
 	{
 		return FBox2D(ForceInit);
 	}
-	const FString Text = CurrentMessage.ToString();
+	const FString Text = Display.ToString();
+	bFitBounds |= bReminder;
 	UFont* Font = GEngine->GetMediumFont();
 	float Width = 0.0f, Height = 0.0f;
 	TArray<FString> Lines;
 	LayoutText(Text, Font, (Canvas->ClipX - 32.0f) / HudLayout.Scale - 28.0f, Lines, Width, Height, 3, bFitBounds);
 
-	const float Remaining = MessageExpiry - GetWorld()->GetTimeSeconds();
+	const float Remaining = (bReminder ? NeedsReminderExpiry : MessageExpiry) - GetWorld()->GetTimeSeconds();
 	const float Alpha = FMath::Clamp(Remaining, 0.0f, 1.0f);
 	FUEGT2HUDLayout MessageLayout = HudLayout;
 	MessageLayout.bEnhanced |= bFitBounds;

@@ -7,10 +7,13 @@
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
 #include "UI/UEGT2HUDLayout.h"
+#include "UI/UEGT2NeedReminders.h"
+#include "TimerManager.h"
 #include "UEGT2HUD.generated.h"
 
 class AUEGT2Character;
 class AUEGT2PlayerController;
+class UUEGT2NeedsComponent;
 struct FUEGT2SpeechBubble;
 struct FUEGT2HUDLife;
 struct FUEGT2HUDGuidance;
@@ -23,15 +26,30 @@ class UEGT2_API AUEGT2HUD : public AHUD
 public:
 	AUEGT2HUD();
 
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void DrawHUD() override;
 	/** Independent maintainer switch; disabling keeps the player's size choice. */
 	UPROPERTY(Config) bool bHudScalingEnabled = true;
+	/** Independent of the player's preference and the always-on needs panel. */
+	UPROPERTY(Config) bool bNeedsRemindersEnabled = true;
+	/** Only currently displayable text/identity; no timer or delivery bypass. */
+	FText GetNeedsReminderText() const;
+	/** Energy=1, Fed=2, Relief=4, Company=8; zero when not displayable. */
+	uint8 GetNeedsReminderMask() const;
+	FText GetOrdinaryMessageText() const;
 
 	/** Show a short message in the centre-bottom of the screen for a few seconds. */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|HUD")
 	void ShowMessage(const FText& Message, float Duration = 3.5f);
 
 private:
+	void PollNeedsReminders();
+	void RefreshNeedsReminderSettings();
+	UUEGT2NeedsComponent* RefreshNeedsReminderContext() const;
+	void ResetNeedsReminders() const;
+	void RetireNeedsReminder() const;
+	bool IsNeedsReminderQuiet() const;
 	void DrawCrosshair(float CentreX, float CentreY, bool bHasFocus);
 	FBox2D DrawPrompt(float CentreX, float CentreY);
 	FBox2D DrawMessage(const TArray<FBox2D>& BottomPanels, bool bFitBounds = false);
@@ -106,6 +124,14 @@ private:
 
 	FText CurrentMessage;
 	float MessageExpiry = 0.0f;
+	FTimerHandle NeedsReminderTimer;
+	mutable TWeakObjectPtr<UUEGT2NeedsComponent> ReminderLife;
+	mutable uint64 ReminderNeedsRevision = 0;
+	mutable UEGT2NeedReminders::FState ReminderState;
+	mutable FText NeedsReminderText;
+	mutable uint8 NeedsReminderMask = 0;
+	mutable double NeedsReminderExpiry = 0.0;
+	bool bReminderEnded = false;
 
 	/** Smoothed frame time so the readout is legible. */
 	float SmoothedDeltaMs = 16.6f;

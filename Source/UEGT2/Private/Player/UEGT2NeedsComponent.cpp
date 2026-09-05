@@ -58,6 +58,7 @@ bool UUEGT2NeedsComponent::RestoreProgress(const FUEGT2NPCNeeds& InNeeds,
 	bConversing = false;
 	bWarnedBroke = false;
 	Activity = EUEGT2Activity::Idle;
+	++NeedsRevision;
 	OnActivityChanged.Broadcast(Activity, FText::GetEmpty());
 	return true;
 }
@@ -202,6 +203,7 @@ void UUEGT2NeedsComponent::SetNeedsSatisfied(bool bFull)
 	Needs.Fed = Value;
 	Needs.Relief = Value;
 	Needs.Company = Value;
+	++NeedsRevision;
 }
 
 // ---------------------------------------------------------------------------
