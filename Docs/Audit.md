@@ -181,3 +181,23 @@ The corrective findings from these passes are resolved and verified. Independent
 reviews of the final runtime, content and script changes found no additional
 concrete repair. The engine diagnostics and distant simulation limits above are
 recorded explicitly; neither was hidden by suppressing warnings.
+
+## Shared build mutex, 2026-09-05
+
+The F007 package attempt met another local project's Shipping build. UAT's
+child UBT invocation omitted `-WaitMutex` and failed immediately with
+`ConflictingInstance`; UAT then labeled exit code 10 `Error_SDKNotFound` even
+though the actual failure was the occupied build mutex.
+
+`Package.ps1` now supplies `-UbtArgs=-WaitMutex`. The installed UAT source
+parses `ubtargs` in `ProjectParams`, appends it to the cooked target in
+`BuildProjectCommand`, and forwards it through `UnrealBuild`. UBT recognizes
+`WaitMutex` and waits for its named build lock. The existing package timeout
+still bounds that wait and owns process-tree cleanup.
+
+The wrapper's 36 simulated cases and six native argument checks pass in
+PowerShell 7 and Windows PowerShell 5.1. The native checks verify the fixed token
+through the batch-file boundary, including output paths with spaces or trailing
+separators. A real failed child process still fails the wrapper. Local evidence
+uses `Saved/Tests/PackageMutexWrapperAudit.ps1` and
+`Saved/Logs/ServicesPackage*`.

@@ -45,6 +45,9 @@ $uatArgs = @(
     'BuildCookRun',
     "-project=`"$projectFile`"",
     '-noP4', '-utf8output', '-nocompileeditor',
+    # Other projects share this engine's UBT mutex. Let UBT wait for its owner;
+    # the package timeout below still bounds the complete build and cook.
+    '-UbtArgs=-WaitMutex',
     '-platform=Win64',
     "-clientconfig=$Configuration",
     # -nozenstore matters: without it an incremental cook can stage a build that

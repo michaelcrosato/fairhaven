@@ -123,6 +123,10 @@ Do not undo these without understanding why they are there.
   uncooked content through a Zen server and fail to start.
 - **`-nozenstore` in `Package.ps1`** keeps incremental cooks producing
   self-contained pak files.
+- **UAT needs `-UbtArgs=-WaitMutex` to wait for another project build.** Without
+  it, packaging's child UBT fails with `ConflictingInstance` if another local
+  project holds the engine's shared build lock. UAT labels that exit code 10
+  `Error_SDKNotFound`; read the actual UBT error before diagnosing an SDK.
 - **Unreal's `-script=` argument processes backslash escapes.** Pass Python
   script paths with forward slashes or `\u` in the project path corrupts them.
 - **`ctx.set_prop` warns instead of failing** on an unknown engine property.
