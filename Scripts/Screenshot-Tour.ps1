@@ -53,7 +53,9 @@ if (-not $OutputDirectory) {
     $folder = if ($Menu) { 'Menu' } else { 'Tour' }
     $OutputDirectory = Join-Path $projectRoot "Saved\Screenshots\$folder"
 }
-$OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
+# Relative paths follow PowerShell's current location, which can differ from
+# the process working directory after Set-Location.
+$OutputDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 # A caller may choose a directory containing other work. Clear only the files
 # named by our capture subsystem, and count the same set after this run.

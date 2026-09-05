@@ -10,7 +10,7 @@ Set-StrictMode -Version Latest
 $sourceScripts = Split-Path -Parent $PSScriptRoot
 $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
 $fixtureRoot = Join-Path $tempRoot ('UEGT2-ScriptTests-' + [guid]::NewGuid().ToString('N'))
-$fixture = @{ CaseCount = 0 }
+$fixture = @{ CaseCount = 0; NativeCaseCount = 0 }
 
 function Assert-True([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw $Message }
@@ -57,7 +57,7 @@ function Start-Process {
         HasExited = -not $fixture.caseOptions.ContainsKey('Timeout')
     }
     $process | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param($Milliseconds) return $this.Completes }
-    return $process
+    if ($PassThru) { return $process }
 }
 
 function Stop-Process {
@@ -73,7 +73,7 @@ function taskkill.exe {
 
 function Invoke-ScriptCase {
     param([string] $Name, [string] $ScriptName, [hashtable] $Options,
-        [string] $FailurePattern = '', [hashtable] $Arguments = @{})
+        [string] $FailurePattern = '', [hashtable] $Arguments = @{}, [switch] $FromCaseDirectory)
     $fixture.caseCount++
     $fixture.caseDirectory = Join-Path $fixtureRoot ('case {0:00}' -f $fixture.caseCount)
     $scripts = Join-Path $fixture.caseDirectory 'Scripts'
@@ -111,14 +111,30 @@ function Invoke-ScriptCase {
         $Arguments.OutputDirectory = $newPackage + '\'
     }
     if ($ScriptName -eq 'Screenshot-Tour.ps1') {
-        $Arguments.OutputDirectory = $fixture.shotDirectory
+        if (-not $Arguments.ContainsKey('OutputDirectory')) {
+            $Arguments.OutputDirectory = $fixture.shotDirectory
+        }
         Set-Content -LiteralPath (Join-Path $fixture.shotDirectory '01_Previous.png') -Value 'stale'
         Set-Content -LiteralPath (Join-Path $fixture.shotDirectory 'reference.png') -Value 'unrelated image'
         New-Item -ItemType Directory -Path (Join-Path $fixture.shotDirectory 'notes') | Out-Null
         Set-Content -LiteralPath (Join-Path $fixture.shotDirectory 'notes\review.txt') -Value 'keep me'
     }
     $failure = $null
-    try { & (Join-Path $scripts $ScriptName) @Arguments 6>$null }
+    $processDirectory = [Environment]::CurrentDirectory
+    try {
+        if ($FromCaseDirectory) { Push-Location -LiteralPath $fixture.caseDirectory }
+        try {
+            # Keep even an incorrect process-relative write inside the fixture,
+            # while making it distinct from the intended PowerShell location.
+            if ($FromCaseDirectory) { [Environment]::CurrentDirectory = $fixtureRoot }
+            & (Join-Path $scripts $ScriptName) @Arguments 6>$null
+        } finally {
+            if ($FromCaseDirectory) {
+                [Environment]::CurrentDirectory = $processDirectory
+                Pop-Location
+            }
+        }
+    }
     catch { $failure = $_.Exception.Message }
     if ($FailurePattern) {
         Assert-True ($null -ne $failure -and $failure -match $FailurePattern) "${Name}: expected '$FailurePattern', got '$failure'."
@@ -159,7 +175,23 @@ try {
     } finally {
         if (-not $probe.HasExited) { Microsoft.PowerShell.Management\Stop-Process -Id $probe.Id -Force }
     }
+    $fixture.nativeCaseCount++
     Write-Host 'PASS native automation argument quoting and exit code'
+
+    Invoke-ScriptCase 'editor launch quotes project path' 'Open-Editor.ps1' @{}
+    $probeArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$probeScript`"", "`"$probeOutput`"") + $fixture.launchedArguments
+    $probe = Microsoft.PowerShell.Management\Start-Process -FilePath 'powershell.exe' -ArgumentList $probeArgs -PassThru -WindowStyle Hidden
+    $null = $probe.Handle
+    try {
+        Assert-True ($probe.WaitForExit(10000)) 'Native editor argument probe timed out.'
+        Assert-True ($probe.ExitCode -eq 7) 'Native editor argument probe exit code was lost.'
+        $nativeArgs = @(Get-Content -LiteralPath $probeOutput -Raw | ConvertFrom-Json)
+        Assert-True ($nativeArgs.Count -eq 1 -and $nativeArgs[0] -eq (Join-Path $fixture.caseDirectory 'UEGT2.uproject')) 'Native editor project path was split at spaces.'
+    } finally {
+        if (-not $probe.HasExited) { Microsoft.PowerShell.Management\Stop-Process -Id $probe.Id -Force }
+    }
+    $fixture.nativeCaseCount++
+    Write-Host 'PASS native editor project argument quoting'
     Invoke-ScriptCase 'stale automation report is rejected' 'Test.ps1' @{ StaleReport = $true } 'produced no report'
     Invoke-ScriptCase 'editor crash overrides green report' 'Test.ps1' @{ Report = (New-Report); ExitCode = 7 } 'exit code 7'
     Invoke-ScriptCase 'automation timeout stops editor' 'Test.ps1' @{ Timeout = $true } 'exceeded'
@@ -184,8 +216,11 @@ try {
     Invoke-ScriptCase 'content crash overrides success marker' 'Build-Content.ps1' @{ Log = 'UEGT2_CONTENT_BUILD_SUCCEEDED'; ExitCode = 5 } 'exit code 5'
     Invoke-ScriptCase 'content success remains accepted' 'Build-Content.ps1' @{ Log = 'UEGT2_CONTENT_BUILD_SUCCEEDED' }
 
-    foreach ($archiveRoot in @('', 'C:\', '\\fixture-server\share name\')) {
-        if ($archiveRoot) {
+    foreach ($archiveRoot in @('', '.\LocalBuilds\New\Binaries\Win64\', 'C:\', '\\fixture-server\share name\')) {
+        if ($archiveRoot.StartsWith('.\')) {
+            Invoke-ScriptCase 'package relative output follows PowerShell location' 'Package.ps1' @{ Log = 'BUILD SUCCESSFUL' } -Arguments @{ OutputDirectory = $archiveRoot } -FromCaseDirectory
+            $expectedArchive = (Join-Path $fixture.caseDirectory 'LocalBuilds\New\Binaries\Win64').Replace('\', '/') + '/'
+        } elseif ($archiveRoot) {
             # Fail before output enumeration: these paths test parsing only,
             # and no files are read from or written to the drive/network root.
             Invoke-ScriptCase "package root path $archiveRoot" 'Package.ps1' @{ Log = 'BUILD SUCCESSFUL'; ExitCode = 8 } 'exit code 8' -Arguments @{ OutputDirectory = $archiveRoot }
@@ -214,6 +249,7 @@ try {
         } finally {
             if (-not $probe.HasExited) { Microsoft.PowerShell.Management\Stop-Process -Id $probe.Id -Force }
         }
+        $fixture.nativeCaseCount++
         Write-Host "PASS native batch quoting, stderr and exit code: $expectedArchive"
     }
     Invoke-ScriptCase 'packaging timeout stops its process tree' 'Package.ps1' @{ Timeout = $true } 'exceeded'
@@ -223,6 +259,8 @@ try {
 
     $tour = "Capture tour requested: 2 viewpoints`nUEGT2_CAPTURE_TOUR_COMPLETE (2 viewpoints)"
     Invoke-ScriptCase 'complete screenshot tour preserves unrelated files' 'Screenshot-Tour.ps1' @{ Log = $tour; Shots = 2 }
+    Invoke-ScriptCase 'capture relative output follows PowerShell location' 'Screenshot-Tour.ps1' @{ Log = $tour; Shots = 2 } -Arguments @{ OutputDirectory = 'capture output' } -FromCaseDirectory
+    Assert-True ($fixture.launchedArguments -contains ('-UEGT2Capture="' + $fixture.shotDirectory.Replace('\', '/') + '"')) 'Capture output did not resolve against the requested PowerShell location.'
     Invoke-ScriptCase 'partial screenshot tour fails' 'Screenshot-Tour.ps1' @{ Log = $tour; Shots = 1 } 'expected 2'
     Invoke-ScriptCase 'stale or unrelated PNG cannot pass' 'Screenshot-Tour.ps1' @{ Log = $tour; Shots = 0 } 'produced 0 screenshots'
     Invoke-ScriptCase 'screenshots without completion fail' 'Screenshot-Tour.ps1' @{ Log = 'Capture tour requested: 2 viewpoints'; Shots = 2 } 'did not complete'
@@ -230,7 +268,7 @@ try {
     Invoke-ScriptCase 'menu uses its screen count' 'Screenshot-Tour.ps1' @{ Log = "$tour`nMenu capture: 3 screens"; Shots = 3 } -Arguments @{ Menu = $true }
     Invoke-ScriptCase 'life interaction failure rejects screenshots' 'Screenshot-Tour.ps1' @{ Log = "$tour`nAmenity capture: 2 stops`nAmenity capture 01: NOT USED"; Shots = 2 } 'failed or did not complete'
     Invoke-ScriptCase 'missing life amenity rejects reduced tour' 'Screenshot-Tour.ps1' @{ Log = "$tour`nAmenity capture: no Food anywhere in the world.`nAmenity capture: 2 stops"; Shots = 2 } 'failed or did not complete'
-    Write-Host "Verification scripts: $($fixture.caseCount) simulated cases and 4 native command-line checks passed."
+    Write-Host "Verification scripts: $($fixture.caseCount) simulated cases and $($fixture.nativeCaseCount) native command-line checks passed."
 } finally {
     # Verify the exact absolute fixture path before recursive removal.
     $resolvedFixture = [IO.Path]::GetFullPath($fixtureRoot)

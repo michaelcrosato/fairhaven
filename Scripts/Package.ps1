@@ -32,7 +32,9 @@ $uat = Join-Path $engine 'Engine\Build\BatchFiles\RunUAT.bat'
 if (-not $OutputDirectory) {
     $OutputDirectory = Join-Path $projectRoot "LocalBuilds\Windows-$Configuration"
 }
-$OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
+# Relative paths follow PowerShell's current location, which can differ from
+# the process working directory after Set-Location.
+$OutputDirectory = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputDirectory)
 
 $logDir = Join-Path $projectRoot 'Saved\Logs'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
