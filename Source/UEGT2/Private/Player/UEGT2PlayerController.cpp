@@ -1,5 +1,6 @@
 #include "Player/UEGT2PlayerController.h"
 
+#include "Autosave/UEGT2AutosaveSubsystem.h"
 #include "Diagnostics/UEGT2CaptureSubsystem.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -306,6 +307,10 @@ void AUEGT2PlayerController::ApplyMenuState(EUEGT2MenuState NewState)
 		if (MenuWidget.IsValid())
 		{
 			Mode.SetWidgetToFocus(MenuWidget);
+			// Main keeps one stable focus target while cached autosave availability
+			// changes. Apply this only on opening the menu, never on I/O completion.
+			const TSharedPtr<SWidget> InitialFocus = MenuWidget->GetMainInitialFocusWidget();
+			if (InitialFocus.IsValid()) { Mode.SetWidgetToFocus(InitialFocus); }
 		}
 		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		SetInputMode(Mode);
@@ -478,6 +483,45 @@ FText AUEGT2PlayerController::GetProgressStatus() const
 {
 	const UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
 	return Progress ? Progress->GetStatusText() : FText::GetEmpty();
+}
+
+bool AUEGT2PlayerController::ContinueAutosavedProgress()
+{
+	UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
+	if (MenuState != EUEGT2MenuState::Main || !IsAutosaveEnabled()
+		|| !Progress || !Progress->LoadAutosavedProgress(this)) { return false; }
+	CloseDialogue();
+	CloseMenu();
+	return true;
+}
+
+bool AUEGT2PlayerController::IsAutosaveAvailable() const
+{
+	const UUEGT2AutosaveSubsystem* Autosave = UUEGT2AutosaveSubsystem::Get(GetWorld());
+	return Autosave && Autosave->IsAvailable();
+}
+
+bool AUEGT2PlayerController::IsAutosaveEnabled() const
+{
+	const UUEGT2AutosaveSubsystem* Autosave = UUEGT2AutosaveSubsystem::Get(GetWorld());
+	return Autosave && Autosave->IsEnabled();
+}
+
+FUEGT2AutosaveStatus AUEGT2PlayerController::GetAutosaveStatus() const
+{
+	const UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
+	return Progress ? Progress->GetAutosaveStatus() : FUEGT2AutosaveStatus{};
+}
+
+void AUEGT2PlayerController::RefreshAutosaveAvailability()
+{
+	// EnsureMenuWidget constructs a hidden Main page before BeginPlay selects
+	// the actual menu state. That construction must not start an availability read.
+	if (MenuState != EUEGT2MenuState::Main || !IsAutosaveEnabled()) { return; }
+	if (UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld()))
+	{
+		Progress->RefreshAutosaveAvailability(this);
+	}
 }
 
 void AUEGT2PlayerController::ReturnToMainMenu()

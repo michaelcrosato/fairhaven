@@ -13,7 +13,8 @@ Status: implemented and verified on `feature/player-progress`, 2026-09-04.
 on the main menu restores the player's position and view, four needs,
 fractional coin balance, trade, surveyed landmarks, day, hour and weather.
 New Visit starts a fresh world; it preserves the previous checkpoint until the
-player explicitly saves the new visit. There is no autosave in this version.
+player explicitly saves the new visit. F004 adds optional autosaves in separate
+slots; it never replaces this manual checkpoint.
 
 Restoring ends transient activity and resumes on foot. Conversations, followers,
 carried props, door/lamp state and individual NPC state are not checkpointed;
@@ -22,8 +23,9 @@ position uses a safe placement fallback. Invalid or incompatible data must not
 partially change the running session.
 
 **Player switch.** Settings → Gameplay → Save Progress. It defaults to On.
-Turning it off immediately disables checkpoint reads and writes and retains
-existing saves. The persisted preference is `bSaveProgressEnabled` in the
+Turning it off prevents new checkpoint IO and retains existing saves. An F004
+write already submitted to disk may finish. The persisted preference is
+`bSaveProgressEnabled` in the
 `[/Script/UEGT2.UEGT2GameUserSettings]` section of `GameUserSettings.ini`.
 
 **Maintainer switch.** In `Config/DefaultGame.ini`:
@@ -163,8 +165,9 @@ Sleep restores energy through the shared life ledger. Hunger, relief and
 company still decline, and the player earns no coins while asleep. The town
 continues its routines, including meals, wages, animals and weekday habits.
 Weather stays at its current preset. Waking leaves the player at the same
-position, ends transient activity and releases any carried prop. There is no
-automatic checkpoint; F001 can save the resulting state normally.
+position, ends transient activity and releases any carried prop. Sleeping does
+not request a checkpoint; F001 can save the resulting state normally. F004's
+interval counts play time, so skipped hours do not accelerate autosaving.
 
 **Player switch.** Settings → Gameplay → Sleep Until. Default On;
 `bSleepUntilEnabled` in `[/Script/UEGT2.UEGT2GameUserSettings]`.
@@ -231,6 +234,82 @@ Local evidence uses `Saved/Logs/Rest*`. Screenshots are under
 `Saved/Screenshots/RestSmoke/746b6af8c9a24445bf9cb3ae7d82b1b4/` (1080p) and
 `Saved/Screenshots/RestSmoke/ab73b7c35a6f4030aafc4b608419b2ba/` (720p).
 
-## Next candidates
+## F004 — Optional autosave
 
-- Optional autosaving with its own switch and explicit write-completion handling.
+Status: implemented and verified on `feature/optional-autosave`, 2026-09-05.
+
+**What it adds.** Opt in to a separate recovery checkpoint every five minutes
+of unpaused play. A due save waits while menus or dialogue are open, during
+flight, crouching or a jump, and while the player or world is unready. Failed
+attempts remain due and retry at a bounded cadence. New Visit and loading a
+checkpoint start a fresh interval, as does changing either persistence
+preference. Sleep's skipped calendar hours do not count.
+Main → Continue Autosave restores this recovery checkpoint explicitly. Manual
+Continue and Save Progress retain their existing behavior and files.
+
+**Player switch.** Settings → Gameplay → Autosave. Default Off;
+`bAutosaveEnabled` in `[/Script/UEGT2.UEGT2GameUserSettings]`. Save Progress must
+also be On. Turning either preference off prevents new autosave IO and hides
+Continue Autosave while keeping the data. A disk write already submitted may
+finish; disabling does not delete or roll back a completed write.
+
+**Maintainer switch.** In `Config/DefaultGame.ini`:
+
+```ini
+[/Script/UEGT2.UEGT2AutosaveSubsystem]
+bFeatureEnabled=False
+```
+
+Set it back to `True` to permit player opt-in. The F001 hard gate must also permit
+persistence. Standard captures and smoke runs use the existing diagnostic gates;
+the dedicated autosave smoke validates an isolated user directory and slot base.
+
+**Data contract.** Autosaves rotate between `Fairhaven_Journey_Auto_A.sav` and
+`Fairhaven_Journey_Auto_B.sav`, preserving the last valid recovery point during
+a write. They reuse F001's envelope, schema, content revision, validation and
+restoration, including its exclusions for transient and individual NPC state.
+Manual and automatic sequence numbers are compared within their own pairs.
+There is no autosave on quit or immediately on New Visit.
+
+**Implementation.** `Autosave/UEGT2AutosaveSubsystem` owns the active-play interval
+and eligibility. The progress game-instance subsystem owns asynchronous byte IO,
+so callbacks can safely retire across world changes. Reads, writes and verification
+are chained explicitly; a newer visit cannot consume an older operation's result.
+The main-menu row reads cached availability and appears without a page rebuild
+or focus change. `LogUEGT2Autosave` records requests and completion outcomes.
+
+**Research.** Epic's [saving guide](https://dev.epicgames.com/documentation/en-us/unreal-engine/saving-and-loading-your-game-in-unreal-engine)
+recommends asynchronous disk work during play and a completion callback.
+The [byte-level save API](https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/Engine/ISaveGameSystem/SaveGameAsync)
+allows Fairhaven to preserve its existing integrity envelope. The installed
+UE5.8 implementation serializes objects on the game thread, performs file work
+on a worker and delivers completion through the game-thread ticker; its task
+pipe does not guarantee ordering, so each stage starts the next explicitly.
+
+**Verification.** Both Development targets compile with adaptive unity disabled.
+All 85 automation tests pass, including seven autosave tests covering rotation,
+corrupt and unreadable files, failed/partial writes, delayed callbacks, shutdown,
+world and journey changes, settings changes while paused, availability caching
+and recovery, active-play timing and isolated diagnostic arguments. The final
+package completed in 2m32s.
+
+The packaged three-phase autosave smoke passes at 1920×1080 and 1280×720.
+Each run observes two real periodic writes using its validated two-second test
+interval, preserves both manual files byte for byte, and verifies no periodic
+write during pause or Main. A separate process loads the older valid autosave
+after the newest is corrupted. The existing Main row appears after asynchronous
+availability completes without rebuilding the page or changing New Visit focus;
+natural gamepad Up and A then restore the exact checkpoint. Player, autosave
+maintainer and parent persistence switches preserve both file pairs. All four
+Main/settings screenshots were inspected at their native resolutions.
+
+Observed async busy intervals range from 28.8 to 67.9 ms, including frame timing
+and worker completion. The worst live frames during the two write waits are
+40.2 ms at 1080p and 32.0 ms at 720p; these are not measurements of serialization
+alone. The wrapper's eleven success/failure cases pass under PowerShell 7 and
+5.1. The four-phase manual progress, survey and rest regressions pass, and the
+ordinary walk smoke moves the player 23.02 m through real input.
+
+Local evidence uses `Saved/Logs/Autosave*`. Screenshots are under
+`Saved/Screenshots/AutosaveSmoke/f85cc1da1be54df183bc66f5418b8a4c/` (1080p) and
+`Saved/Screenshots/AutosaveSmoke/753120f89a4046d7b81e266ecd9476fa/` (720p).

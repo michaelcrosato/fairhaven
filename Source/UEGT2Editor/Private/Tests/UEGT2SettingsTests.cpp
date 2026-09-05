@@ -35,6 +35,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	Settings->SetShowAlmanac(false);
 	Settings->SetShowNeeds(false);
 	Settings->SetSaveProgressEnabled(false);
+	Settings->SetAutosaveEnabled(true);
 	Settings->SetSurveyJournalEnabled(false);
 	Settings->SetSleepUntilEnabled(false);
 	Settings->SetUseFahrenheit(true);
@@ -62,6 +63,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("almanac"), Settings->GetShowAlmanac());
 	TestTrue(TEXT("needs"), Settings->GetShowNeeds());
 	TestTrue(TEXT("progress saving"), Settings->GetSaveProgressEnabled());
+	TestFalse(TEXT("autosave requires opt-in"), Settings->GetAutosaveEnabled());
 	TestTrue(TEXT("survey journal"), Settings->GetSurveyJournalEnabled());
 	TestTrue(TEXT("chosen wake times"), Settings->GetSleepUntilEnabled());
 	TestFalse(TEXT("Fahrenheit"), Settings->GetUseFahrenheit());

@@ -53,6 +53,12 @@ public:
 
 	/** Switch between front end and pause presentation. */
 	void SetMenuState(EUEGT2MenuState InState);
+	/** Stable focus while the separate autosave action becomes available. */
+	TSharedPtr<SWidget> GetMainInitialFocusWidget() const
+	{
+		return MenuState == EUEGT2MenuState::Main && Page == EUEGT2MenuPage::Root
+			? MainInitialFocus.Pin() : nullptr;
+	}
 
 	/** Jump straight to the settings screen on a given tab. */
 	void OpenSettings(int32 TabIndex);
@@ -92,6 +98,7 @@ private:
 	TWeakObjectPtr<AUEGT2PlayerController> Controller;
 	TWeakObjectPtr<AUEGT2Amenity> RestBed;
 	TWeakPtr<SWidget> RestInitialFocus;
+	TWeakPtr<SWidget> MainInitialFocus;
 	EUEGT2MenuState MenuState = EUEGT2MenuState::Main;
 	EUEGT2MenuPage Page = EUEGT2MenuPage::Root;
 	EUEGT2SettingsTab Tab = EUEGT2SettingsTab::Graphics;

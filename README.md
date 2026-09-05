@@ -26,8 +26,9 @@ sleep and it is in your legs.
 
 **Keep your visit.** Escape → Save Progress records your needs, coin, trade,
 surveyed landmarks, position and the world calendar. Choose Continue next time,
-or New Visit to start fresh. Saving is manual and can be turned off in Settings
-→ Gameplay. [Docs/Features.md](Docs/Features.md) records each added feature,
+or New Visit to start fresh. Settings → Gameplay also offers opt-in Autosave,
+with separate recovery checkpoints and a Continue Autosave action. Save Progress
+can disable persistence. [Docs/Features.md](Docs/Features.md) records each added feature,
 its maintainer switch and its verification.
 
 **Find your way back.** Press J for the Survey Journal, review the 11 landmarks,
@@ -117,6 +118,7 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Smoke-Progress.ps1` | Check save, Continue, New Visit and disabled saving in isolated packaged runs |
 | `./Scripts/Smoke-Survey.ps1 -Capture` | Check rebound journal input, tracking and off switches; capture the journal and HUD |
 | `./Scripts/Smoke-Rest.ps1 -Capture` | Check the bed panel, a full day of sleep, resumed life and both off switches |
+| `./Scripts/Smoke-Autosave.ps1 -Capture` | Check periodic recovery saves, separate-process Continue Autosave and the off switches |
 | `./Scripts/Screenshot-Tour.ps1` | Render the registered viewpoints headlessly to PNG |
 | `./Scripts/Screenshot-Tour.ps1 -Menu` | Render the menu and settings screens |
 | `./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'` | Exercise food, washing, sitting and work through player interaction |

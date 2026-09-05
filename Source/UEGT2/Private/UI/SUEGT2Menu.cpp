@@ -341,21 +341,24 @@ void SUEGT2Menu::ApplyAndSave(bool bResolutionToo)
 TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 {
 	const bool bMain = (MenuState == EUEGT2MenuState::Main);
+	MainInitialFocus.Reset();
 	TSharedRef<SVerticalBox> Buttons = SNew(SVerticalBox);
 
 	auto AddButton = [&Buttons](const FText& Text, TFunction<void()> Action)
 	{
+		TSharedRef<SWidget> Button = MenuButton(Text, FOnClicked::CreateLambda([Action]()
+		{
+			Action();
+			return FReply::Handled();
+		}));
 		Buttons->AddSlot().AutoHeight().Padding(0, 5)
 		[
 			SNew(SBox).WidthOverride(320.0f).HeightOverride(46.0f)
 			[
-				MenuButton(Text, FOnClicked::CreateLambda([Action]()
-				{
-					Action();
-					return FReply::Handled();
-				}))
+				Button
 			]
 		];
+		return Button;
 	};
 
 	TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
@@ -364,12 +367,45 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 
 	if (bMain)
 	{
+		if (WeakPC.IsValid()) { WeakPC->RefreshAutosaveAvailability(); }
 		if (bHasCheckpoint)
 		{
 			AddButton(LOCTEXT("Continue", "Continue"), [WeakPC]()
 				{ if (WeakPC.IsValid()) { WeakPC->ContinueProgress(); } });
 		}
-		AddButton(bProgress ? LOCTEXT("NewVisit", "New Visit") : LOCTEXT("Play", "Play"),
+		// Keep the row in the tree even while off or checking. Async completion
+		// only updates its attributes; it never rebuilds this page or moves focus.
+		Buttons->AddSlot().AutoHeight()
+		[
+			SNew(SBox).Padding(0, 5)
+			.Visibility_Lambda([WeakPC]()
+			{
+				return WeakPC.IsValid() && WeakPC->IsAutosaveEnabled()
+					&& WeakPC->GetAutosaveStatus().bAvailable ? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[
+				SNew(SBox).WidthOverride(320.0f).HeightOverride(46.0f)
+				[
+					SNew(SButton)
+					.ButtonStyle(&ButtonStyle()).HAlign(HAlign_Center).VAlign(VAlign_Center)
+					.IsEnabled_Lambda([WeakPC]()
+					{
+						if (!WeakPC.IsValid() || !WeakPC->IsAutosaveEnabled()) { return false; }
+						const FUEGT2AutosaveStatus Status = WeakPC->GetAutosaveStatus();
+						return Status.bAvailable && !Status.bBusy;
+					})
+					.OnClicked_Lambda([WeakPC]()
+					{
+						if (WeakPC.IsValid()) { WeakPC->ContinueAutosavedProgress(); }
+						return FReply::Handled();
+					})
+					[
+						Label(LOCTEXT("ContinueAutosave", "Continue Autosave"), 16, Ink, "Bold")
+					]
+				]
+			]
+		];
+		MainInitialFocus = AddButton(bProgress ? LOCTEXT("NewVisit", "New Visit") : LOCTEXT("Play", "Play"),
 			[WeakPC]() { if (WeakPC.IsValid()) { WeakPC->StartPlaying(); } });
 	}
 	else
@@ -427,7 +463,7 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 			SNew(STextBlock)
 			.Visibility(bProgress ? EVisibility::Visible : EVisibility::Collapsed)
 			.Text(bMain
-				? LOCTEXT("ProgressMainHint", "Continue from your last checkpoint, or start a fresh visit. A new visit replaces it only when you save.")
+				? LOCTEXT("ProgressMainHint", "Continue from your manual checkpoint, or start a fresh visit. Save Progress replaces that checkpoint; autosaves are separate.")
 				: LOCTEXT("ProgressPauseHint", "Save before leaving to keep this visit. Saving replaces your previous checkpoint."))
 			.Font(Font("Regular", 11))
 			.ColorAndOpacity(FSlateColor(Muted))
@@ -440,6 +476,20 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 			.Font(Font("Regular", 11))
 			.ColorAndOpacity(FSlateColor(Accent))
 			.AutoWrapText(true)
+		]
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SBox).Padding(0, 8, 0, 0)
+			.Visibility_Lambda([WeakPC, bMain]()
+			{
+				return bMain && WeakPC.IsValid() && WeakPC->IsAutosaveEnabled()
+					? EVisibility::Visible : EVisibility::Collapsed;
+			})
+			[
+				SNew(STextBlock)
+				.Text_Lambda([WeakPC]() { return WeakPC.IsValid() ? WeakPC->GetAutosaveStatus().Text : FText::GetEmpty(); })
+				.Font(Font("Regular", 11)).ColorAndOpacity(FSlateColor(Accent)).AutoWrapText(true)
+			]
 		]
 	];
 	// Feature actions and a wrapped checkpoint error must remain reachable at
@@ -861,12 +911,42 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 		.Text_Lambda([WeakPC]()
 		{
 			return WeakPC.IsValid() && WeakPC->IsProgressAvailable()
-				? LOCTEXT("SaveProgressSettingHint", "Enable checkpoints and Continue. Turning this off keeps your existing save.")
+				? LOCTEXT("SaveProgressSettingHint", "Enable checkpoints and Continue. Turning this off also stops autosaving and keeps your existing saves.")
 				: LOCTEXT("SaveProgressUnavailable", "Progress saving is disabled for this session.");
 		})
 		.Font(Font("Regular", 11))
 		.ColorAndOpacity(FSlateColor(Muted))
 		.AutoWrapText(true)
+	];
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		SNew(SBox)
+		.IsEnabled_Lambda([WeakPC]()
+		{
+			return WeakPC.IsValid() && WeakPC->IsAutosaveAvailable() && WeakPC->IsProgressEnabled();
+		})
+		[
+			Row(LOCTEXT("AutosaveSetting", "Autosave"), MakeToggle(
+				[S]() { return S->GetAutosaveEnabled(); },
+				[this, S](bool bValue) { S->SetAutosaveEnabled(bValue); ApplyAndSave(); }))
+		]
+	];
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 16)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([WeakPC]()
+		{
+			if (!WeakPC.IsValid() || !WeakPC->IsAutosaveAvailable())
+			{
+				return LOCTEXT("AutosaveUnavailable", "Autosaving is disabled for this session. Existing autosaves are kept.");
+			}
+			if (!WeakPC->IsProgressEnabled())
+			{
+				return LOCTEXT("AutosaveNeedsProgress", "Turn on Save Progress to use Autosave. Existing autosaves are kept; an in-flight write may finish.");
+			}
+			return LOCTEXT("AutosaveSettingHint", "Off by default. Save separately every 5 minutes of unpaused play, when safe. Off keeps autosaves; an in-flight write may finish. Use Continue Autosave from the main menu.");
+		})
+		.Font(Font("Regular", 11)).ColorAndOpacity(FSlateColor(Muted)).AutoWrapText(true)
 	];
 
 	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)

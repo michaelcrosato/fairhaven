@@ -40,6 +40,7 @@ UUEGT2GameUserSettings* UUEGT2GameUserSettings::Get()
 
 void UUEGT2GameUserSettings::SetToDefaults()
 {
+	const bool bPersistenceChanged = !bSaveProgressEnabled || bAutosaveEnabled;
 	Super::SetToDefaults();
 
 	FieldOfView = 90.0f;
@@ -62,11 +63,13 @@ void UUEGT2GameUserSettings::SetToDefaults()
 	bShowAlmanac = true;
 	bShowNeeds = true;
 	bSaveProgressEnabled = true;
+	bAutosaveEnabled = false;
 	bSurveyJournalEnabled = true;
 	bSleepUntilEnabled = true;
 	bUseFahrenheit = false;
 	CrowdDensity = 1.0f;
 	KeyOverrides.Empty();
+	if (bPersistenceChanged) { ++PersistenceRevision; }
 }
 
 void UUEGT2GameUserSettings::ApplyNonResolutionSettings()
@@ -82,13 +85,14 @@ void UUEGT2GameUserSettings::ApplyNonResolutionSettings()
 	ApplyAudioSettings();
 
 	UE_LOG(LogUEGT2Settings, Log,
-		TEXT("Settings applied: fov=%.0f resScale=%.0f%% quality(view=%d shadow=%d gi=%d refl=%d pp=%d tex=%d fx=%d foliage=%d) master=%.2f progress=%s journal=%s sleepUntil=%s"),
+		TEXT("Settings applied: fov=%.0f resScale=%.0f%% quality(view=%d shadow=%d gi=%d refl=%d pp=%d tex=%d fx=%d foliage=%d) master=%.2f progress=%s journal=%s sleepUntil=%s autosave=%s"),
 		FieldOfView, ResolutionScalePercent,
 		GetViewDistanceQuality(), GetShadowQuality(), GetGlobalIlluminationQuality(),
 		GetReflectionQuality(), GetPostProcessingQuality(), GetTextureQuality(),
 		GetVisualEffectQuality(), GetFoliageQuality(),
 		GetAudioVolume(EUEGT2AudioBus::Master), bSaveProgressEnabled ? TEXT("on") : TEXT("off"),
-		bSurveyJournalEnabled ? TEXT("on") : TEXT("off"), bSleepUntilEnabled ? TEXT("on") : TEXT("off"));
+		bSurveyJournalEnabled ? TEXT("on") : TEXT("off"), bSleepUntilEnabled ? TEXT("on") : TEXT("off"),
+		bAutosaveEnabled ? TEXT("on") : TEXT("off"));
 
 	OnSettingsApplied.Broadcast();
 }
@@ -176,7 +180,14 @@ void UUEGT2GameUserSettings::SetShowCrosshair(bool bValue) { bShowCrosshair = bV
 void UUEGT2GameUserSettings::SetShowInteractPrompts(bool bValue) { bShowInteractPrompts = bValue; }
 void UUEGT2GameUserSettings::SetShowSpeechBubbles(bool bValue) { bShowSpeechBubbles = bValue; }
 void UUEGT2GameUserSettings::SetShowNeeds(bool bValue) { bShowNeeds = bValue; }
-void UUEGT2GameUserSettings::SetSaveProgressEnabled(bool bValue) { bSaveProgressEnabled = bValue; }
+void UUEGT2GameUserSettings::SetSaveProgressEnabled(bool bValue)
+{
+	if (bSaveProgressEnabled != bValue) { bSaveProgressEnabled = bValue; ++PersistenceRevision; }
+}
+void UUEGT2GameUserSettings::SetAutosaveEnabled(bool bValue)
+{
+	if (bAutosaveEnabled != bValue) { bAutosaveEnabled = bValue; ++PersistenceRevision; }
+}
 void UUEGT2GameUserSettings::SetSurveyJournalEnabled(bool bValue) { bSurveyJournalEnabled = bValue; }
 void UUEGT2GameUserSettings::SetSleepUntilEnabled(bool bValue) { bSleepUntilEnabled = bValue; }
 

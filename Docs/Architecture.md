@@ -74,7 +74,7 @@ AUEGT2GameMode
 └── UUEGT2GameUserSettings     every persisted setting, one settings file
 
 Progress across map loads:
-  UUEGT2ProgressSubsystem     manual checkpoint IO and journey lifecycle
+  UUEGT2ProgressSubsystem     manual/async checkpoint IO and journey lifecycle
   UUEGT2ProgressSave          versioned player/calendar/discovery snapshot
 
 World actors:
@@ -88,6 +88,7 @@ World actors:
   UUEGT2CaptureSubsystem       headless screenshot tours
   UUEGT2SurveySubsystem        landmark roster and one weak direction target; no tick
   UUEGT2RestSubsystem          bed eligibility and explicit skipped life; no tick
+  UUEGT2AutosaveSubsystem      optional active-play interval and save eligibility
 ```
 
 **The inhabitants** get their own document: [NPCs.md](NPCs.md). The organising
@@ -118,6 +119,15 @@ explicit IDs authored in `gameplay.py`. The player's preference and an independe
 config gate both have to permit IO; standard diagnostics never access player
 checkpoints. [Features.md](Features.md) owns the feature switches, compatibility
 contract, exclusions and verification record.
+
+Optional autosaves use the same snapshot and validation with a separate rotating
+slot pair. A world subsystem counts active play and requests saves at safe
+moments. The game-instance progress service owns the asynchronous byte operation,
+explicitly chaining both reads, a write and read-back verification. Weak world
+references and a journey generation reject stale callbacks across travel or
+loading. Main-menu availability is cached; widget attributes never start disk
+work or rebuild the page on completion. Off gates prevent further submissions,
+but an already submitted disk write can finish.
 
 **Shared materials, with glass separate from the shell.** Opaque props,
 building shells and characters use `M_Prop`, driven by vertex colour. Window

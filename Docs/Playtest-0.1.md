@@ -122,7 +122,10 @@ Cancel or Escape returns without advancing time. Sleeping restores energy;
 you still get hungry and need the washroom and company. The town follows its
 routines while you sleep. **Settings → Gameplay → Sleep Until** turns the
 panel off and restores continuous sleep until rested or until you get up.
-Saving remains manual.
+Sleep does not trigger a save. Save Progress records a manual checkpoint;
+optional Autosave uses five minutes of unpaused play and separate recovery slots.
+Check that Continue Autosave restores those while ordinary Continue retains your
+manual checkpoint. Turning Autosave off should preserve both kinds of file.
 
 **Scale.** Does a house feel house-sized next to you? Do the villagers read as
 people? Is the walk from town to the coast the right length, or too long/short?

@@ -106,6 +106,11 @@ public:
 	/** Manual checkpoints and Continue; disabling leaves saved progress intact. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetSaveProgressEnabled() const { return bSaveProgressEnabled; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetSaveProgressEnabled(bool bValue);
+	/** Optional periodic checkpoints in separate slots; requires Save Progress. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetAutosaveEnabled() const { return bAutosaveEnabled; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetAutosaveEnabled(bool bValue);
+	/** Detects off/on changes even while the world is paused; never persisted. */
+	uint64 GetPersistenceRevision() const { return PersistenceRevision; }
 
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetSurveyJournalEnabled() const { return bSurveyJournalEnabled; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetSurveyJournalEnabled(bool bValue);
@@ -144,6 +149,7 @@ public:
 private:
 	void ApplyConsoleVariables() const;
 	void ApplyAudioSettings() const;
+	uint64 PersistenceRevision = 0;
 
 	// Graphics
 	UPROPERTY(Config) float FieldOfView = 90.0f;
@@ -167,6 +173,7 @@ private:
 	UPROPERTY(Config) bool bShowAlmanac = true;
 	UPROPERTY(Config) bool bShowNeeds = true;
 	UPROPERTY(Config) bool bSaveProgressEnabled = true;
+	UPROPERTY(Config) bool bAutosaveEnabled = false;
 	UPROPERTY(Config) bool bSurveyJournalEnabled = true;
 	UPROPERTY(Config) bool bSleepUntilEnabled = true;
 	UPROPERTY(Config) bool bUseFahrenheit = false;

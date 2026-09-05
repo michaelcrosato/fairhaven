@@ -3,6 +3,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/PlayerController.h"
+#include "Progress/UEGT2AutosaveTypes.h"
 #include "UEGT2PlayerController.generated.h"
 
 class AUEGT2NPCActor;
@@ -51,6 +52,13 @@ public:
 	bool IsProgressAvailable() const;
 	bool HasSavedProgress() const;
 	FText GetProgressStatus() const;
+
+	/** Separate automatic checkpoint; status access never starts a disk read. */
+	bool ContinueAutosavedProgress();
+	bool IsAutosaveAvailable() const;
+	bool IsAutosaveEnabled() const;
+	FUEGT2AutosaveStatus GetAutosaveStatus() const;
+	void RefreshAutosaveAvailability();
 
 	/** A paused journal; discoveries remain owned by the current world's landmarks. */
 	void ToggleSurveyJournal();
