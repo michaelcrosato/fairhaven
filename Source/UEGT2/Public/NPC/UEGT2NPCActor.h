@@ -83,9 +83,8 @@ public:
 	/**
 	 * Walk with this actor until told otherwise. Null stops following.
 	 *
-	 * Following overrides the schedule rather than replacing it: needs still run
-	 * down, and somebody who is starving will still break off to eat. That is
-	 * the point - a companion who ignores their own hunger is a prop.
+	 * Following overrides ordinary plans. Needs, sleep and weather safety still
+	 * end the walk, so a companion keeps the same life as other inhabitants.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|NPC")
 	void SetFollowTarget(AActor* Target);
@@ -295,10 +294,6 @@ private:
 
 	/** Kept so an arrived NPC drifts around the anchor, not around itself. */
 	FVector AnchorCentre = FVector::ZeroVector;
-
-	/** Progress toward giving up on a blocked route. */
-	float StuckSeconds = 0.0f;
-	FVector LastStuckCheckLocation = FVector::ZeroVector;
 
 	EUEGT2NPCLOD LOD = EUEGT2NPCLOD::Dormant;
 	bool bActivityChanged = false;

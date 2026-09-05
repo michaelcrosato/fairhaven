@@ -919,4 +919,95 @@ bool FUEGT2NPCFollowingTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2NPCFollowingSafetyTest,
+	"UEGT2.NPC.FollowingSafety",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2NPCFollowingSafetyTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::EditorPreview, false);
+	if (!TestNotNull(TEXT("isolated actor world"), World)) { return false; }
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	AUEGT2NPCActor* Target = World->SpawnActor<AUEGT2NPCActor>();
+	if (!TestNotNull(TEXT("follow target"), Target)) { return false; }
+	const auto Companion = [World, Target](EUEGT2NPCSpecies Species, bool bBrave)
+	{
+		const int32 Seed = bBrave ? 13 : 1;
+		AUEGT2NPCActor* NPC = World->SpawnActor<AUEGT2NPCActor>();
+		if (NPC)
+		{
+			NPC->ConfigureNPC(TEXT("Companion"), EUEGT2NPCRole::Smith, Species, Seed);
+			NPC->AddAnchor(EUEGT2Anchor::Home, FVector(8000.0, 0.0, 0.0));
+			NPC->AddAnchor(EUEGT2Anchor::Shelter, FVector(-5000.0, 0.0, 0.0));
+			NPC->DispatchBeginPlay();
+			NPC->SetLOD(EUEGT2NPCLOD::Near);
+			NPC->SetFollowTarget(Target);
+		}
+		return NPC;
+	};
+
+	AUEGT2NPCActor* Timid = Companion(EUEGT2NPCSpecies::Person, false);
+	AUEGT2NPCActor* Brave = Companion(EUEGT2NPCSpecies::Person, true);
+	AUEGT2NPCActor* Dog = Companion(EUEGT2NPCSpecies::Dog, false);
+	if (!TestNotNull(TEXT("timid companion"), Timid) || !TestNotNull(TEXT("brave companion"), Brave)
+		|| !TestNotNull(TEXT("animal companion"), Dog)) { return false; }
+	TestTrue(TEXT("timid identity answers bad weather"), Timid->GetPersonality().Bravery < 0.3f);
+	TestTrue(TEXT("brave identity tolerates bad weather"), Brave->GetPersonality().Bravery > 0.85f);
+	FUEGT2NPCContext Context = UEGT2NPCTests::Plain(10.0f);
+	Context.Weather = EUEGT2Weather::Storm;
+	Timid->EvaluateSchedule(Context, false);
+	TestFalse(TEXT("a companion answers the storm"), Timid->IsFollowing());
+	TestEqual(TEXT("shelter keeps the resolver's priority"), Timid->GetActivityReason(), EUEGT2ActivityReason::Weather);
+	TestEqual(TEXT("the companion heads for shelter"), Timid->GetActivity(), EUEGT2Activity::Shelter);
+	TestTrue(TEXT("the shelter route replaces the follow route"), Timid->GetDestination().X < -4000.0);
+	Brave->EvaluateSchedule(Context, false);
+	TestTrue(TEXT("a brave companion who would stay outdoors keeps following"), Brave->IsFollowing());
+
+	Context = UEGT2NPCTests::Plain(2.0f);
+	Timid->SetFollowTarget(Target);
+	Timid->EvaluateSchedule(Context, false);
+	TestFalse(TEXT("scheduled sleep ends companionship"), Timid->IsFollowing());
+	TestEqual(TEXT("the companion actually sleeps"), Timid->GetActivity(), EUEGT2Activity::Sleep);
+	TestTrue(TEXT("the sleeping companion goes indoors"), Timid->IsIndoors());
+	TestTrue(TEXT("the sleeping companion returns home"), Timid->GetActorLocation().Equals(FVector(8000.0, 0.0, 0.0)));
+	Dog->EvaluateSchedule(Context, false);
+	TestFalse(TEXT("animals keep their resting schedule too"), Dog->IsFollowing());
+	TestEqual(TEXT("the dog settles for the night"), Dog->GetActivity(), EUEGT2Activity::Roost);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2NPCMovementHitchTest,
+	"UEGT2.NPC.MovementHitch",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2NPCMovementHitchTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::EditorPreview, false);
+	if (!TestNotNull(TEXT("isolated actor world"), World)) { return false; }
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+	for (float Seconds : { 2.0f, 7.0f })
+	{
+		AUEGT2NPCActor* NPC = World->SpawnActor<AUEGT2NPCActor>();
+		if (!TestNotNull(TEXT("walking inhabitant"), NPC)) { return false; }
+		NPC->ConfigureNPC(TEXT("Test smith"), EUEGT2NPCRole::Smith, EUEGT2NPCSpecies::Person, 4242);
+		NPC->AddAnchor(EUEGT2Anchor::Work, FVector(10000.0, 0.0, 0.0));
+		NPC->DispatchBeginPlay();
+		NPC->SetLOD(EUEGT2NPCLOD::Near);
+		NPC->EvaluateSchedule(UEGT2NPCTests::Plain(10.0f), true);
+		const FVector Start = NPC->GetActorLocation();
+		const FVector Destination = NPC->GetDestination();
+		NPC->Tick(Seconds);
+		// The old stuck timer counted this tick's time but not its movement,
+		// so a hitch changed the destination or teleported straight to it.
+		const double Travelled = FVector::Dist2D(Start, NPC->GetActorLocation());
+		TestTrue(TEXT("a long tick still makes walking progress"), Travelled > 0.0);
+		TestTrue(TEXT("a long tick cannot teleport to the end of the route"),
+			Travelled < NPC->BaseSpeed * 2.0f * Seconds);
+		TestTrue(TEXT("a long tick keeps the requested destination"), NPC->GetDestination().Equals(Destination));
+	}
+	return true;
+}
+
 #endif // WITH_AUTOMATION_TESTS

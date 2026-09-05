@@ -55,6 +55,8 @@ void AUEGT2RouteNetwork::LinkNodes(int32 A, int32 B)
 	}
 	NodeLinks[A].To.AddUnique(B);
 	NodeLinks[B].To.AddUnique(A);
+	// A prior query may have omitted these nodes while they were unlinked.
+	bIndexBuilt = false;
 }
 
 void AUEGT2RouteNetwork::FinaliseNetwork()
@@ -62,6 +64,7 @@ void AUEGT2RouteNetwork::FinaliseNetwork()
 	// Nodes that ended up with no links are sampling artefacts - a road that
 	// contributed a single point before running off the map. They would only
 	// ever be found as "nearest node" and then fail to path anywhere.
+	// Keep their authored indices stable, but omit them from the lookup grid.
 	int32 Orphans = 0;
 	for (const FUEGT2RouteLinks& Links : NodeLinks)
 	{
@@ -110,6 +113,10 @@ void AUEGT2RouteNetwork::BuildSpatialIndex() const
 	Cells.Reserve(NodeLocations.Num());
 	for (int32 Index = 0; Index < NodeLocations.Num(); ++Index)
 	{
+		if (!NodeLinks.IsValidIndex(Index) || NodeLinks[Index].To.Num() == 0)
+		{
+			continue;
+		}
 		Cells.FindOrAdd(CellOf(NodeLocations[Index])).Add(Index);
 	}
 	bIndexBuilt = true;
@@ -312,7 +319,13 @@ bool AUEGT2RouteNetwork::FindPath(const FVector& Start, const FVector& Goal,
 
 FVector AUEGT2RouteNetwork::GetWanderTarget(const FVector& Location, float Radius, uint32 Seed) const
 {
-	const int32 Nearest = FindNearestNode(Location, FMath::Max(Radius, 4000.0f));
+	if (Radius <= 0.0f)
+	{
+		return Location;
+	}
+	// The first node must obey the same bound as every subsequent hop. A
+	// generous snap radius can otherwise pull an animal out of its field.
+	const int32 Nearest = FindNearestNode(Location, Radius);
 	if (Nearest == INDEX_NONE)
 	{
 		return Location;

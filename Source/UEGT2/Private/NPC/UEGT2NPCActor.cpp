@@ -356,7 +356,6 @@ void AUEGT2NPCActor::SetFollowTarget(AActor* Target)
 	{
 		// The next schedule pass sees Follow -> routine and restores its route.
 		bActivityChanged = true;
-		StuckSeconds = 0.0f;
 	}
 }
 
@@ -532,10 +531,13 @@ void AUEGT2NPCActor::EvaluateSchedule(const FUEGT2NPCContext& Context, bool bFor
 	const FUEGT2ActivityDecision Previous = Decision;
 	Decision = ResolveActivity(NPCRole, Species, Local);
 
-	// Following overrides where they go, but not what they need: the decision
-	// above still ran, so a companion who gets hungry still says so, and still
-	// breaks off if the need is bad enough to send them somewhere.
-	if (IsFollowing() && Decision.Reason != EUEGT2ActivityReason::Need)
+	// The resolver's safety decisions still win over companionship. Sleeping
+	// schedules suppress need checks, so letting Follow override sleep would
+	// keep a companion awake all night without ever answering their exhaustion.
+	if (IsFollowing() && Decision.Reason != EUEGT2ActivityReason::Need
+		&& Decision.Reason != EUEGT2ActivityReason::Weather
+		&& Decision.Activity != EUEGT2Activity::Sleep
+		&& Decision.Activity != EUEGT2Activity::Roost)
 	{
 		Decision.Activity = EUEGT2Activity::Follow;
 		Decision.Anchor = EUEGT2Anchor::Wander;
@@ -588,9 +590,6 @@ void AUEGT2NPCActor::EvaluateSchedule(const FUEGT2NPCContext& Context, bool bFor
 		{
 			RepathTo(NewDestination);
 		}
-
-		StuckSeconds = 0.0f;
-		LastStuckCheckLocation = GetActorLocation();
 	}
 }
 
@@ -956,35 +955,6 @@ void AUEGT2NPCActor::AdvanceMovement(float DeltaSeconds)
 	const float Delta = FMath::UnwindDegrees(TargetYaw - CurrentYaw);
 	CurrentYaw += FMath::Clamp(Delta, -TurnRate * DeltaSeconds, TurnRate * DeltaSeconds);
 	SetActorRotation(FRotator(0.0f, CurrentYaw, 0.0f));
-
-	// --- Stuck handling ---------------------------------------------------
-	// Nothing here does obstacle avoidance: the route network keeps travel on
-	// the streets, and the last leg is short. What is left is the case where
-	// somebody's destination ended up inside a wall, and the fix for that is to
-	// stop trying rather than to grind against it forever.
-	StuckSeconds += DeltaSeconds;
-	if (StuckSeconds > 1.5f)
-	{
-		const float Moved = FVector::Dist2D(Current, LastStuckCheckLocation);
-		if (Moved < Speed * StuckSeconds * 0.25f)
-		{
-			// Sidestep once; if that does not help, accept the destination.
-			const FVector Side = FVector::CrossProduct(Direction, FVector::UpVector)
-				* (UEGT2HashUnit((uint32)Seed, (uint32)PathIndex) > 0.5f ? 320.0f : -320.0f);
-			if (StuckSeconds > 6.0f)
-			{
-				SetActorLocation(FVector(Target.X, Target.Y, Target.Z));
-				GroundZ = Target.Z;
-				if (bOnPath) { ++PathIndex; } else { bArrived = true; }
-			}
-			else
-			{
-				RepathTo(Destination + Side);
-			}
-		}
-		StuckSeconds = 0.0f;
-		LastStuckCheckLocation = GetActorLocation();
-	}
 }
 
 void AUEGT2NPCActor::AdvanceCosmetics(float DeltaSeconds)

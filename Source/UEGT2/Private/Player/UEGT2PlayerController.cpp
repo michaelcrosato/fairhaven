@@ -107,6 +107,12 @@ void AUEGT2PlayerController::OnPossess(APawn* InPawn)
 
 void AUEGT2PlayerController::OnUnPossess()
 {
+	if (GetPawn() && InputComponent)
+	{
+		// Pawn actions live on this controller's persistent input component.
+		// Drop the old pawn's delegates before possession can bind another one.
+		InputComponent->ClearBindingsForObject(GetPawn());
+	}
 	bPawnActionsBound = false;
 	Super::OnUnPossess();
 }

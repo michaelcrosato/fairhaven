@@ -100,21 +100,32 @@ void UUEGT2NPCDirector::Deinitialize()
 {
 	UUEGT2GameUserSettings::OnSettingsApplied.RemoveAll(this);
 	Population.Reset();
+	LastNeedsHours.Reset();
 	Conversations.Reset();
 	Super::Deinitialize();
 }
 
 void UUEGT2NPCDirector::RegisterNPC(AUEGT2NPCActor* NPC)
 {
-	if (NPC)
+	if (NPC && !Population.Contains(NPC))
 	{
-		Population.AddUnique(NPC);
+		Population.Add(NPC);
+		LastNeedsHours.Add(NPC, SimulatedHours);
 	}
 }
 
 void UUEGT2NPCDirector::UnregisterNPC(AUEGT2NPCActor* NPC)
 {
-	Population.Remove(NPC);
+	const int32 Index = Population.IndexOfByKey(NPC);
+	if (Index != INDEX_NONE)
+	{
+		AdvanceNeedsToNow(NPC);
+		Population.RemoveAt(Index);
+		LastNeedsHours.Remove(NPC);
+		// Removing an earlier entry shifts the next inhabitant left too.
+		if (Index < SliceCursor) { --SliceCursor; }
+		if (SliceCursor >= Population.Num()) { SliceCursor = 0; }
+	}
 	Conversations.RemoveAll([NPC](const FUEGT2Conversation& Chat)
 	{
 		return Chat.Opener.Get() == NPC || Chat.Responder.Get() == NPC;
@@ -134,7 +145,7 @@ void UUEGT2NPCDirector::Tick(float DeltaTime)
 		return;
 	}
 
-	RefreshWorldFacts(DeltaTime);
+	RefreshWorldFacts();
 
 	// The first tick is the only place everyone is guaranteed to have begun
 	// play, which is when it is safe to put the whole town where the clock says
@@ -183,6 +194,10 @@ void UUEGT2NPCDirector::Tick(float DeltaTime)
 	{
 		return;
 	}
+	// Integrate each frame at its own clock rate. Multiplying the latest slice
+	// interval by six overcharged a hitch's slice and undercharged the others;
+	// small populations also take fewer than six passes to visit everybody.
+	SimulatedHours += static_cast<double>(DeltaTime) * GetWorldHoursPerSecond();
 
 	LodCountdown -= DeltaTime;
 	if (LodCountdown <= 0.0f)
@@ -195,18 +210,17 @@ void UUEGT2NPCDirector::Tick(float DeltaTime)
 	if (ScheduleCountdown <= 0.0f)
 	{
 		ScheduleCountdown = SchedulePeriod;
-		RunScheduleSlice(HoursSinceLastSlice);
-		HoursSinceLastSlice = 0.0f;
+		RunScheduleSlice();
 	}
 
 	SpeechCountdown -= DeltaTime;
 	if (SpeechCountdown <= 0.0f)
 	{
 		SpeechCountdown = SpeechPeriod;
-		UpdateSpeech(DeltaTime);
+		UpdateSpeech();
 	}
 
-	UpdateConversations(DeltaTime);
+	UpdateConversations();
 
 	if (bDebugOverlay)
 	{
@@ -216,11 +230,12 @@ void UUEGT2NPCDirector::Tick(float DeltaTime)
 
 float UUEGT2NPCDirector::GetWorldHoursPerSecond() const
 {
-	const float DayLengthMinutes = Sky ? Sky->GetDayLengthMinutes() : 0.0f;
+	const float DayLengthMinutes = Sky && Sky->IsDayNightCycleEnabled()
+		? Sky->GetDayLengthMinutes() : 0.0f;
 	return DayLengthMinutes > KINDA_SMALL_NUMBER ? 24.0f / (DayLengthMinutes * 60.0f) : 0.0f;
 }
 
-void UUEGT2NPCDirector::RefreshWorldFacts(float DeltaTime)
+void UUEGT2NPCDirector::RefreshWorldFacts()
 {
 	if (!Sky)
 	{
@@ -244,11 +259,6 @@ void UUEGT2NPCDirector::RefreshWorldFacts(float DeltaTime)
 			IsMarketDay(DayIndex) ? TEXT(" - market day")
 			: IsRestDay(DayIndex) ? TEXT(" - rest day") : TEXT(""));
 	}
-
-	// World hours elapsed, for the needs model. Uses the same conversion the
-	// sky controller advances the clock by, so a 20 minute day means an NPC
-	// gets hungry three times in an hour of play.
-	HoursSinceLastSlice += DeltaTime * GetWorldHoursPerSecond();
 
 	// The view point, not the pawn.
 	//
@@ -313,7 +323,20 @@ void UUEGT2NPCDirector::UpdateLODs()
 	}
 }
 
-void UUEGT2NPCDirector::RunScheduleSlice(float WorldHoursElapsed)
+void UUEGT2NPCDirector::AdvanceNeedsToNow(AUEGT2NPCActor* NPC)
+{
+	if (double* LastHours = LastNeedsHours.Find(NPC))
+	{
+		const float Elapsed = static_cast<float>(SimulatedHours - *LastHours);
+		*LastHours = SimulatedHours;
+		if (!NPC->IsSuppressed())
+		{
+			NPC->AdvanceNeeds(Elapsed);
+		}
+	}
+}
+
+void UUEGT2NPCDirector::RunScheduleSlice()
 {
 	if (Population.Num() == 0)
 	{
@@ -325,21 +348,17 @@ void UUEGT2NPCDirector::RunScheduleSlice(float WorldHoursElapsed)
 	const int32 End = FMath::Min(Start + SliceSize, Population.Num());
 
 	FUEGT2NPCContext Context = MakeContext();
-	// Each NPC is only visited every ScheduleSlices passes, so it has to be
-	// charged for all of the time that has gone by, not just the last one.
-	const float HoursForThisSlice = WorldHoursElapsed * ScheduleSlices;
-
 	for (int32 Index = Start; Index < End; ++Index)
 	{
 		AUEGT2NPCActor* NPC = Population[Index];
-		if (!NPC || NPC->IsSuppressed())
+		if (!NPC)
 		{
 			continue;
 		}
 
-		NPC->AdvanceNeeds(HoursForThisSlice);
+		AdvanceNeedsToNow(NPC);
 
-		if (bSchedulesPaused)
+		if (NPC->IsSuppressed() || bSchedulesPaused)
 		{
 			continue;
 		}
@@ -392,7 +411,7 @@ void UUEGT2NPCDirector::SpeakAnnounce(AUEGT2NPCActor* NPC, EUEGT2SpeechMood Mood
 	}
 }
 
-void UUEGT2NPCDirector::UpdateSpeech(float DeltaTime)
+void UUEGT2NPCDirector::UpdateSpeech()
 {
 	UWorld* World = GetWorld();
 	if (!World || !bHasPlayer)
@@ -554,7 +573,7 @@ void UUEGT2NPCDirector::UpdateSpeech(float DeltaTime)
 	}
 }
 
-void UUEGT2NPCDirector::UpdateConversations(float DeltaTime)
+void UUEGT2NPCDirector::UpdateConversations()
 {
 	UWorld* World = GetWorld();
 	if (!World)
@@ -682,6 +701,12 @@ void UUEGT2NPCDirector::ApplyCrowdDensity()
 		// Deterministic: the same people are missing at the same density every
 		// run, so turning it down and back up does not reshuffle the town.
 		const bool bSuppress = UEGT2HashUnit((uint32)NPC->GetSeed(), 0x5171u) > CrowdDensity;
+		if (bSuppress != NPC->IsSuppressed())
+		{
+			// Finish the active interval before hiding, and discard the hidden
+			// interval before showing. Neither depends on when its slice ran.
+			AdvanceNeedsToNow(NPC);
+		}
 		NPC->SetSuppressed(bSuppress);
 		Hidden += bSuppress ? 1 : 0;
 	}

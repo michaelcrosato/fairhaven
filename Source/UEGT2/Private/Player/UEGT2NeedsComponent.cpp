@@ -8,19 +8,6 @@
 
 #define LOCTEXT_NAMESPACE "UEGT2Needs"
 
-namespace UEGT2Needs
-{
-	/**
-	 * The most world time one tick may charge for.
-	 *
-	 * The clock is read off the director rather than integrated here, so that
-	 * the player and the town never drift apart. The cost of that is that
-	 * dragging the dev time slider from dawn to dusk hands this component a
-	 * nine hour delta, which would starve the player for using a debug tool.
-	 */
-	constexpr float MaxHoursPerTick = 0.25f;
-}
-
 UUEGT2NeedsComponent::UUEGT2NeedsComponent()
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -254,8 +241,9 @@ void UUEGT2NeedsComponent::TickComponent(float DeltaTime, ELevelTick TickType,
 		return;
 	}
 
-	AdvanceLife(FMath::Min(DeltaTime * Director->GetWorldHoursPerSecond(),
-		UEGT2Needs::MaxHoursPerTick));
+	// Integrate elapsed time at the shared rate. Scrubbing the clock changes
+	// its position, not this delta; capping a hitch would lose hours of life.
+	AdvanceLife(DeltaTime * Director->GetWorldHoursPerSecond());
 }
 
 void UUEGT2NeedsComponent::AdvanceLife(float WorldHours)

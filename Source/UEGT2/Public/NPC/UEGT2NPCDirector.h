@@ -128,11 +128,12 @@ public:
 	static constexpr int32 MaxConcurrentBubbles = 5;
 
 private:
-	void RefreshWorldFacts(float DeltaTime);
+	void RefreshWorldFacts();
 	void UpdateLODs();
-	void RunScheduleSlice(float WorldHoursElapsed);
-	void UpdateSpeech(float DeltaTime);
-	void UpdateConversations(float DeltaTime);
+	void RunScheduleSlice();
+	void AdvanceNeedsToNow(AUEGT2NPCActor* NPC);
+	void UpdateSpeech();
+	void UpdateConversations();
 	void DrawDebug() const;
 	void SnapEveryone();
 	/** One line, a few seconds in, saying whether the town is actually alive. */
@@ -147,6 +148,8 @@ private:
 
 	UPROPERTY(Transient) TArray<TObjectPtr<AUEGT2NPCActor>> Population;
 	UPROPERTY(Transient) TObjectPtr<AUEGT2SkyController> Sky = nullptr;
+	/** Population owns these actors; registry changes keep their clocks in step. */
+	TMap<AUEGT2NPCActor*, double> LastNeedsHours;
 
 	TArray<FUEGT2Conversation> Conversations;
 
@@ -163,7 +166,8 @@ private:
 	float ScheduleCountdown = 0.0f;
 	float SpeechCountdown = 0.0f;
 	float LastSpeechTime = -100.0f;
-	float HoursSinceLastSlice = 0.0f;
+	/** Integrated live world time, independent of slice size and frame hitches. */
+	double SimulatedHours = 0.0;
 	/** Counts down to the one-shot population report. Negative once spent. */
 	float ReportCountdown = -1.0f;
 	/** Frames and seconds accumulated over the report window, for a mean fps. */

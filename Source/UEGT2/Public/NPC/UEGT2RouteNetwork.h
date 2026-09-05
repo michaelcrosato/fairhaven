@@ -48,7 +48,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Routes")
 	void LinkNodes(int32 A, int32 B);
 
-	/** Drop unreachable stubs and rebuild the lookup grid. Call once after baking. */
+	/** Exclude unlinked stubs from the lookup grid, preserving node IDs. Call after baking. */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Routes")
 	void FinaliseNetwork();
 
@@ -62,7 +62,7 @@ public:
 	FVector GetNodeLocation(int32 Index) const;
 
 	// ---- Queries -----------------------------------------------------------
-	/** Nearest node within MaxDistance, or INDEX_NONE. Ignores Z beyond a sanity band. */
+	/** Nearest linked node within MaxDistance in XY, or INDEX_NONE. Ignores Z. */
 	int32 FindNearestNode(const FVector& Location, float MaxDistance) const;
 
 	/**
@@ -76,7 +76,7 @@ public:
 	 */
 	bool FindPath(const FVector& Start, const FVector& Goal, TArray<FVector>& OutPoints) const;
 
-	/** A node within Radius of Location, chosen deterministically from Seed. */
+	/** A linked node within Radius in XY, chosen by Seed; Location when none is in range. */
 	FVector GetWanderTarget(const FVector& Location, float Radius, uint32 Seed) const;
 
 	/** How many A* searches this network has run. Diagnostics only. */
