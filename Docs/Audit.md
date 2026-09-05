@@ -124,9 +124,60 @@ machine; they do not establish the RTX 3060 target budget.
 Second-pass logs are under `Saved/Logs/Audit2*`, with screenshots in
 `Saved/Screenshots/Audit2`.
 
+## Grounding follow-up
+
+The live flight log exposed a grounding discrepancy that frozen captures do not
+exercise. The movement update replaced a sampled ground height with segment
+interpolation, using the pre-step distance for the new position. It now uses the
+post-step distance, immediately applies each ground correction and rebases the
+remaining segment. Nearby correction cadence and the low, static-object ground
+trace are unchanged. Far movement still approximates terrain between endpoints.
+
+The population report no longer prints an all-clear after reporting a failed
+underfoot probe. It describes that short probe accurately and includes up to five
+names, locations, distance tiers, activities and destinations for diagnosis.
+Older local runs contain the same discrepancy, so this was a preexisting defect.
+
+Both nonadaptive targets rebuilt successfully and all 55 automation tests passed.
+The two new regressions walk actual collision geometry: half-second Far steps
+on a slope, and Near steps over raised ground beneath an awning, checking that
+the next untraced step preserves the correction. Packaging passed in 1 minute
+59 seconds, and a live town-square capture passed and was visually inspected.
+
+The live report's three remaining short-probe misses are Far-tier inhabitants
+beyond the 260 m body draw distance. Comparing their positions with the authored
+heightmap finds roughly 57-70 cm of interpolation error, rather than missing
+terrain. Nearby tiers resume the existing ground traces and now preserve their
+corrections. This evidence does not justify adding continuous traces to the
+distant simulation.
+
+The final ten-minute flight soak completed 63 route legs with zero stalls. The
+worst frame was 51.5 ms and the longest of nine garbage collections was 3.8 ms.
+The object count settled at 60,164 and memory returned to about 2.45 GB. No hang,
+route cycle or runaway allocation was reported. Follow-up logs use the
+`Saved/Logs/Audit3*` prefix; the live capture is in
+`Saved/Screenshots/Audit3/LiveTown`.
+
+## Engine warning review
+
+Two renderer warnings were traced separately:
+
+- Unreal's TSR code reads `r.MotionVectorSimulation` on the render thread, but
+  the engine registers that variable without its render-thread-safe flag. Both
+  audit snapshots report it; project code does not read or override the variable.
+- The VSM non-Nanite marking queue can overflow at the wide mountain vista and
+  during flight. Engine shader code falls back to direct page marking, retaining
+  the work. This is distinct from an exhausted page pool or visible-instance
+  buffer. Both snapshots report it, and repeat messages are suppressed. The
+  available timing evidence does not justify changing shadow quality or queue
+  budgets in this audit.
+
+Existing milestone feature limits remain documented in
+[Playtest-0.1.md](Playtest-0.1.md).
+
 ## Audit outcome
 
-No unresolved corrective findings remain from these two passes. Final
-independent runtime, content and script reviews found no additional concrete
-repair in the audited scope. Existing milestone feature limits remain documented
-in [Playtest-0.1.md](Playtest-0.1.md).
+The corrective findings from these passes are resolved and verified. Independent
+reviews of the final runtime, content and script changes found no additional
+concrete repair. The engine diagnostics and distant simulation limits above are
+recorded explicitly; neither was hidden by suppressing warnings.
