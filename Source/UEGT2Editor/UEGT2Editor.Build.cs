@@ -30,14 +30,11 @@ public class UEGT2Editor : ModuleRules
 			"AssetRegistry",
 			"Foliage",
 			"FoliageEdit",
-			"Water",
-			"WaterEditor",
 			"MaterialEditor",
 			"RenderCore",
 			"RHI",
 			"Slate",
-			"SlateCore",
-			"Projects"
+			"SlateCore"
 		});
 	}
 }

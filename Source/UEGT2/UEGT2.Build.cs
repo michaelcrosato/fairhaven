@@ -14,8 +14,7 @@ public class UEGT2 : ModuleRules
 			"Engine",
 			"InputCore",
 			"PhysicsCore",
-			"EnhancedInput",
-			"Water"
+			"EnhancedInput"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new[]
@@ -24,10 +23,7 @@ public class UEGT2 : ModuleRules
 			"SlateCore",
 			"ApplicationCore",
 			"RenderCore",
-			"RHI",
-			"AudioMixer",
-			"DeveloperSettings",
-			"Projects"
+			"RHI"
 		});
 	}
 }
