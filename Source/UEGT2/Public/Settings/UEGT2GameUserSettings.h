@@ -1,7 +1,7 @@
 // Fairhaven (UEGT2) - all persisted player settings in one place.
 //
 // Graphics, audio, gameplay and control rebinds live here so there is exactly
-// one save file (Saved/Config/.../GameUserSettings.ini) and one place to look.
+// one settings file (Saved/Config/.../GameUserSettings.ini) and one place to look.
 // Adding a setting: add a UPROPERTY(Config), expose a getter/setter pair, and
 // apply it in ApplyNonResolutionSettings().
 #pragma once
@@ -103,6 +103,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowNeeds() const { return bShowNeeds; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowNeeds(bool bValue);
 
+	/** Manual checkpoints and Continue; disabling leaves saved progress intact. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetSaveProgressEnabled() const { return bSaveProgressEnabled; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetSaveProgressEnabled(bool bValue);
+
 	/** The text-message bubbles NPCs put over their heads. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowSpeechBubbles() const { return bShowSpeechBubbles; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowSpeechBubbles(bool bValue);
@@ -157,6 +161,7 @@ private:
 	UPROPERTY(Config) bool bShowSpeechBubbles = true;
 	UPROPERTY(Config) bool bShowAlmanac = true;
 	UPROPERTY(Config) bool bShowNeeds = true;
+	UPROPERTY(Config) bool bSaveProgressEnabled = true;
 	UPROPERTY(Config) bool bUseFahrenheit = false;
 	UPROPERTY(Config) float CrowdDensity = 1.0f;
 

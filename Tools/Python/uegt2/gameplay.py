@@ -118,15 +118,17 @@ def _place_landmarks(world_data, meshes):
                 best = (x, y)
         return best[1] if best else 30000.0
 
+    # These IDs are save data. Renaming a sign or moving its placement must
+    # not lose the player's discovery; changing an ID requires a migration.
     spots = [
-        ("Fairhaven Square", cx + 900.0, cy - 900.0),
-        ("The Harbour", cx - 1200.0, coast_y(cx) - 1500.0),
-        ("Fairhaven Light", cx + 16000.0, coast_y(cx + 16000.0) - 1600.0),
-        ("Mill Rise", cx - 6000.0, cy - 26000.0),
-        ("The High Road", cx + 52000.0, cy + 15000.0),
-        ("Green Lagoon", -60000.0, 9000.0),
-        ("Southern Palms", -46000.0, 17000.0),
-        ("The Summit Road", 148000.0, -2500.0),
+        ("fairhaven_square", "Fairhaven Square", cx + 900.0, cy - 900.0),
+        ("fairhaven_harbour", "The Harbour", cx - 1200.0, coast_y(cx) - 1500.0),
+        ("fairhaven_light", "Fairhaven Light", cx + 16000.0, coast_y(cx + 16000.0) - 1600.0),
+        ("mill_rise", "Mill Rise", cx - 6000.0, cy - 26000.0),
+        ("high_road", "The High Road", cx + 52000.0, cy + 15000.0),
+        ("green_lagoon", "Green Lagoon", -60000.0, 9000.0),
+        ("southern_palms", "Southern Palms", -46000.0, 17000.0),
+        ("summit_road", "The Summit Road", 148000.0, -2500.0),
     ]
 
     # Newhaven, derived from the city block so the markers follow if it moves.
@@ -134,18 +136,19 @@ def _place_landmarks(world_data, meshes):
     if city:
         ncx, ncy = city["center"]
         spots.extend([
-            ("Newhaven Plaza", ncx + 1200.0, ncy - 1200.0),
-            ("Newhaven Wharf", ncx, coast_y(ncx) - 2200.0),
-            ("Newhaven Heights", ncx - 14000.0, ncy + 12000.0),
+            ("newhaven_plaza", "Newhaven Plaza", ncx + 1200.0, ncy - 1200.0),
+            ("newhaven_wharf", "Newhaven Wharf", ncx, coast_y(ncx) - 2200.0),
+            ("newhaven_heights", "Newhaven Heights", ncx - 14000.0, ncy + 12000.0),
         ])
 
     placed = 0
-    for name, wx, wy in spots:
+    for persistent_id, name, wx, wy in spots:
         wz = world_data.height_uu(wx, wy) - 10.0
         actor = _spawn_interactable(cls, marker, wx, wy, wz, 0.0,
                                     "Landmark %s" % name,
                                     unreal.ComponentMobility.STATIC)
         if actor is not None:
+            actor.set_editor_property("persistent_id", unreal.Name(persistent_id))
             actor.set_landmark_name(unreal.Text(name) if hasattr(unreal, "Text") else name)
             placed += 1
     ctx.log("gameplay: %d landmarks" % placed)

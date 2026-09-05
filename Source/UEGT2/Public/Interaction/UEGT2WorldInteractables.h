@@ -113,6 +113,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Pickup")
 	bool IsCarried() const { return Carrier != nullptr; }
 
+	/** End this carrier's transient interaction without throwing the prop. */
+	bool ReleaseIfCarriedBy(AActor* Actor);
+
 protected:
 	virtual void OnInteract(AActor* Interactor) override;
 
@@ -135,14 +138,25 @@ public:
 	void SetLandmarkName(const FText& Text) { LandmarkName = Text; }
 
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Landmark")
+	FText GetLandmarkName() const { return LandmarkName; }
+
+	/** Authored identity for saves; independent of display text and placement. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UEGT2|Landmark")
+	FName PersistentId = NAME_None;
+
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Landmark")
+	FName GetPersistentId() const { return PersistentId; }
+
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Landmark")
 	bool IsDiscovered() const { return bUsed; }
 
-	/** How many landmarks the player has found this session. */
-	static int32 GetDiscoveredCount() { return DiscoveredCount; }
-	static int32 GetTotalCount() { return TotalCount; }
+	/** Restore or reset discovery without replaying interaction feedback. */
+	void SetDiscovered(bool bDiscovered);
 
-	virtual void BeginPlay() override;
-	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
+	/** Counts belong to one world and reflect its current actors and state. */
+	static int32 GetDiscoveredCount(const UWorld* World);
+	static int32 GetTotalCount(const UWorld* World);
+
 	virtual FText GetInteractionPrompt(const AActor* Interactor) const override;
 
 protected:
@@ -150,8 +164,4 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "UEGT2|Landmark")
 	FText LandmarkName;
-
-private:
-	static int32 DiscoveredCount;
-	static int32 TotalCount;
 };

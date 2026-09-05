@@ -43,6 +43,14 @@ public:
 	/** Leave the front end and take control of the explorer. */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Menu") void StartPlaying();
 
+	/** Manual checkpoint operations shared by Slate and the packaged smoke. */
+	bool SaveProgress();
+	bool ContinueProgress();
+	bool IsProgressEnabled() const;
+	bool IsProgressAvailable() const;
+	bool HasSavedProgress() const;
+	FText GetProgressStatus() const;
+
 	/** Drop back to the front end without leaving the level. */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Menu") void ReturnToMainMenu();
 

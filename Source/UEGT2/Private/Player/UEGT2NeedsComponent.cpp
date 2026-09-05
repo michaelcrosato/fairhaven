@@ -27,6 +27,35 @@ void UUEGT2NeedsComponent::BeginPlay()
 }
 
 // ---------------------------------------------------------------------------
+bool UUEGT2NeedsComponent::IsValidProgress(const FUEGT2NPCNeeds& InNeeds,
+	const FUEGT2Purse& InPurse, EUEGT2NPCRole InTrade)
+{
+	for (float Value : { InNeeds.Energy, InNeeds.Fed, InNeeds.Relief, InNeeds.Company })
+	{
+		if (!FMath::IsFinite(Value) || Value < 0.0f || Value > 1.0f) { return false; }
+	}
+	// Keep the HUD's whole-coin conversion safely inside int32 as well.
+	return FMath::IsFinite(InPurse.Coins) && InPurse.Coins >= 0.0f && InPurse.Coins <= 1000000000.0f
+		&& static_cast<uint8>(InTrade) < static_cast<uint8>(EUEGT2NPCRole::Count);
+}
+
+bool UUEGT2NeedsComponent::RestoreProgress(const FUEGT2NPCNeeds& InNeeds,
+	const FUEGT2Purse& InPurse, EUEGT2NPCRole InTrade)
+{
+	if (!HasBegunPlay() || !IsValidProgress(InNeeds, InPurse, InTrade)) { return false; }
+	Needs = InNeeds;
+	Purse = InPurse;
+	Trade = InTrade;
+	Venue.Reset();
+	VenueName = FText::GetEmpty();
+	VenueActivity = EUEGT2Activity::Idle;
+	bConversing = false;
+	bWarnedBroke = false;
+	Activity = EUEGT2Activity::Idle;
+	OnActivityChanged.Broadcast(Activity, FText::GetEmpty());
+	return true;
+}
+
 EUEGT2Activity UUEGT2NeedsComponent::IdleActivity() const
 {
 	if (bConversing)

@@ -18,7 +18,13 @@ Run that exe directly rather than the one in the archive root — Windows
 Application Control blocks the launcher stub on some machines.
 
 You will land on the main menu, shown over a live view of the town. Choose
-**Play**.
+**New Visit** to start fresh, or **Continue** to restore your last checkpoint.
+When progress saving is disabled, the start button is **Play**.
+
+Pause with Escape and choose **Save Progress** before leaving. This is a manual
+checkpoint: quitting does not save automatically. Starting a new visit keeps
+the old checkpoint until you explicitly save the new one. Settings → Gameplay
+→ Save Progress turns saving and Continue off without deleting existing saves.
 
 ## Controls
 
@@ -58,7 +64,8 @@ Press **E** at any of these. Pressing it again, or walking away, stops.
 
 Costs and wages are per world hour and accrue for the time you actually spend.
 Taking work changes your trade until you take another job, and the wage with it.
-This state resets when you start a new session. Talking to
+Save Progress keeps your needs, coin and trade for Continue. New Visit resets
+them. Talking to
 anybody keeps you company while the conversation is open - which is why they
 stop to talk too. Ask them how they are off for coin and the answer is their
 real purse.
@@ -96,7 +103,8 @@ You start just off the town square, facing east toward the harbour.
 7. **Further south to Newhaven** — visit the civic square, the wharf and a
    shophouse street. Enter an office block or tower and try its stairs.
 
-There are 7 survey landmarks. Each shows a count when you use it.
+There are 11 survey landmarks. Each shows a count when you use it. Save Progress
+keeps these discoveries with the rest of your checkpoint.
 
 ## What to look at
 
@@ -220,10 +228,13 @@ farther away at higher levels, while fences keep their own distance.
 
 These are known. Reporting them again costs you time.
 
-- **No quests, inventory, combat or world-state saves.** Needs, paid work,
+- **No quests, inventory or combat.** Needs, paid work,
   conversation and following are playable. Talking interrupts an inhabitant's
   routine, and inviting them along changes where they go until they leave or
-  need something. Only settings persist across sessions.
+  need something. Manual checkpoints preserve the player's needs, purse, trade,
+  surveyed places, position and world calendar. They do not preserve individual
+  NPC state, followers, carried props, or changes to doors and lamps. Continue
+  resumes on foot with no activity in progress.
 - **Water is a stylised surface, not the Water plugin.** No waves, no buoyancy,
   no underwater post-process. Swimming works because there is a physics volume
   under the sea plane. The river is a generated ribbon following the valley.
@@ -251,7 +262,6 @@ These are known. Reporting them again costs you time.
   placement is a simple street-side rule with overlap rejection.
 - **No level streaming.** The whole 4.03 km square map is one level, loaded
   at once. Loading time and memory usage depend on the machine and build.
-- **Landmark discovery does not persist** between sessions.
 - **Ambient audio is generated and simple.** It is meant to prove the mix and
   the settings plumbing, not to be final.
 - **The asset showcase is opt-in.** A normal full content build excludes the

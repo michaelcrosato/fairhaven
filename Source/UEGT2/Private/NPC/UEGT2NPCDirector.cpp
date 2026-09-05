@@ -105,6 +105,43 @@ void UUEGT2NPCDirector::Deinitialize()
 	Super::Deinitialize();
 }
 
+bool UUEGT2NPCDirector::RestoreCalendar(int32 InDayIndex, float InHour, EUEGT2Weather InWeather)
+{
+	AUEGT2SkyController* WorldSky = AUEGT2SkyController::Get(GetWorld());
+	if (!WorldSky || InDayIndex < 0 || InDayIndex > 1000000 || !FMath::IsFinite(InHour)
+		|| InHour < 0.0f || InHour >= 24.0f
+		|| static_cast<uint8>(InWeather) >= static_cast<uint8>(EUEGT2Weather::Count))
+	{
+		return false;
+	}
+	// Settle only time already simulated before the discontinuity, at the old
+	// activities. The jump to a saved calendar is not an elapsed-time interval.
+	for (AUEGT2NPCActor* NPC : Population)
+	{
+		if (NPC) { AdvanceNeedsToNow(NPC); }
+	}
+	Sky = WorldSky;
+	DayIndex = InDayIndex;
+	Hour = PreviousHour = InHour;
+	Weather = PreviousWeather = InWeather;
+	Sky->SetTimeOfDay(InHour);
+	Sky->SetWeather(InWeather);
+	// Existing inhabitants resume their routines; no conversation or follower
+	// handles are part of a checkpoint. Their needs and purses stay session state.
+	Conversations.Reset();
+	for (AUEGT2NPCActor* NPC : Population)
+	{
+		if (NPC)
+		{
+			NPC->SetFollowTarget(nullptr);
+		}
+	}
+	if (bSnapped) { SnapEveryone(); }
+	// Before the first director tick, leave the normal all-BeginPlay snap pending.
+	LodCountdown = ScheduleCountdown = 0.0f;
+	return true;
+}
+
 void UUEGT2NPCDirector::RegisterNPC(AUEGT2NPCActor* NPC)
 {
 	if (NPC && !Population.Contains(NPC))

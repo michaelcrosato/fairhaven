@@ -69,6 +69,8 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|NPC") float GetHour() const { return Hour; }
 	UFUNCTION(BlueprintPure, Category = "UEGT2|NPC") EUEGT2Weather GetWeather() const { return Weather; }
 	UFUNCTION(BlueprintPure, Category = "UEGT2|NPC") int32 GetDayIndex() const { return DayIndex; }
+	/** Restore a checkpoint calendar without manufacturing elapsed life or midnight crossings. */
+	bool RestoreCalendar(int32 InDayIndex, float InHour, EUEGT2Weather InWeather);
 	FVector GetPlayerLocation() const { return PlayerLocation; }
 
 	/**

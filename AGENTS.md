@@ -13,6 +13,9 @@ explains how the project fits together; this file is the working contract.
 - C++ for durable runtime systems, Python for authoring content. No Blueprints
   and no binary UI assets: the whole project should stay diffable.
 - Keep it launchable after every substantial change.
+- New gameplay features need a stable entry in [Docs/Features.md](Docs/Features.md),
+  an independent maintainer off switch and a tested disabled path. Add a player
+  toggle when useful. Disabling must preserve saved data and baseline play.
 
 ## Standard commands
 

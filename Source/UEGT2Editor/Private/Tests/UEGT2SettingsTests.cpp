@@ -34,6 +34,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	Settings->SetShowSpeechBubbles(false);
 	Settings->SetShowAlmanac(false);
 	Settings->SetShowNeeds(false);
+	Settings->SetSaveProgressEnabled(false);
 	Settings->SetUseFahrenheit(true);
 	Settings->SetCrowdDensity(0.2f);
 	Settings->SetKeyOverride(TEXT("Jump"), EKeys::J);
@@ -58,6 +59,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("speech bubbles"), Settings->GetShowSpeechBubbles());
 	TestTrue(TEXT("almanac"), Settings->GetShowAlmanac());
 	TestTrue(TEXT("needs"), Settings->GetShowNeeds());
+	TestTrue(TEXT("progress saving"), Settings->GetSaveProgressEnabled());
 	TestFalse(TEXT("Fahrenheit"), Settings->GetUseFahrenheit());
 	TestEqual(TEXT("crowd density"), Settings->GetCrowdDensity(), 1.0f);
 	TestFalse(TEXT("key override removed"), Settings->GetKeyOverride(TEXT("Jump")).IsValid());

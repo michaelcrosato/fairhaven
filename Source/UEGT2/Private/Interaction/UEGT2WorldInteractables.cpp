@@ -2,6 +2,7 @@
 
 #include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "EngineUtils.h"
 #include "GameFramework/Pawn.h"
 #include "GameFramework/PlayerController.h"
 #include "UEGT2LogChannels.h"
@@ -157,6 +158,13 @@ void AUEGT2Pickup::OnInteract(AActor* Interactor)
 	UE_LOG(LogUEGT2Interaction, Log, TEXT("Picked up %s"), *GetName());
 }
 
+bool AUEGT2Pickup::ReleaseIfCarriedBy(AActor* Actor)
+{
+	if (!Actor || Carrier != Actor) { return false; }
+	Drop(false);
+	return true;
+}
+
 void AUEGT2Pickup::Drop(bool bThrow)
 {
 	AActor* Thrower = Carrier;
@@ -218,9 +226,6 @@ void AUEGT2Pickup::Tick(float DeltaSeconds)
 // ---------------------------------------------------------------------------
 // Landmark
 // ---------------------------------------------------------------------------
-int32 AUEGT2Landmark::DiscoveredCount = 0;
-int32 AUEGT2Landmark::TotalCount = 0;
-
 AUEGT2Landmark::AUEGT2Landmark()
 {
 	PromptText = LOCTEXT("Survey", "Survey");
@@ -229,17 +234,35 @@ AUEGT2Landmark::AUEGT2Landmark()
 	MeshComponent->SetMobility(EComponentMobility::Static);
 }
 
-void AUEGT2Landmark::BeginPlay()
+void AUEGT2Landmark::SetDiscovered(bool bDiscovered)
 {
-	Super::BeginPlay();
-	++TotalCount;
+	bUsed = bDiscovered;
 }
 
-void AUEGT2Landmark::EndPlay(const EEndPlayReason::Type Reason)
+int32 AUEGT2Landmark::GetDiscoveredCount(const UWorld* World)
 {
-	TotalCount = 0;
-	DiscoveredCount = 0;
-	Super::EndPlay(Reason);
+	int32 Count = 0;
+	if (World)
+	{
+		for (TActorIterator<AUEGT2Landmark> It(World); It; ++It)
+		{
+			if (!It->IsActorBeingDestroyed() && It->IsDiscovered()) { ++Count; }
+		}
+	}
+	return Count;
+}
+
+int32 AUEGT2Landmark::GetTotalCount(const UWorld* World)
+{
+	int32 Count = 0;
+	if (World)
+	{
+		for (TActorIterator<AUEGT2Landmark> It(World); It; ++It)
+		{
+			if (!It->IsActorBeingDestroyed()) { ++Count; }
+		}
+	}
+	return Count;
 }
 
 FText AUEGT2Landmark::GetInteractionPrompt(const AActor* Interactor) const
@@ -249,13 +272,14 @@ FText AUEGT2Landmark::GetInteractionPrompt(const AActor* Interactor) const
 
 void AUEGT2Landmark::OnInteract(AActor* Interactor)
 {
-	++DiscoveredCount;
+	const int32 DiscoveredCount = GetDiscoveredCount(GetWorld());
+	const int32 TotalCount = GetTotalCount(GetWorld());
 	const FText Message = FText::Format(
 		LOCTEXT("Discovered", "{0} surveyed  ({1} of {2})"),
 		LandmarkName, FText::AsNumber(DiscoveredCount), FText::AsNumber(TotalCount));
 	ShowHudMessage(Interactor, Message, 5.0f);
-	UE_LOG(LogUEGT2Interaction, Log, TEXT("Landmark surveyed: %s (%d/%d)"),
-		*LandmarkName.ToString(), DiscoveredCount, TotalCount);
+	UE_LOG(LogUEGT2Interaction, Log, TEXT("Landmark surveyed: %s [%s] (%d/%d)"),
+		*LandmarkName.ToString(), *PersistentId.ToString(), DiscoveredCount, TotalCount);
 }
 
 #undef LOCTEXT_NAMESPACE

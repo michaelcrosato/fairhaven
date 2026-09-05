@@ -106,6 +106,13 @@ public:
 	/** Talking to somebody is company, exactly as it is for them. */
 	void SetConversing(bool bTalking);
 
+	/** Exact durable state; validation never clamps a corrupt save into a valid one. */
+	static bool IsValidProgress(const FUEGT2NPCNeeds& InNeeds, const FUEGT2Purse& InPurse,
+		EUEGT2NPCRole InTrade);
+	/** Restore after BeginPlay, idle and unoccupied, without charging for offline time. */
+	bool RestoreProgress(const FUEGT2NPCNeeds& InNeeds, const FUEGT2Purse& InPurse,
+		EUEGT2NPCRole InTrade);
+
 	// ---- Dev mode ----------------------------------------------------------
 	void SetCoins(float Amount);
 	void SetNeedsSatisfied(bool bFull);

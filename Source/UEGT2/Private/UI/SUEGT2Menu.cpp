@@ -319,14 +319,27 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 	};
 
 	TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	const bool bProgress = WeakPC.IsValid() && WeakPC->IsProgressEnabled();
+	const bool bHasCheckpoint = bProgress && WeakPC->HasSavedProgress();
 
 	if (bMain)
 	{
-		AddButton(LOCTEXT("Play", "Play"), [WeakPC]() { if (WeakPC.IsValid()) { WeakPC->StartPlaying(); } });
+		if (bHasCheckpoint)
+		{
+			AddButton(LOCTEXT("Continue", "Continue"), [WeakPC]()
+				{ if (WeakPC.IsValid()) { WeakPC->ContinueProgress(); } });
+		}
+		AddButton(bProgress ? LOCTEXT("NewVisit", "New Visit") : LOCTEXT("Play", "Play"),
+			[WeakPC]() { if (WeakPC.IsValid()) { WeakPC->StartPlaying(); } });
 	}
 	else
 	{
 		AddButton(LOCTEXT("Resume", "Resume"), [WeakPC]() { if (WeakPC.IsValid()) { WeakPC->CloseMenu(); } });
+		if (bProgress)
+		{
+			AddButton(LOCTEXT("SaveProgress", "Save Progress"), [WeakPC]()
+				{ if (WeakPC.IsValid()) { WeakPC->SaveProgress(); } });
+		}
 	}
 
 	AddButton(LOCTEXT("Settings", "Settings"), [this]() { GoToPage(EUEGT2MenuPage::Settings); });
@@ -363,6 +376,25 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 		[
 			Buttons
+		]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0, 18, 0, 0)
+		[
+			SNew(STextBlock)
+			.Visibility(bProgress ? EVisibility::Visible : EVisibility::Collapsed)
+			.Text(bMain
+				? LOCTEXT("ProgressMainHint", "Continue from your last checkpoint, or start a fresh visit. A new visit replaces it only when you save.")
+				: LOCTEXT("ProgressPauseHint", "Save before leaving to keep this visit. Saving replaces your previous checkpoint."))
+			.Font(Font("Regular", 11))
+			.ColorAndOpacity(FSlateColor(Muted))
+			.AutoWrapText(true)
+		]
+		+ SVerticalBox::Slot().AutoHeight().Padding(0, 8, 0, 0)
+		[
+			SNew(STextBlock)
+			.Text_Lambda([WeakPC]() { return WeakPC.IsValid() ? WeakPC->GetProgressStatus() : FText::GetEmpty(); })
+			.Font(Font("Regular", 11))
+			.ColorAndOpacity(FSlateColor(Accent))
+			.AutoWrapText(true)
 		]
 	];
 }
@@ -752,6 +784,33 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 	{
 		return List;
 	}
+
+	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
+	[ Label(LOCTEXT("ProgressHeading", "PROGRESS"), 12, Accent, "Bold") ];
+	TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		SNew(SBox)
+		.IsEnabled_Lambda([WeakPC]() { return WeakPC.IsValid() && WeakPC->IsProgressAvailable(); })
+		[
+			Row(LOCTEXT("SaveProgressSetting", "Save Progress"), MakeToggle(
+				[S]() { return S->GetSaveProgressEnabled(); },
+				[this, S](bool bValue) { S->SetSaveProgressEnabled(bValue); ApplyAndSave(); }))
+		]
+	];
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 16)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([WeakPC]()
+		{
+			return WeakPC.IsValid() && WeakPC->IsProgressAvailable()
+				? LOCTEXT("SaveProgressSettingHint", "Enable checkpoints and Continue. Turning this off keeps your existing save.")
+				: LOCTEXT("SaveProgressUnavailable", "Progress saving is disabled for this session.");
+		})
+		.Font(Font("Regular", 11))
+		.ColorAndOpacity(FSlateColor(Muted))
+		.AutoWrapText(true)
+	];
 
 	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
 	[ Label(LOCTEXT("CameraHeading", "CAMERA & HUD"), 12, Accent, "Bold") ];

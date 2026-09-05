@@ -24,6 +24,12 @@ dockhand's rate. One function advances a life, and it does not know whether the
 life is yours. Run out of coin and the counter will not serve you; run out of
 sleep and it is in your legs.
 
+**Keep your visit.** Escape → Save Progress records your needs, coin, trade,
+surveyed landmarks, position and the world calendar. Choose Continue next time,
+or New Visit to start fresh. Saving is manual and can be turned off in Settings
+→ Gameplay. [Docs/Features.md](Docs/Features.md) records each added feature,
+its maintainer switch and its verification.
+
 ![The farmland west of town](Docs/Images/farmland.png)
 
 | | |
@@ -100,6 +106,7 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Test.ps1` | Run the automation tests |
 | `./Scripts/Package.ps1` | Package a playable build |
 | `./Scripts/Smoke-Packaged.ps1` | Check that real input moves the packaged player |
+| `./Scripts/Smoke-Progress.ps1` | Check save, Continue, New Visit and disabled saving in isolated packaged runs |
 | `./Scripts/Screenshot-Tour.ps1` | Render the registered viewpoints headlessly to PNG |
 | `./Scripts/Screenshot-Tour.ps1 -Menu` | Render the menu and settings screens |
 | `./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'` | Exercise food, washing, sitting and work through player interaction |

@@ -14,6 +14,7 @@
 #include "GameFramework/PlayerStart.h"
 #include "Interaction/UEGT2Amenity.h"
 #include "Interaction/UEGT2InteractableActor.h"
+#include "Interaction/UEGT2WorldInteractables.h"
 #include "Landscape.h"
 #include "Materials/Material.h"
 #include "NPC/UEGT2NPCActor.h"
@@ -159,6 +160,19 @@ bool FUEGT2WorldTest::RunTest(const FString& Parameters)
 	for (TActorIterator<AUEGT2InteractableActor> It(World); It; ++It) { ++Interactables; }
 	TestTrue(FString::Printf(TEXT("interactables placed (got %d)"), Interactables),
 		Interactables >= 20);
+
+	TSet<FName> LandmarkIds;
+	int32 Landmarks = 0;
+	for (TActorIterator<AUEGT2Landmark> It(World); It; ++It)
+	{
+		++Landmarks;
+		const FName Id = It->GetPersistentId();
+		TestFalse(FString::Printf(TEXT("landmark %s has a persistent ID"), *It->GetName()), Id.IsNone());
+		TestFalse(FString::Printf(TEXT("landmark ID %s is unique"), *Id.ToString()), LandmarkIds.Contains(Id));
+		TestFalse(FString::Printf(TEXT("landmark %s has a display name"), *Id.ToString()), It->GetLandmarkName().IsEmpty());
+		LandmarkIds.Add(Id);
+	}
+	TestEqual(TEXT("all authored survey landmarks are placed"), Landmarks, 11);
 
 	// The amenities, by kind. This is the check that catches the quiet failure
 	// the whole survey is prone to: a label prefix changes in the town stage,

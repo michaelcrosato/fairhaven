@@ -69,7 +69,11 @@ AUEGT2GameMode
 │   ├── SUEGT2Menu             front end, pause, settings (Slate, in code)
 │   └── SUEGT2Dialogue         conversation and follow controls
 ├── AUEGT2HUD                  prompts, needs, almanac, F3 overlay
-└── UUEGT2GameUserSettings     every persisted setting, one save file
+└── UUEGT2GameUserSettings     every persisted setting, one settings file
+
+Progress across map loads:
+  UUEGT2ProgressSubsystem     manual checkpoint IO and journey lifecycle
+  UUEGT2ProgressSave          versioned player/calendar/discovery snapshot
 
 World actors:
   AUEGT2SkyController          drives sun/sky/fog from one TimeOfDay value
@@ -99,6 +103,17 @@ UEGT2ContentTests         automation tests over the generated content
 ```
 
 ## Decisions worth knowing
+
+**Progress is an explicit snapshot.** Pause → Save Progress writes a small
+`USaveGame` payload; Continue validates its schema, content revision, map,
+values, landmark IDs and standing position before restoring the player. Two
+physical slots retain the previous valid checkpoint if a write fails. New Visit
+reloads the generated map and keeps the old checkpoint until the next manual
+save. Landmark counts are queried from the current world, and discoveries use
+explicit IDs authored in `gameplay.py`. The player's preference and an independent
+config gate both have to permit IO; standard diagnostics never access player
+checkpoints. [Features.md](Features.md) owns the feature switches, compatibility
+contract, exclusions and verification record.
 
 **Shared materials, with glass separate from the shell.** Opaque props,
 building shells and characters use `M_Prop`, driven by vertex colour. Window
@@ -396,7 +411,8 @@ or performance. A screenshot or short test does not cover a sustained hitch.
 - `F3` in game: frame time, position in metres, speed, focused interactable,
   quality levels.
 - `LogUEGT2`, `LogUEGT2Player`, `LogUEGT2Interaction`, `LogUEGT2Settings`,
-  `LogUEGT2UI`, `LogUEGT2World`, `LogUEGT2Diag`, `LogUEGT2Dev`, `LogUEGT2NPC` —
+  `LogUEGT2UI`, `LogUEGT2World`, `LogUEGT2Diag`, `LogUEGT2Dev`, `LogUEGT2NPC`,
+  `LogUEGT2Progress` —
   one channel per system.
 - **The population report.** Twelve seconds into any run, `LogUEGT2NPC` prints
   how many inhabitants exist, how many are outdoors, how many are walking, how

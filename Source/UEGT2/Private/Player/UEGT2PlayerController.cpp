@@ -14,6 +14,7 @@
 #include "Player/UEGT2Character.h"
 #include "Player/UEGT2InputConfig.h"
 #include "Player/UEGT2NeedsComponent.h"
+#include "Progress/UEGT2ProgressSubsystem.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "UEGT2LogChannels.h"
 #include "NPC/UEGT2NPCActor.h"
@@ -39,10 +40,12 @@ void AUEGT2PlayerController::BeginPlay()
 	}
 
 	EnsureMenuWidget();
+	UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
+	const bool bNewJourney = Progress && Progress->ConsumeNewJourneyRequest();
 
 	// Boot into the front end unless something explicitly skips it: smoke tests
 	// and screenshot tours want the world, not the menu.
-	if ((FParse::Param(FCommandLine::Get(), TEXT("UEGT2SkipMenu"))
+	if ((bNewJourney || FParse::Param(FCommandLine::Get(), TEXT("UEGT2SkipMenu"))
 			|| UUEGT2CaptureSubsystem::IsCaptureRequested()
 			|| UUEGT2CaptureSubsystem::IsWalkSmokeRequested())
 		&& !FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureMenu")))
@@ -57,6 +60,10 @@ void AUEGT2PlayerController::BeginPlay()
 
 void AUEGT2PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	if (UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld()))
+	{
+		Progress->SetJourneyActive(false);
+	}
 	SetPlayerConversing(false);
 	DialoguePartner.Reset();
 	if (DialogueWidget.IsValid() && GEngine && GEngine->GameViewport)
@@ -260,6 +267,12 @@ void AUEGT2PlayerController::ApplyMenuState(EUEGT2MenuState NewState)
 	}
 
 	MenuState = NewState;
+	if (UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld()))
+	{
+		// The front-end camera is presentation, never a checkpoint location.
+		if (NewState == EUEGT2MenuState::Main) { Progress->SetJourneyActive(false); }
+		else if (NewState == EUEGT2MenuState::None) { Progress->SetJourneyActive(true); }
+	}
 	EnsureMenuWidget();
 
 	const bool bOpen = (MenuState != EUEGT2MenuState::None);
@@ -341,12 +354,64 @@ void AUEGT2PlayerController::ShowSettingsPage(int32 TabIndex)
 
 void AUEGT2PlayerController::StartPlaying()
 {
+	if (UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
+		Progress && Progress->IsEnabled())
+	{
+		// A fresh visit gets a fresh generated world. Keep the old checkpoint
+		// until the player explicitly saves the new visit.
+		Progress->RequestNewJourney();
+		UGameplayStatics::OpenLevel(this, FName(*UGameplayStatics::GetCurrentLevelName(this, true)));
+		return;
+	}
 	UE_LOG(LogUEGT2UI, Log, TEXT("Starting play from the front end."));
 	CloseMenu();
 }
 
+bool AUEGT2PlayerController::SaveProgress()
+{
+	UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
+	return Progress && Progress->SaveProgress(this);
+}
+
+bool AUEGT2PlayerController::ContinueProgress()
+{
+	UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
+	if (!Progress || !Progress->LoadProgress(this)) { return false; }
+	CloseDialogue();
+	CloseMenu();
+	return true;
+}
+
+bool AUEGT2PlayerController::IsProgressEnabled() const
+{
+	const UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
+	return Progress && Progress->IsEnabled();
+}
+
+bool AUEGT2PlayerController::IsProgressAvailable() const
+{
+	const UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
+	return Progress && Progress->IsAvailable();
+}
+
+bool AUEGT2PlayerController::HasSavedProgress() const
+{
+	const UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
+	return Progress && Progress->HasSavedProgress();
+}
+
+FText AUEGT2PlayerController::GetProgressStatus() const
+{
+	const UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
+	return Progress ? Progress->GetStatusText() : FText::GetEmpty();
+}
+
 void AUEGT2PlayerController::ReturnToMainMenu()
 {
+	if (UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld()))
+	{
+		Progress->SetJourneyActive(false);
+	}
 	// Put the explorer back at the start so the front end reads cleanly.
 	if (APawn* CurrentPawn = GetPawn())
 	{
