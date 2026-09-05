@@ -109,6 +109,103 @@ HOUSE_WIDTH = {
 # and the pawn steps 45 cm without noticing.
 FLOOR_CLEAR = 12.0
 
+_HOUSE_ROAD_BOUNDS = None
+
+
+def _house_road_bounds():
+    """Generated plinth/porch footprint at the ground floor, in local XY.
+
+    The descending stairs extend far underground on flat frontage. Reserving
+    their full bounds would reject every porch house beside its own street.
+    This protects the building body; exposed lower stairs still need a real
+    terrain/collision check when verifying a walking route.
+    """
+    global _HOUSE_ROAD_BOUNDS
+    if _HOUSE_ROAD_BOUNDS is None:
+        from . import meshbuild
+        bounds = {}
+        for name, _path, factory, _material, _collision in meshbuild._catalog():
+            if name not in TOWN_HOUSES:
+                continue
+            mesh = factory()
+            floor = [v for v in mesh.vertices if abs(v[2] - gen_town.PLINTH_H) < 1e-6]
+            if not floor:
+                ctx.fail("town: %s has no generated ground-floor footprint" % name)
+            bounds[name] = (min(v[0] for v in floor), max(v[0] for v in floor),
+                            min(v[1] for v in floor), max(v[1] for v in floor))
+        _HOUSE_ROAD_BOUNDS = bounds
+    return _HOUSE_ROAD_BOUNDS
+
+
+def _segment_box_distance_sq(a, b, bounds):
+    """Exact XY distance from a closed segment to an axis-aligned rectangle."""
+    xmin, xmax, ymin, ymax = bounds
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    enter, leave = 0.0, 1.0
+    for origin, delta, low, high in ((a[0], dx, xmin, xmax), (a[1], dy, ymin, ymax)):
+        if abs(delta) < 1e-12:
+            if not low <= origin <= high:
+                enter, leave = 1.0, 0.0
+                break
+        else:
+            first, last = sorted(((low - origin) / delta, (high - origin) / delta))
+            enter, leave = max(enter, first), min(leave, last)
+    if enter <= leave:
+        return 0.0
+    distance = min(max(xmin-x, 0.0, x-xmax) ** 2 + max(ymin-y, 0.0, y-ymax) ** 2
+                   for x, y in (a, b))
+    length_sq = dx * dx + dy * dy
+    for x in (xmin, xmax):
+        for y in (ymin, ymax):
+            t = max(0.0, min(1.0, ((x-a[0])*dx + (y-a[1])*dy) / length_sq)) if length_sq else 0.0
+            distance = min(distance, (x-a[0]-t*dx) ** 2 + (y-a[1]-t*dy) ** 2)
+    return distance
+
+
+class _RoadClearance:
+    """Check scoped town placement candidates against authored carriageways."""
+    def __init__(self, world_data):
+        self.bounds = _house_road_bounds()
+        self.segments = []
+        for road in getattr(world_data, "roads", ()):
+            radius = road["width_uu"] * 0.5
+            if not math.isfinite(radius) or radius <= 0.0:
+                ctx.fail("town: invalid road width for %s" % road["name"])
+            for a, b in zip(road["points"], road["points"][1:]):
+                if not all(math.isfinite(value) for value in (*a[:2], *b[:2])):
+                    ctx.fail("town: non-finite road point for %s" % road["name"])
+                self.segments.append((a[:2], b[:2], radius, road["name"]))
+
+    def blocked_by(self, mesh_name, wx, wy, yaw):
+        if not all(math.isfinite(value) for value in (wx, wy, yaw)):
+            ctx.fail("town: non-finite building road-clearance transform")
+        bounds = self.bounds[mesh_name]
+        angle = math.radians(yaw)
+        c, s = math.cos(angle), math.sin(angle)
+        reach = math.hypot(max(abs(bounds[0]), abs(bounds[1])), max(abs(bounds[2]), abs(bounds[3])))
+        for a, b, radius, road_name in self.segments:
+            # Cheap world bounds rejection before rotating the nearby segment.
+            margin = reach + radius
+            if (wx < min(a[0], b[0])-margin or wx > max(a[0], b[0])+margin
+                    or wy < min(a[1], b[1])-margin or wy > max(a[1], b[1])+margin):
+                continue
+            local = [((p[0]-wx)*c + (p[1]-wy)*s, -(p[0]-wx)*s + (p[1]-wy)*c) for p in (a, b)]
+            if _segment_box_distance_sq(*local, bounds) <= radius * radius:
+                return road_name
+        return None
+
+    def blocked_circle(self, wx, wy, radius):
+        if not all(math.isfinite(value) for value in (wx, wy, radius)) or radius < 0.0:
+            ctx.fail("town: invalid prop road-clearance footprint")
+        for a, b, half_width, road_name in self.segments:
+            margin = radius + half_width
+            if (wx < min(a[0], b[0])-margin or wx > max(a[0], b[0])+margin
+                    or wy < min(a[1], b[1])-margin or wy > max(a[1], b[1])+margin):
+                continue
+            if _segment_box_distance_sq(a, b, (wx, wx, wy, wy)) <= margin * margin:
+                return road_name
+        return None
+
 
 # Outbuildings whose interior is named after their shell, so place() can attach
 # it without a call site knowing anything about it.
@@ -480,7 +577,8 @@ def _place_services(placer, rng):
     streets = [r for r in placer.wd.roads
                if r["is_street"] and not r.get("is_city")]
     if not streets:
-        return 0
+        ctx.fail("town: no street frontage for the required trades")
+    road_clearance = _RoadClearance(placer.wd)
 
     def near(street):
         return min(math.hypot(p[0] - cx, p[1] - cy) for p in street["points"])
@@ -502,6 +600,10 @@ def _place_services(placer, rng):
         while spots and placed < len(meshbuild.TOWN_SERVICES):
             wx, wy, yaw, _d = spots.pop(0)
             radius = BUILDING_FOOTPRINT.get(shell, 480.0)
+            road = road_clearance.blocked_by(shell, wx, wy, yaw)
+            if road is not None:
+                ctx.log("town: shop %s candidate (%.1f, %.1f) rejected across %s" % (venue, wx, wy, road))
+                continue
             low, high = placer.ground_range(wx, wy, yaw, width * 0.5, depth * 0.5)
             lift = high + FLOOR_CLEAR - gen_town.PLINTH_H - placer.wd.height_uu(wx, wy)
             built = placer.place(shell, wx, wy, yaw, "Shop %s %d" % (venue, placed),
@@ -519,6 +621,10 @@ def _place_services(placer, rng):
             placed += 1
             break
 
+    if placed != len(meshbuild.TOWN_SERVICES):
+        ctx.fail("town: only %d of %d required trades fit the available street frontage"
+                 % (placed, len(meshbuild.TOWN_SERVICES)))
+
     ctx.log("town: %d trades on the high street" % placed)
     return placed
 
@@ -529,6 +635,7 @@ def _place_streets(placer, rng):
     # this the town stage would line Newhaven avenues with thatched cottages.
     streets = [r for r in placer.wd.roads
                if r["is_street"] and not r.get("is_city")]
+    road_clearance = _RoadClearance(placer.wd)
     global _INTERIOR_SIZE
     if _INTERIOR_SIZE is None:
         _INTERIOR_SIZE = _interior_sizes()
@@ -562,6 +669,10 @@ def _place_streets(placer, rng):
                 # door reaches down to meet the ground.
                 hx = wx + jitter_x
                 hy = wy + jitter_y
+                road = road_clearance.blocked_by(name, hx, hy, yaw)
+                if road is not None:
+                    ctx.log("town: house candidate (%.1f, %.1f) rejected across %s" % (hx, hy, road))
+                    continue
                 _low, high = placer.ground_range(
                     hx, hy, yaw,
                     HOUSE_WIDTH.get(name, radius) * 0.5,
@@ -580,6 +691,10 @@ def _place_streets(placer, rng):
             side = 1.0 if index % 2 == 0 else -1.0
             nx, ny = -ty * side, tx * side
             wx, wy = x + nx * (half + 130.0), y + ny * (half + 130.0)
+            road = road_clearance.blocked_circle(wx, wy, 90.0)
+            if road is not None:
+                ctx.log("town: lamp candidate (%.1f, %.1f) rejected across %s" % (wx, wy, road))
+                continue
             if placer.place("SM_LampPost_A", wx, wy, 0.0, "Lamp %d" % lamps,
                             radius=90.0, z_offset=-10.0):
                 placer.place("SM_LampPost_Glow", wx, wy, 0.0, "LampGlow %d" % lamps,
@@ -722,11 +837,17 @@ def _place_plaza(placer, rng):
     # crates and planters below land in different spots than they did in 0.1 -
     # they are decoration, and the map is a build artifact either way.
 
+    road_clearance = _RoadClearance(placer.wd)
     for i in range(10):
         wx = cx + rng.uniform(-3800.0, 3800.0)
         wy = cy + rng.uniform(-3800.0, 3800.0)
         name = "SM_Crate_A" if rng.next() > 0.5 else "SM_Barrel_A"
-        placer.place(name, wx, wy, rng.uniform(0.0, 360.0), "Clutter %d" % i,
+        yaw = rng.uniform(0.0, 360.0)
+        road = road_clearance.blocked_circle(wx, wy, 110.0)
+        if road is not None:
+            ctx.log("town: clutter %d at (%.1f, %.1f) rejected across %s" % (i, wx, wy, road))
+            continue
+        placer.place(name, wx, wy, yaw, "Clutter %d" % i,
                      radius=110.0, z_offset=-6.0)
 
     for i in range(6):

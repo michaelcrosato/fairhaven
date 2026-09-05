@@ -462,18 +462,12 @@ def _place_pickups(world_data, meshes):
 # ---------------------------------------------------------------------------
 # Amenities
 # ---------------------------------------------------------------------------
-# How many of a kind are worth placing. A town has four privies and everybody
-# should be able to use all four; it has ninety office doorways and the
-# ninetieth adds nothing but an actor. The caps only ever bite on the sets that
-# come from a loop over a city block.
-# Caps apply to the city sets and never to the town ones. Fairhaven has four
-# privies and three food shops and every one of them should work; Newhaven has
-# a lobby with a washroom in it on every block, and the hundred and sixtieth
-# invisible prompt in a doorway adds nothing but an actor.
+# Repeated city venues and dock sections can share a smaller set of prompts.
+# Keep every named town workplace: sampling the mixed shop/farm/warehouse list
+# silently removed the optician and bank when the farm population grew.
 _AMENITY_CAPS = {
     "city_washrooms": 20,
     "city_food": 20,
-    "town_trade": 20,
     "city_trade": 16,
     "docks": 8,
     "city_work": 16,
@@ -578,7 +572,7 @@ def _place_amenities(world_data, start_xy):
             use_range=520.0)
 
     # --- somewhere to earn -------------------------------------------------
-    for point in _spread(survey.trade_venues, _AMENITY_CAPS["town_trade"]):
+    for point in survey.trade_venues:
         add("Work", point, venue=point[3], role_name=point[4], use_range=560.0)
 
     for point in _spread(survey.city_trade_venues, _AMENITY_CAPS["city_trade"]):

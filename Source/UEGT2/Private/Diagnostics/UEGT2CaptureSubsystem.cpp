@@ -218,6 +218,8 @@ const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
 			TEXT("Lower river bridge from the mountain-side approach"));
 		Add(TEXT("BridgeSide"), 22148.0f, 20064.0f, 35.0f, -73.74f, -36.0f,
 			TEXT("Lower river crossing, deck and both banks from the side"));
+		Add(TEXT("TownCrossroads"), 4000.0f, -5300.0f, 18.0f, 90.0f, -25.0f,
+			TEXT("High street junction where a shop formerly blocked the crossing road"));
 		return Result;
 	}();
 	return Points;

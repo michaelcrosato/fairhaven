@@ -669,3 +669,14 @@ Local evidence is under `Saved/Logs/Contract*`, with legacy Read run
 `6ab507dcc76d444db1a8de7c0e524169`. Contract images are under
 `Saved/Screenshots/ContractSmoke/987225c1b88c4acc9de98e14be651ea7/` (1080p) and
 `Saved/Screenshots/ContractSmoke/ae4f20f47fd14e60aa1ee755e94432e1/` (720p).
+
+**Subsequent walking audit.** `Scripts/Smoke-ContractWalk.ps1` now verifies a
+continuous 2.46 km board → harbour → lighthouse → mill → board journey with
+ordinary input and collision, both bridge crossings, live needs/calendar and
+the native 36 → 54 coin claim. It took 11m11s including startup and board
+handling, or 13.226 world hours. Food, relief and company reached zero before
+return; Energy ended at 0.1985. The reward remains a design choice, with the
+trip cost now measured. The audit also repaired blocked street junctions and
+missing optician/bank work amenities. See [Audit.md](Audit.md#ordinary-survey-circuit-and-street-junctions)
+for the route, limits and verification. The diagnostic is inactive without its
+flag and its wrapper isolates the run from player data.

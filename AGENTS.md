@@ -27,6 +27,8 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Build-Content.ps1 -Stages npc         # re-roll the population + road graph
 ./Scripts/Test.ps1                              # automation tests
 ./Scripts/Smoke-Crossing.ps1                    # ordinary walking across the lower bridge, both ways
+./Scripts/Smoke-ContractWalk.ps1                # complete survey circuit, live needs and clock
+python Tools/Python/test_street_clearance.py     # street frontage and junction clearance, no editor
 ./Scripts/Package.ps1                           # playable build
 ./Scripts/Screenshot-Tour.ps1                   # registered viewpoints -> PNG
 ./Scripts/Screenshot-Tour.ps1 -Menu             # menu + settings -> PNG

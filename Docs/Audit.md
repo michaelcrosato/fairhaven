@@ -371,3 +371,109 @@ frame was 25.9 ms; nine garbage collections peaked at 4.3 ms.
 Local evidence is under `Saved/Logs/Privy*` and `Saved/Screenshots/PrivyAfter`.
 The map remains generated and untracked; no catalog mesh or material changes
 are needed for this placement repair.
+
+## Ordinary survey circuit and street junctions
+
+The survey contract's earlier smoke positioned the player near each objective.
+An additional opt-in diagnostic now attempts the complete circuit using mapped
+forward and interaction keys, a live clock and the shared needs ledger. It
+allows one checked initial placement beside the board; subsequent waypoints
+only steer normal movement. It stops on blocked progress and checks the native
+board payment after returning. The wrapper owns a fresh user directory and
+retains all evidence. A held-storage regression confirms that nine flag forms,
+including malformed requests, cannot read or write any checkpoint.
+
+The initial 26-station candidate passed terrain and water checks but had not
+been checked against props. Its first packaged attempt stopped on the first
+leg, roughly 58 metres from the board, at `(4025,-2469)` cm. The planned segment
+follows TownStreet3 through the bank building, `Town Shop bank 11`, whose shell
+stands at `(3700,-2145)` cm. Building placement checked other prop reservations
+but did not protect crossing roads. Offline inspection also found house and
+tree intersections on later connecting segments; those remain to be resolved
+and walked. No full circuit completion or reward-balance claim is established
+by this first attempt.
+
+A repeat with a failure-only normal-capsule sweep identified `SM_House_A` at
+the bank's exact transform. The contact was a vertical wall immediately ahead
+of the stopped capsule. A fixed `TownCrossroads` capture also shows the shop
+closing the crossing street. The street/service building loops now test their
+rotated generated ground-floor, plinth and porch bounds against every authored
+road's width, including intersections, bends and endpoints. Underground lower
+stairs are excluded from this footprint; exposed stairs still require collision
+verification. Shop candidates retry in their existing order and the build fails
+unless all twelve trades fit. Houses consume their original random draws before
+rejecting a site.
+
+Seven initial road-clearance regressions pass, along with the existing eleven
+privy and fourteen pipeline tests and all 403 mesh checks. The first real
+town/gameplay/NPC rebuild moved the post office and bank to the opposite end of
+the same high street, kept all twelve shop signs and 189 amenities, and reduced
+street houses from 108 to 104. It placed 1,181 inhabitants (906 people and 275
+animals); the square washrooms and survey board remain at the same positions.
+The existing sixteen interactive lamps still matched their rebuilt source
+props. However, the freed bank plot admitted a new plain lamp directly on the
+crossing street. The next placement check also covers that lamp candidate and
+a preexisting plaza crate encroaching on TownStreet0.
+
+The final prop check reserves the existing conservative 90 cm lamp and 110 cm
+crate/barrel radii against roads, without changing generic placement behavior.
+Nine offline road tests pass; the current layout has 81 street lamps and nine
+plaza clutter props. The four washrooms and all sixteen retained interactive
+lamp sources remain unchanged. The full final rebuild took 50 seconds without
+project warnings.
+
+The new cooked `TownShops` test initially failed on the optician and bank: both
+shells existed, but their workplaces did not. Sampling twenty entries from the
+combined town shop/farm/warehouse list had silently omitted them. All town trade
+venues now receive their amenity, increasing the total from 189 to 195 and work
+venues from 74 to 80. City and repeated dock caps remain. The test matches each
+of the twelve shells to its own serialized doorstep amenity, including kind,
+role and name; a Newhaven venue cannot substitute for a missing town service.
+
+All 114 engine tests pass after the rebuild, including the new shop and
+persistence checks and the unchanged bridge and square-washroom invariants.
+The final route adds eight explicit stations around existing connector houses
+and trees, increasing planned distance by 30.37 metres to 2,459.52 metres.
+Offline checks cover the 136 cm strip and endpoint caps against terrain,
+rendered water and recorded prop geometry. Live actor/socket resolution may
+move a route point by at most 2 cm. Ordinary collision and interaction access
+remain the packaged run's responsibility. The revised package completed in
+1 minute 59 seconds without cook or material warnings. The crossroads images
+use the same `(4000,-5300,3337)` cm camera pose: the bank/post office no longer
+close the street, and the vacated junction is visibly open.
+
+The packaged circuit completed on route revision `F008-34-r2`, run
+`16384b9e7d5a4fa5b4a67f4840fe0471`. The player walked 2,461.08 horizontal metres
+(2,470.33 surface metres) in 11 minutes 10.53 seconds including startup and
+board handling. All three markers were surveyed through mapped input, both
+ramps and the bridge deck supported the player in each direction, and the
+native board claim paid exactly 36 → 54 coins. The largest route deviation was
+30.25 cm and the worst observed frame was 27.29 ms. The wrapper confirmed no
+checkpoint files in its isolated user directory.
+
+| Leg | Walking seconds | World hours | Horizontal metres |
+|---|---:|---:|---:|
+| Board → harbour | 109.41 | 2.188 | 415.05 |
+| Harbour → lighthouse | 187.28 | 3.746 | 710.75 |
+| Lighthouse → mill | 256.59 | 5.132 | 973.02 |
+| Mill → board | 107.51 | 2.150 | 362.26 |
+
+Every leg's needs and calendar matched the shared elapsed-time ledger. The
+complete run consumed 13.226 world hours; company, food and relief reached zero
+before return, with Energy at 0.1985 when claiming. Fatigue reduced ordinary
+walking speed near the end. This proves the route and transaction, not that
+its reward is balanced: eighteen coins equal two paid Courier world hours at
+the current rate, substantially less than this uninterrupted trip's duration.
+The player can stop for services and the contract has no deadline; this run
+deliberately measured the uninterrupted journey without buying or restoring
+needs. Local evidence is under `Saved/Logs/ContractWalk*` and
+`Saved/Screenshots/ContractWalk`.
+
+Final packaged regressions also pass: all six life activities were found by the
+real interaction probe and used, and the ordinary movement smoke covered
+23.02 metres. A ten-minute live fly soak completed 63 legs with no stalls; its
+worst frame was 42.2 ms and nine garbage collections peaked at 5.5 ms. The new
+wrapper's twelve simulated cases and two native argument probes pass under
+both PowerShell 7 and Windows PowerShell 5.1. Independent placement replay
+confirms all sixteen original interactive-lamp sources keep their positions
+and order without new overlaps. No generated asset changes are required.

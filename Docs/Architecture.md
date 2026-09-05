@@ -60,6 +60,14 @@ approaches and deck ends for the packaged walking check. This terrain-dependent
 mesh has a stable asset path outside the generic mesh catalog, so a `meshes`-only
 rebuild cannot replace it with an unfitted prop.
 
+Street houses and shops keep their generated ground-floor/plinth/porch bounds
+outside every authored road, including intersecting streets. Street lamps and
+scattered plaza crates/barrels also reserve their collision footprint against
+the roads. Required shops retry other frontage and fail the build if any of the
+twelve trades is missing. Each shop retains its food or work amenity; every
+town farm and warehouse retains its workplace. Repeated city venues and dock
+sections are sampled to a cap.
+
 Rebuild `town,gameplay,npc` together after changing town placements so player
 amenities and the population's baked activity anchors follow the new props.
 Gameplay keeps its existing interactive lamps and consumes coincident plain
@@ -489,11 +497,21 @@ Build C++ with `./Scripts/Build.ps1 -Target Both -DisableAdaptiveUnity`, rebuild
 the affected content stages, and run `./Scripts/Test.ps1 -SkipBuild`. Package
 the result and use `./Scripts/Smoke-Packaged.ps1` for movement,
 `./Scripts/Smoke-Crossing.ps1` for an ordinary walk over the lower bridge in both
-directions,
+directions, `./Scripts/Smoke-ContractWalk.ps1` for the complete survey circuit,
 `./Scripts/Screenshot-Tour.ps1` for appearance, and
 `./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'` for amenity use.
 Run `./Scripts/Fly-Soak.ps1 -Minutes 10` after changes to movement, population
 or performance. A screenshot or short test does not cover a sustained hitch.
+
+The survey walking diagnostic starts beside the board with one checked setup
+teleport, then uses mapped forward and interact keys along an explicit route.
+Normal collision, fatigue, needs and the day/night cycle remain active. It
+checks both bridge crossings, all three marker uses and the native board claim;
+blocked progress fails at the first segment. Its wrapper creates a fresh
+packaged `Saved/ContractWalkSmoke/<GUID>` user directory before launch and
+retains it and the logs. Any form of the diagnostic flag disables checkpoint IO,
+including malformed requests that the native diagnostic rejects. Without the
+flag the subsystem is not created. Allow up to 30 minutes for its watchdog.
 
 ## Diagnostics
 
