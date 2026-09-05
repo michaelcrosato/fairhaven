@@ -4,9 +4,9 @@ Placement is driven by world_features.json plus the actors the town stage
 already placed, so moving the town or re-rolling the seed moves everything with
 it. Nothing here hard-codes a coordinate that is not derived from the world.
 
-The 0.1 interaction set is deliberately small - signs, doors, lamps, carryable
-props and survey landmarks - because it exists to exercise movement, reach and
-physics, not to be a gameplay system.
+Signs, doors, lamps, carryable props and survey landmarks exercise movement,
+reach and physics. The town survey contract adds one objective at a generated
+signpost; its discoveries, payment and interface remain native runtime code.
 
 The amenities are the exception, and they are not decoration. The player has
 the same four needs and the same purse as every inhabitant, and an amenity is
@@ -191,6 +191,51 @@ def _place_signs(world_data, meshes):
 
     ctx.log("gameplay: %d signposts" % placed)
     return placed
+
+
+def _place_survey_contract(world, world_data, meshes):
+    """One clear sign beside the square; reruns choose the same first free spot."""
+    marker = meshes.get("SM_SignPost_A")
+    if marker is None:
+        ctx.fail("gameplay: survey contract requires SM_SignPost_A")
+    cls = _load_class("UEGT2SurveyContract")
+    cx, cy = world_data.town["center"]
+    # The plaza's outer stalls are on a 2150 cm ring. Start beyond that ring,
+    # toward the player's arrival street, and try fixed nearby alternatives.
+    # Collision queries include instanced fences/trees and invisible amenities,
+    # rather than treating a whole scatter field's bounds as one obstacle.
+    candidates = ((-1200.0, -2800.0), (-1800.0, -2800.0), (-600.0, -2800.0),
+                  (0.0, -2800.0), (600.0, -2800.0), (-2400.0, -2800.0),
+                  (-2800.0, -1800.0), (-2800.0, -1200.0), (-2800.0, -600.0))
+    # The NPC stage follows gameplay in an all-stage build, but old inhabitants
+    # still exist in a gameplay-only rebuild. They must not change placement.
+    ignored = [actor for actor in _subsystem().get_all_level_actors()
+               if actor.get_actor_label().startswith(npc_mod.LABEL_PREFIX)]
+    object_types = [unreal.ObjectTypeQuery.ECC_WORLD_STATIC,
+                    unreal.ObjectTypeQuery.ECC_WORLD_DYNAMIC,
+                    unreal.ObjectTypeQuery.ECC_PHYSICS_BODY]
+    for dx, dy in candidates:
+        wx, wy = cx + dx, cy + dy
+        wz = world_data.height_uu(wx, wy)
+        heights = [world_data.height_uu(wx + sx, wy + sy)
+                   for sx in (-260.0, 0.0, 260.0)
+                   for sy in (-260.0, 0.0, 260.0)]
+        if not all(math.isfinite(h) for h in heights) or max(heights) - min(heights) > 15.0:
+            continue
+        occupied = unreal.SystemLibrary.box_overlap_actors(
+            world, unreal.Vector(wx, wy, wz + 150.0),
+            unreal.Vector(280.0, 280.0, 130.0), object_types, None, ignored)
+        if occupied:
+            continue
+        # The broad faces lie in local Y/Z. Face the arrival street (-X).
+        actor = _spawn_interactable(cls, marker, wx, wy, wz - 10.0, 0.0,
+                                    "Town Survey Contract", unreal.ComponentMobility.STATIC)
+        if actor is None:
+            ctx.fail("gameplay: could not spawn town survey contract")
+        actor.set_use_range(340.0)
+        ctx.log("gameplay: town survey contract at (%.0f, %.0f, %.0f), clear approach" % (wx, wy, wz - 10.0))
+        return 1
+    ctx.fail("gameplay: no clear town survey contract position near the square")
 
 
 def _place_doors(world_data, meshes):
@@ -556,6 +601,7 @@ def build(world, world_data, meshes=None):
     total += _place_lamps(world_data, meshes)
     total += _place_pickups(world_data, meshes)
     total += _place_amenities(world_data, (start_location.x, start_location.y))
+    total += _place_survey_contract(world, world_data, meshes)
 
     settings = world.get_world_settings()
     ctx.set_prop(settings, "kill_z", -20000.0)

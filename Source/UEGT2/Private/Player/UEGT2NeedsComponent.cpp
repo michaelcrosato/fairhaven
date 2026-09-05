@@ -35,8 +35,14 @@ bool UUEGT2NeedsComponent::IsValidProgress(const FUEGT2NPCNeeds& InNeeds,
 		if (!FMath::IsFinite(Value) || Value < 0.0f || Value > 1.0f) { return false; }
 	}
 	// Keep the HUD's whole-coin conversion safely inside int32 as well.
-	return FMath::IsFinite(InPurse.Coins) && InPurse.Coins >= 0.0f && InPurse.Coins <= 1000000000.0f
+	return FMath::IsFinite(InPurse.Coins) && InPurse.Coins >= 0.0f && InPurse.Coins <= FUEGT2Purse::MaxCoins
 		&& static_cast<uint8>(InTrade) < static_cast<uint8>(EUEGT2NPCRole::Count);
+}
+
+bool UUEGT2NeedsComponent::TryCredit(float Amount)
+{
+	return HasBegunPlay() && IsValid(GetOwner()) && !GetOwner()->IsActorBeingDestroyed()
+		&& IsValidProgress(Needs, Purse, Trade) && UEGT2TryCredit(Amount, Purse);
 }
 
 bool UUEGT2NeedsComponent::RestoreProgress(const FUEGT2NPCNeeds& InNeeds,

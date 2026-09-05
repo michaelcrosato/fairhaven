@@ -70,7 +70,8 @@ AUEGT2GameMode
 │   ├── SUEGT2Dialogue         conversation and follow controls
 │   ├── SUEGT2SurveyJournal    paused discovery roster and tracking controls
 │   ├── SUEGT2RestPanel        chosen wake time, duration and date preview
-│   └── SUEGT2ServicesGuide    nearest amenities, real rates and tracking controls
+│   ├── SUEGT2ServicesGuide    nearest amenities, real rates and tracking controls
+│   └── SUEGT2SurveyContract   three-place checklist and one-time payment at a sign
 ├── AUEGT2HUD                  prompts, needs, almanac, F3 overlay
 └── UUEGT2GameUserSettings     every persisted setting, one settings file
 
@@ -91,6 +92,8 @@ World actors:
   UUEGT2RestSubsystem          bed eligibility and explicit skipped life; no tick
   UUEGT2AutosaveSubsystem      optional active-play interval and save eligibility
   UUEGT2ServicesSubsystem      explicit nearest-amenity scan and weak direction target
+  AUEGT2SurveyContract         generated signpost opening a paused contract page
+  UUEGT2SurveyContractSubsystem fixed three-place contract and durable paid state
 ```
 
 **The inhabitants** get their own document: [NPCs.md](NPCs.md). The organising
@@ -152,6 +155,20 @@ per-frame search. A successful service selection clears journal tracking; a
 successful landmark selection clears service tracking. Failed selections leave
 the other owner's target alone. Both use one Canvas direction panel and the same
 horizontal bearing calculation. Neither target is checkpointed.
+
+**The town survey contract is one fixed objective.** Three existing landmark
+IDs supply its checklist. A generated signpost owns access to the paused page;
+claiming revalidates its nearby player, unique discovered markers and purse.
+The reward uses two Courier Errand hours from the existing wage table, credited
+without advancing time, needs or trade. One paid flag is stored even when the
+feature is disabled, alongside the checkpoint's purse and discoveries. Loading
+replaces both; it never calls the reward path. There is no ticking quest manager.
+
+Schema-1 saves used Unreal's default delta serialization and usually omitted the
+version fields. `ProgressSave::Serialize` supplies the old defaults before loading
+and writes every property for new checkpoints, including explicit versions.
+Decode upgrades schema 1 to 2 with unpaid state; unknown schemas still fail
+validation. An actual old packaged checkpoint is retained as a text fixture.
 
 **Shared materials, with glass separate from the shell.** Opaque props,
 building shells and characters use `M_Prop`, driven by vertex colour. Window
@@ -292,6 +309,10 @@ places invisible interaction volumes for food, washing, rest and work. Props
 keep their static collision while `AUEGT2Amenity` handles interaction. The
 player's free bed and larder are currently use points beside their lodgings'
 doorway, rather than furniture animations inside the house.
+
+One-off credits also belong to this ledger: `UEGT2TryCredit` validates a finite
+amount and bounded purse before committing it. The contract uses the needs
+component's narrow wrapper, without the dev balance setter or fake elapsed time.
 
 `UUEGT2NPCDirector` integrates elapsed tick time at the current world-hour rate
 and records when each inhabitant's ledger was last advanced. Schedule slices

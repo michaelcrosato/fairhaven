@@ -8,6 +8,7 @@
 
 class AUEGT2NPCActor;
 class AUEGT2Amenity;
+class AUEGT2SurveyContract;
 class SUEGT2Dialogue;
 class SUEGT2Menu;
 class UUEGT2InputConfig;
@@ -74,6 +75,12 @@ public:
 	bool IsServicesGuideOpen() const;
 	bool IsServicesEnabled() const;
 	bool IsServicesAvailable() const;
+
+	/** One survey payment, available only at its generated signpost. */
+	bool OpenSurveyContract(AUEGT2SurveyContract* Board);
+	bool IsSurveyContractOpen() const;
+	AUEGT2SurveyContract* GetSurveyContractBoard() const;
+	bool IsSurveyContractAvailable() const;
 
 	/** Chosen wake times are offered only at a bed during a visit. */
 	bool OpenRestPanel(AUEGT2Amenity* Bed);
@@ -154,6 +161,7 @@ private:
 	TSharedPtr<SUEGT2Menu> MenuWidget;
 	TSharedPtr<SUEGT2Dialogue> DialogueWidget;
 	TWeakObjectPtr<AUEGT2NPCActor> DialoguePartner;
+	TWeakObjectPtr<AUEGT2SurveyContract> SurveyContractBoard;
 	EUEGT2MenuState MenuState = EUEGT2MenuState::None;
 	bool bDiagnosticsVisible = false;
 	bool bPawnActionsBound = false;

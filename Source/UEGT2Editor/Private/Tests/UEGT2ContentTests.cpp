@@ -8,6 +8,10 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Camera/CameraComponent.h"
+#include "Contracts/UEGT2SurveyContract.h"
+#include "Contracts/UEGT2SurveyContractSubsystem.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -19,6 +23,7 @@
 #include "Materials/Material.h"
 #include "NPC/UEGT2NPCActor.h"
 #include "NPC/UEGT2RouteNetwork.h"
+#include "Player/UEGT2Character.h"
 #include "Editor.h"
 #include "StaticMeshResources.h"
 #include "Tests/AutomationEditorCommon.h"
@@ -209,6 +214,89 @@ bool FUEGT2WorldTest::RunTest(const FString& Parameters)
 		TEXT("world: %d landscape, %d starts, %d scatter fields, %d instances, %d interactables"),
 		Landscapes, PlayerStarts, ScatterFields, Instances, Interactables));
 	AddInfo(FString::Printf(TEXT("amenities: %s"), *Amenities));
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2SurveyContractContentTest,
+	"UEGT2.Content.SurveyContract",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2SurveyContractContentTest::RunTest(const FString& Parameters)
+{
+	FAutomationEditorCommonUtils::LoadMap(UEGT2Tests::MapPath);
+	UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
+	if (!TestNotNull(TEXT("editor world exists"), World)) { return false; }
+
+	AUEGT2SurveyContract* Board = nullptr;
+	int32 Boards = 0;
+	for (TActorIterator<AUEGT2SurveyContract> It(World); It; ++It) { Board = *It; ++Boards; }
+	TestEqual(TEXT("exactly one generated town survey contract"), Boards, 1);
+	if (!TestNotNull(TEXT("contract sign exists"), Board)) { return false; }
+	TestEqual(TEXT("contract belongs to the gameplay stage"), Board->GetActorLabel(), FString(TEXT("Play Town Survey Contract")));
+	const UStaticMeshComponent* BoardMesh = Board->GetMeshComponent();
+	if (TestNotNull(TEXT("contract has a mesh component"), BoardMesh))
+	{
+		const UStaticMesh* Mesh = BoardMesh->GetStaticMesh();
+		if (TestNotNull(TEXT("contract has its generated sign mesh"), Mesh))
+		{
+			TestEqual(TEXT("contract reuses the signpost catalog asset"), Mesh->GetName(), FString(TEXT("SM_SignPost_A")));
+		}
+		TestEqual(TEXT("contract sign remains query only"), BoardMesh->GetCollisionEnabled(), ECollisionEnabled::QueryOnly);
+		TestEqual(TEXT("the real probe can find the contract"), BoardMesh->GetCollisionResponseToChannel(ECC_Visibility), ECR_Block);
+		TestEqual(TEXT("contract sign does not block players"), BoardMesh->GetCollisionResponseToChannel(ECC_Pawn), ECR_Ignore);
+	}
+
+	AUEGT2Landmark* Square = nullptr;
+	TMap<FName, int32> Counts;
+	for (TActorIterator<AUEGT2Landmark> It(World); It; ++It)
+	{
+		++Counts.FindOrAdd(It->GetPersistentId());
+		if (It->GetPersistentId() == TEXT("fairhaven_square")) { Square = *It; }
+	}
+	for (FName Id : UUEGT2SurveyContractSubsystem::RequiredLandmarkIds())
+	{
+		TestEqual(FString::Printf(TEXT("contract destination %s resolves uniquely"), *Id.ToString()), Counts.FindRef(Id), 1);
+	}
+	if (TestNotNull(TEXT("Fairhaven Square marker exists"), Square))
+	{
+		TestTrue(TEXT("contract stands near Fairhaven Square"), FVector::Dist2D(Board->GetActorLocation(), Square->GetActorLocation()) < 6000.0);
+		TestTrue(TEXT("contract stays clear of the square's discovery marker"), FVector::Dist2D(Board->GetActorLocation(), Square->GetActorLocation()) > 600.0);
+	}
+
+	FCollisionQueryParams GroundParams(SCENE_QUERY_STAT(ContractGround), true, Board);
+	FCollisionObjectQueryParams StaticObjects(ECC_WorldStatic);
+	const FVector BoardLocation = Board->GetActorLocation();
+	FHitResult Ground;
+	if (TestTrue(TEXT("contract sign is terrain grounded"), World->LineTraceSingleByObjectType(Ground,
+		BoardLocation + FVector(0.0, 0.0, 120.0), BoardLocation - FVector(0.0, 0.0, 120.0), StaticObjects, GroundParams)))
+	{
+		TestTrue(TEXT("sign base follows sampled terrain"), FMath::Abs(Ground.ImpactPoint.Z - (BoardLocation.Z + 10.0)) < 20.0);
+	}
+
+	const AUEGT2Character* DefaultPlayer = GetDefault<AUEGT2Character>();
+	const UCapsuleComponent* Capsule = DefaultPlayer->GetCapsuleComponent();
+	const float Radius = Capsule->GetUnscaledCapsuleRadius();
+	const float HalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
+	FCollisionQueryParams ProbeParams(SCENE_QUERY_STAT(ContractProbe), true);
+	// NPCs deliberately answer Visibility but never block a player. Their bake
+	// positions must not make a static sign's content check population dependent.
+	for (TActorIterator<AUEGT2NPCActor> It(World); It; ++It) { ProbeParams.AddIgnoredActor(*It); }
+	for (float Side : { -1.0f, 1.0f })
+	{
+		const FVector ApproachXY = BoardLocation + Board->GetActorForwardVector() * (Side * 200.0f);
+		FHitResult Footing;
+		if (!TestTrue(TEXT("each broad face has ground to stand on"), World->LineTraceSingleByObjectType(Footing,
+			ApproachXY + FVector(0.0, 0.0, 120.0), ApproachXY - FVector(0.0, 0.0, 120.0), StaticObjects, GroundParams))) { continue; }
+		const FVector Stand = Footing.ImpactPoint + FVector(0.0, 0.0, HalfHeight + 3.0f);
+		TestTrue(TEXT("standing approach is within the authored use range"), FVector::Dist(Stand, BoardLocation) < Board->GetUseRange());
+		TestFalse(TEXT("a real standing capsule fits at each sign face"), World->OverlapBlockingTestByChannel(
+			Stand, FQuat::Identity, ECC_Pawn, FCollisionShape::MakeCapsule(Radius, HalfHeight), GroundParams));
+		FHitResult Probe;
+		const FVector Eye = Stand + FVector(0.0, 0.0, DefaultPlayer->GetCamera()->GetRelativeLocation().Z);
+		const bool bHit = World->LineTraceSingleByChannel(Probe, Eye, Board->GetInteractionPoint(), ECC_Visibility, ProbeParams);
+		TestTrue(TEXT("each clear approach probes the contract instead of a neighbouring amenity"), bHit && Probe.GetActor() == Board);
+	}
 	return true;
 }
 

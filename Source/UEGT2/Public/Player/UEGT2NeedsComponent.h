@@ -112,6 +112,8 @@ public:
 	/** Restore after BeginPlay, idle and unoccupied, without charging for offline time. */
 	bool RestoreProgress(const FUEGT2NPCNeeds& InNeeds, const FUEGT2Purse& InPurse,
 		EUEGT2NPCRole InTrade);
+	/** One-off shared-ledger payment. No needs, activity, trade or delegate changes. */
+	bool TryCredit(float Amount);
 
 	// ---- Dev mode ----------------------------------------------------------
 	void SetCoins(float Amount);

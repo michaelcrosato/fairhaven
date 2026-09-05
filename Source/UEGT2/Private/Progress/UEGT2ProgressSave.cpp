@@ -1,5 +1,6 @@
 #include "Progress/UEGT2ProgressSave.h"
 
+#include "Contracts/UEGT2SurveyContractSubsystem.h"
 #include "Player/UEGT2NeedsComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/Crc.h"
@@ -11,6 +12,23 @@ namespace UEGT2ProgressEncoding
 	constexpr uint32 Magic = 0x50474846; // FHGP, little-endian Win64
 	constexpr uint32 Version = 1;
 	constexpr int32 HeaderBytes = 4 * sizeof(uint32);
+}
+
+void UUEGT2ProgressSave::Serialize(FArchive& Ar)
+{
+	// Schema 1 used UE's default delta serialization, so a real old checkpoint
+	// usually has no SchemaVersion tag. NewObject's current default cannot tell
+	// us which format was written. Missing fields must start at the legacy values.
+	if (Ar.IsLoading())
+	{
+		SchemaVersion = 1;
+		ContentRevision = 1;
+		bTownSurveyContractPaid = false;
+	}
+	const bool bPreviousNoDelta = Ar.ArNoDelta;
+	if (Ar.IsSaving()) { Ar.ArNoDelta = true; }
+	Super::Serialize(Ar);
+	Ar.ArNoDelta = bPreviousNoDelta;
 }
 
 bool UUEGT2ProgressSave::Encode(TArray<uint8>& OutBytes)
@@ -48,7 +66,15 @@ UUEGT2ProgressSave* UUEGT2ProgressSave::Decode(const TArray<uint8>& Bytes, FText
 	TArray<uint8> Payload;
 	Payload.Append(Bytes.GetData() + HeaderBytes, PayloadBytes);
 	UUEGT2ProgressSave* Save = Cast<UUEGT2ProgressSave>(UGameplayStatics::LoadGameFromMemory(Payload));
-	if (Save) { OutReason = FText::GetEmpty(); }
+	if (Save)
+	{
+		if (Save->SchemaVersion == 1)
+		{
+			Save->bTownSurveyContractPaid = false;
+			Save->SchemaVersion = CurrentSchemaVersion;
+		}
+		OutReason = FText::GetEmpty();
+	}
 	return Save;
 }
 
@@ -86,6 +112,17 @@ bool UUEGT2ProgressSave::Validate(const FString& ExpectedMap,
 			return false;
 		}
 		Seen.Add(Id);
+	}
+	if (bTownSurveyContractPaid)
+	{
+		for (FName Id : UUEGT2SurveyContractSubsystem::RequiredLandmarkIds())
+		{
+			if (!Seen.Contains(Id))
+			{
+				OutReason = LOCTEXT("InvalidContract", "The paid survey contract is missing its surveyed places.");
+				return false;
+			}
+		}
 	}
 	OutReason = FText::GetEmpty();
 	return true;

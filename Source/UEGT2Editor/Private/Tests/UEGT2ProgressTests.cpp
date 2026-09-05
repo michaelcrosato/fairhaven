@@ -3,6 +3,8 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "Components/StaticMeshComponent.h"
+#include "Contracts/UEGT2SurveyContractSubsystem.h"
+#include "Fixtures/ProgressSchema1.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/LocalPlayer.h"
@@ -17,6 +19,8 @@
 #include "Interaction/UEGT2WorldInteractables.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
+#include "Misc/Base64.h"
+#include "Misc/Paths.h"
 #include "Misc/ScopeExit.h"
 #include "NPC/UEGT2NPCActor.h"
 #include "NPC/UEGT2NPCDirector.h"
@@ -449,6 +453,9 @@ bool FUEGT2ProgressDisabledTest::RunTest(const FString& Parameters)
 	}
 	for (const TCHAR* Unsafe : { TEXT("-UEGT2ProgressSlot=Fairhaven_Journey"),
 		TEXT("-UEGT2ProgressSlot"), TEXT("-UEGT2ProgressSmoke"),
+		TEXT("-UEGT2ContractSmoke"), TEXT("-UEGT2ContractSlot"),
+		TEXT("-UEGT2ContractSmoke=Write"), TEXT("-UEGT2ContractSlot=Fairhaven_Journey"),
+		TEXT("-UEGT2ContractSmoke=Write -UEGT2ContractSlot=UEGT2_ContractSmoke_bad"),
 		TEXT("-UEGT2ProgressSlot="), TEXT("-UEGT2ProgressSmoke="),
 		TEXT("-UEGT2ProgressSmoke=\"\" -UEGT2ProgressSlot=\"\""),
 		TEXT("-UEGT2ProgressSmoke=Write -UEGT2ProgressSlot=Fairhaven_Journey"),
@@ -541,6 +548,144 @@ bool FUEGT2ProgressLifecycleTest::RunTest(const FString& Parameters)
 	Sim.Sky->SetTimeOfDay(23.9f); Sim.Director->Tick(0.0f);
 	Sim.Sky->SetTimeOfDay(0.1f); Sim.Director->Tick(0.0f);
 	TestEqual(TEXT("real subsequent midnight still advances day"), Sim.Director->GetDayIndex(), 4);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2ProgressSchemaMigrationTest, "UEGT2.Progress.LegacySchemaMigration",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2ProgressSchemaMigrationTest::RunTest(const FString& Parameters)
+{
+	TArray<uint8> Bytes;
+	TestTrue(TEXT("genuine old packaged bytes decode from text"), FBase64::Decode(UEGT2ProgressFixtures::Schema1Base64, Bytes));
+	TestEqual(TEXT("unmodified old envelope size"), Bytes.Num(), 3088);
+	FText Reason;
+	TStrongObjectPtr<UUEGT2ProgressSave> Legacy(UUEGT2ProgressSave::Decode(Bytes, Reason));
+	if (!TestTrue(TEXT("actual absent-version schema-1 payload migrates"), Legacy.IsValid())) { return false; }
+	const TSet<FName> Known = { TEXT("fairhaven_square"), TEXT("fairhaven_harbour"), TEXT("fairhaven_light"), TEXT("mill_rise") };
+	TestEqual(TEXT("legacy is upgraded in memory"), Legacy->SchemaVersion, UUEGT2ProgressSave::CurrentSchemaVersion);
+	TestTrue(TEXT("same content and landmark identities remain compatible"), Legacy->Validate(TEXT("/Game/Maps/L_Fairhaven"), Known, Reason));
+	TestFalse(TEXT("legacy contract starts unpaid"), Legacy->bTownSurveyContractPaid);
+	TestEqual(TEXT("legacy fractional purse"), Legacy->Purse.Coins, 137.625f);
+	TestEqual(TEXT("legacy energy"), Legacy->Needs.Energy, 0.73f);
+	TestEqual(TEXT("legacy fed"), Legacy->Needs.Fed, 0.42f);
+	TestEqual(TEXT("legacy relief"), Legacy->Needs.Relief, 0.61f);
+	TestEqual(TEXT("legacy company"), Legacy->Needs.Company, 0.28f);
+	TestEqual(TEXT("legacy trade"), Legacy->Trade, EUEGT2NPCRole::Smith);
+	TestEqual(TEXT("legacy day"), Legacy->DayIndex, 7);
+	TestEqual(TEXT("legacy hour"), Legacy->Hour, 13.25f);
+	TestEqual(TEXT("legacy weather"), Legacy->Weather, EUEGT2Weather::Cloudy);
+	TestEqual(TEXT("legacy discovery count"), Legacy->DiscoveredLandmarks.Num(), 1);
+	TestTrue(TEXT("legacy surveyed square"), Legacy->DiscoveredLandmarks.Contains(TEXT("fairhaven_square")));
+	Legacy->bTownSurveyContractPaid = true;
+	TestFalse(TEXT("payment requires discoveries in the same checkpoint"), Legacy->Validate(Legacy->MapPackageName, Known, Reason));
+	for (FName Id : UUEGT2SurveyContractSubsystem::RequiredLandmarkIds()) { Legacy->DiscoveredLandmarks.Add(Id); }
+	TestTrue(TEXT("paid schema-2 state is valid"), Legacy->Validate(Legacy->MapPackageName, Known, Reason));
+	TestTrue(TEXT("new payload encodes"), Legacy->Encode(Bytes));
+	TStrongObjectPtr<UUEGT2ProgressSave> Current(UUEGT2ProgressSave::Decode(Bytes, Reason));
+	if (!TestTrue(TEXT("schema-2 payload decodes"), Current.IsValid())) { return false; }
+	TestTrue(TEXT("explicit schema prevents mistakenly migrating current paid data"), Current->bTownSurveyContractPaid);
+	TestEqual(TEXT("roundtrip schema"), Current->SchemaVersion, UUEGT2ProgressSave::CurrentSchemaVersion);
+	for (int32 Unknown : { 0, -1, UUEGT2ProgressSave::CurrentSchemaVersion + 1 })
+	{
+		Current->SchemaVersion = Unknown;
+		TestTrue(TEXT("test unknown-version envelope"), Current->Encode(Bytes));
+		TStrongObjectPtr<UUEGT2ProgressSave> Future(UUEGT2ProgressSave::Decode(Bytes, Reason));
+		TestTrue(TEXT("unknown-version bytes can be read for validation"), Future.IsValid());
+		if (Future.IsValid()) { TestFalse(TEXT("unknown schema cannot be used"), Future->Validate(Current->MapPackageName, Known, Reason)); }
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2ProgressContractTest, "UEGT2.Progress.ContractRestore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2ProgressContractTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2ProgressTests;
+	FFixture Sim;
+	if (!TestTrue(TEXT("checkpoint fixture"), Sim.Ready())) { return false; }
+	UUEGT2SurveyContractSubsystem* Contract = UUEGT2SurveyContractSubsystem::Get(Sim.World);
+	if (!TestNotNull(TEXT("durable contract service"), Contract)) { return false; }
+	for (FName Id : { FName(TEXT("fairhaven_light")), FName(TEXT("mill_rise")) })
+	{
+		AUEGT2Landmark* Place = Sim.World->SpawnActor<AUEGT2Landmark>();
+		if (!TestNotNull(TEXT("required place"), Place)) { return false; }
+		Place->PersistentId = Id;
+		Place->SetDiscovered(true);
+	}
+	Sim.Populate(); Sim.Pause();
+	TestFalse(TEXT("new world unpaid"), Contract->IsPaid());
+	TestTrue(TEXT("prepayment checkpoint A"), Sim.Progress->SaveProgress(Sim.Controller));
+	Sim.Harbour->SetDiscovered(true);
+	Contract->RestorePaidState(true);
+	Sim.Player->GetLife()->SetCoins(155.625f);
+	Contract->bFeatureEnabled = false;
+	TestTrue(TEXT("paid checkpoint B captured even with contract off"), Sim.Progress->SaveProgress(Sim.Controller));
+	Contract->RestorePaidState(false);
+	Sim.Player->GetLife()->SetCoins(8.25f);
+	int32 RestoreNotifications = 0;
+	const FDelegateHandle Restored = Sim.Player->GetLife()->OnActivityChanged.AddLambda([&](EUEGT2Activity, const FText&)
+	{
+		++RestoreNotifications;
+		TestTrue(TEXT("restore observer sees matching paid state"), Contract->IsPaid());
+		TestEqual(TEXT("restore observer sees matching purse"), Sim.Player->GetLife()->GetPurse().Coins, 155.625f);
+		TestTrue(TEXT("restore observer sees matching discoveries"), Sim.Harbour->IsDiscovered());
+	});
+	TestTrue(TEXT("paid checkpoint restores with contract off"), Sim.Progress->LoadProgress(Sim.Controller));
+	Sim.Player->GetLife()->OnActivityChanged.Remove(Restored);
+	TestEqual(TEXT("one coherent restored-activity notification"), RestoreNotifications, 1);
+	TestTrue(TEXT("paid flag restored while off"), Contract->IsPaid());
+	TestEqual(TEXT("payment restored without a second reward"), Sim.Player->GetLife()->GetPurse().Coins, 155.625f);
+	TestTrue(TEXT("repeat restore idempotent"), Sim.Progress->LoadProgress(Sim.Controller));
+	TestEqual(TEXT("repeat restore exact balance"), Sim.Player->GetLife()->GetPurse().Coins, 155.625f);
+	TArray<uint8> PaidBytes;
+	UGameplayStatics::LoadDataFromSlot(PaidBytes, Sim.Slot + TEXT("_B"), 0);
+	const TArray<uint8> Damaged = { 0xff, 0x00 };
+	UGameplayStatics::SaveDataToSlot(Damaged, Sim.Slot + TEXT("_B"), 0);
+	TestTrue(TEXT("corrupt newest falls back to prepayment"), Sim.Progress->LoadProgress(Sim.Controller));
+	TestFalse(TEXT("fallback rolls back paid flag"), Contract->IsPaid());
+	TestEqual(TEXT("fallback also rolls back payment"), Sim.Player->GetLife()->GetPurse().Coins, 137.625f);
+	UGameplayStatics::SaveDataToSlot(Damaged, Sim.Slot + TEXT("_A"), 0);
+	Contract->RestorePaidState(true);
+	Sim.Player->GetLife()->SetCoins(55.25f);
+	TestFalse(TEXT("all damaged checkpoint load fails"), Sim.Progress->LoadProgress(Sim.Controller));
+	TestTrue(TEXT("failed load retains paid state"), Contract->IsPaid());
+	TestEqual(TEXT("failed load retains exact balance"), Sim.Player->GetLife()->GetPurse().Coins, 55.25f);
+	UGameplayStatics::SaveDataToSlot(PaidBytes, Sim.Slot + TEXT("_B"), 0);
+	Contract->bFeatureEnabled = true;
+	TestTrue(TEXT("re-enabled contract uses preserved paid checkpoint"), Sim.Progress->LoadProgress(Sim.Controller));
+	TestTrue(TEXT("re-enable never reopens payment"), Contract->IsPaid());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2ContractSlotIsolationTest, "UEGT2.Progress.ContractSlotIsolation",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2ContractSlotIsolationTest::RunTest(const FString& Parameters)
+{
+	UEGT2ProgressTests::FFixture Sim;
+	if (!TestTrue(TEXT("checkpoint fixture"), Sim.Ready())) { return false; }
+	const FString RunId = FGuid::NewGuid().ToString(EGuidFormats::Digits);
+	const FString Slot = TEXT("UEGT2_ContractSmoke_") + RunId;
+	FString Directory = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectDir(), TEXT("Saved/ContractSmoke"), RunId));
+	FPaths::NormalizeDirectoryName(Directory);
+	const FString Valid = FString::Printf(TEXT("-UEGT2ContractSmoke=Write -UEGT2ContractSlot=%s -UserDir=\"%s\""), *Slot, *Directory);
+	for (const TCHAR* Mode : { TEXT("Write"), TEXT("Read"), TEXT("NewVisit"), TEXT("Disabled") })
+	{
+		FCommandLine::Set(*Valid.Replace(TEXT("Smoke=Write"), *(FString(TEXT("Smoke=")) + Mode)));
+		TestTrue(TEXT("own GUID diagnostic may use its isolated checkpoint"), Sim.Progress->IsAvailable());
+		TestFalse(TEXT("contract test cannot activate fast autosaves"), Sim.Progress->IsAutosaveSmoke());
+	}
+	for (const FString& Invalid : { Valid.Replace(TEXT("Smoke=Write"), TEXT("Smoke=Unknown")),
+		Valid.Replace(*Directory, TEXT("relative/path")), Valid.Replace(*Directory, TEXT("C:/Users/Public")),
+		Valid.Replace(*Slot, TEXT("Fairhaven_Journey")), Valid.Replace(*Slot, TEXT("UEGT2_ContractSmoke_bad")),
+		Valid + TEXT(" -UEGT2ProgressSmoke=Write"), Valid + TEXT(" -UEGT2AutosaveSmoke=Read"),
+		Valid + TEXT(" -UEGT2ProgressSlot"), Valid + TEXT(" -UEGT2ServicesSmoke") })
+	{
+		FCommandLine::Set(*Invalid);
+		TestFalse(TEXT("malformed/mixed diagnostics cannot reach checkpoint IO"), Sim.Progress->IsAvailable());
+	}
 	return true;
 }
 

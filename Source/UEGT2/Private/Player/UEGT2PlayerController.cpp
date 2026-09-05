@@ -18,6 +18,8 @@
 #include "Player/UEGT2NeedsComponent.h"
 #include "Progress/UEGT2ProgressSubsystem.h"
 #include "Rest/UEGT2RestSubsystem.h"
+#include "Contracts/UEGT2SurveyContract.h"
+#include "Contracts/UEGT2SurveyContractSubsystem.h"
 #include "Services/UEGT2ServicesSubsystem.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "Survey/UEGT2SurveySubsystem.h"
@@ -65,6 +67,7 @@ void AUEGT2PlayerController::BeginPlay()
 
 void AUEGT2PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	SurveyContractBoard.Reset();
 	bAutoWalkPressedThisTick = false;
 	if (AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn())) { Explorer->CancelAutoWalk(); }
 	if (UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld()))
@@ -164,6 +167,7 @@ void AUEGT2PlayerController::OnPossess(APawn* InPawn)
 
 void AUEGT2PlayerController::OnUnPossess()
 {
+	SurveyContractBoard.Reset();
 	bAutoWalkPressedThisTick = false;
 	if (AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn())) { Explorer->CancelAutoWalk(); }
 	if (GetPawn() && InputComponent)
@@ -318,6 +322,8 @@ void AUEGT2PlayerController::AskDialogueTopic(int32 Topic)
 
 void AUEGT2PlayerController::ApplyMenuState(EUEGT2MenuState NewState)
 {
+	if (IsSurveyContractOpen()) { UE_LOG(LogUEGT2Contracts, Log, TEXT("Town survey contract closed.")); }
+	SurveyContractBoard.Reset();
 	if (IsServicesGuideOpen()) { UE_LOG(LogUEGT2Services, Log, TEXT("Nearby services guide closed.")); }
 	if (NewState != EUEGT2MenuState::None || MenuState != EUEGT2MenuState::None)
 	{
@@ -450,6 +456,7 @@ void AUEGT2PlayerController::OnDiagnosticsAction()
 
 void AUEGT2PlayerController::ShowSettingsPage(int32 TabIndex)
 {
+	SurveyContractBoard.Reset();
 	if (MenuState == EUEGT2MenuState::None)
 	{
 		ApplyMenuState(EUEGT2MenuState::Main);
@@ -547,6 +554,49 @@ bool AUEGT2PlayerController::IsServicesAvailable() const
 {
 	const UUEGT2ServicesSubsystem* Services = UUEGT2ServicesSubsystem::Get(GetWorld());
 	return Services && Services->IsAvailable();
+}
+
+bool AUEGT2PlayerController::OpenSurveyContract(AUEGT2SurveyContract* Board)
+{
+	const UUEGT2SurveyContractSubsystem* Contract = UUEGT2SurveyContractSubsystem::Get(GetWorld());
+	FText Reason;
+	if (MenuState != EUEGT2MenuState::None || !Contract || !Contract->CanOpenAt(this, Board, Reason)) { return false; }
+	ShowPauseMenu();
+	if (!MenuWidget.IsValid() || !GetWorld()->IsPaused())
+	{
+		CloseMenu();
+		return false;
+	}
+	// Assign before constructing the page: its explicit eligibility snapshot
+	// checks that this controller owns this exact board and paused page.
+	SurveyContractBoard = Board;
+	const TSharedPtr<SWidget> InitialFocus = MenuWidget->OpenSurveyContract();
+	if (InitialFocus.IsValid())
+	{
+		FInputModeUIOnly Mode;
+		Mode.SetWidgetToFocus(InitialFocus);
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(Mode);
+	}
+	UE_LOG(LogUEGT2Contracts, Log, TEXT("Town survey contract opened."));
+	return true;
+}
+
+bool AUEGT2PlayerController::IsSurveyContractOpen() const
+{
+	return MenuState == EUEGT2MenuState::Pause && MenuWidget.IsValid() && MenuWidget->IsSurveyContractOpen();
+}
+
+AUEGT2SurveyContract* AUEGT2PlayerController::GetSurveyContractBoard() const
+{
+	return IsSurveyContractOpen() && SurveyContractBoard.IsValid() && !SurveyContractBoard->IsActorBeingDestroyed()
+		? SurveyContractBoard.Get() : nullptr;
+}
+
+bool AUEGT2PlayerController::IsSurveyContractAvailable() const
+{
+	const UUEGT2SurveyContractSubsystem* Contract = UUEGT2SurveyContractSubsystem::Get(GetWorld());
+	return Contract && Contract->IsAvailable();
 }
 
 bool AUEGT2PlayerController::ContinueProgress()

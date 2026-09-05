@@ -2,6 +2,8 @@
 #include "SUEGT2SurveyJournal.h"
 #include "SUEGT2RestPanel.h"
 #include "SUEGT2ServicesGuide.h"
+#include "SUEGT2SurveyContract.h"
+#include "Contracts/UEGT2SurveyContract.h"
 #include "Interaction/UEGT2Amenity.h"
 
 #include "Dev/UEGT2DevModeSubsystem.h"
@@ -305,6 +307,22 @@ TSharedRef<SWidget> SUEGT2Menu::BuildServicesGuide()
 	return SNew(SBox).WidthOverride(720.0f) [ Guide ];
 }
 
+TSharedPtr<SWidget> SUEGT2Menu::OpenSurveyContract()
+{
+	GoToPage(EUEGT2MenuPage::SurveyContract);
+	return SurveyContractInitialFocus.Pin();
+}
+
+TSharedRef<SWidget> SUEGT2Menu::BuildSurveyContract()
+{
+	const TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	TSharedRef<SUEGT2SurveyContract> ContractPage = SNew(SUEGT2SurveyContract).Controller(WeakPC)
+		.Board(WeakPC.IsValid() ? WeakPC->GetSurveyContractBoard() : nullptr)
+		.OnClose(FSimpleDelegate::CreateLambda([WeakPC]() { if (WeakPC.IsValid()) { WeakPC->CloseMenu(); } }));
+	SurveyContractInitialFocus = ContractPage->GetInitialFocusWidget();
+	return SNew(SBox).WidthOverride(650.0f) [ ContractPage ];
+}
+
 void SUEGT2Menu::SelectTab(EUEGT2SettingsTab InTab)
 {
 	Tab = InTab;
@@ -331,6 +349,7 @@ void SUEGT2Menu::Rebuild()
 		Page == EUEGT2MenuPage::SurveyJournal ? BuildSurveyJournal() :
 		Page == EUEGT2MenuPage::Rest ? BuildRestPanel() :
 		Page == EUEGT2MenuPage::Services ? BuildServicesGuide() :
+		Page == EUEGT2MenuPage::SurveyContract ? BuildSurveyContract() :
 		                                  BuildSettings());
 }
 
@@ -1126,6 +1145,28 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 
 	List->AddSlot().AutoHeight().Padding(0, 7)
 	[
+		SNew(SBox)
+		.IsEnabled_Lambda([WeakPC]() { return WeakPC.IsValid() && WeakPC->IsSurveyContractAvailable(); })
+		[
+			Row(LOCTEXT("TownSurveyContractSetting", "Town Survey Contract"), MakeToggle(
+				[S]() { return S->GetTownSurveyContractEnabled(); },
+				[this, S](bool bValue) { S->SetTownSurveyContractEnabled(bValue); ApplyAndSave(); }))
+		]
+	];
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 12)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([WeakPC]()
+		{
+			return WeakPC.IsValid() && WeakPC->IsSurveyContractAvailable()
+				? LOCTEXT("TownSurveyContractHint", "Visit the contract signpost near Fairhaven Square, survey three places, then return for payment. Turning this off keeps your surveys and any payment earned.")
+				: LOCTEXT("TownSurveyContractUnavailable", "The Town Survey Contract is disabled for this session. Your preference, surveys and any payment earned are kept.");
+		})
+		.Font(Font("Regular", 11)).ColorAndOpacity(FSlateColor(Muted)).AutoWrapText(true)
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
 		Row(LOCTEXT("Bubbles", "Speech Bubbles"), MakeToggle(
 			[S]() { return S->GetShowSpeechBubbles(); },
 			[this, S](bool bValue) { S->SetShowSpeechBubbles(bValue); ApplyAndSave(); }))
@@ -1812,7 +1853,7 @@ FReply SUEGT2Menu::OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEven
 	}
 
 	const FKey Key = KeyEvent.GetKey();
-	if ((Page == EUEGT2MenuPage::Rest || Page == EUEGT2MenuPage::Services) && (Key == EKeys::Escape
+	if ((Page == EUEGT2MenuPage::Rest || Page == EUEGT2MenuPage::Services || Page == EUEGT2MenuPage::SurveyContract) && (Key == EKeys::Escape
 		|| Key == UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Menu) || Key == EKeys::Gamepad_Special_Right))
 	{
 		if (AUEGT2PlayerController* PC = Controller.Get()) { PC->CloseMenu(); }
@@ -1863,6 +1904,7 @@ FReply SUEGT2Menu::OnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& 
 	if (Page == EUEGT2MenuPage::SurveyJournal) { return OnKeyDown(Geometry, KeyEvent); }
 	if (Page == EUEGT2MenuPage::Rest) { return OnKeyDown(Geometry, KeyEvent); }
 	if (Page == EUEGT2MenuPage::Services) { return OnKeyDown(Geometry, KeyEvent); }
+	if (Page == EUEGT2MenuPage::SurveyContract) { return OnKeyDown(Geometry, KeyEvent); }
 	const AUEGT2PlayerController* PC = Controller.Get();
 	const FKey Key = KeyEvent.GetKey();
 	if (Page == EUEGT2MenuPage::Root && MenuState == EUEGT2MenuState::Pause

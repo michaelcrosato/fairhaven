@@ -230,6 +230,8 @@ struct UEGT2_API FUEGT2Purse
 
 	UPROPERTY(BlueprintReadOnly, Category = "UEGT2|NPC") float Coins = 0.0f;
 
+	/** Shared durable bound; keeps the whole-coin HUD conversion inside int32. */
+	static constexpr float MaxCoins = 1000000000.0f;
 	FUEGT2Purse() = default;
 	explicit FUEGT2Purse(float InCoins) : Coins(InCoins) {}
 
@@ -243,6 +245,9 @@ struct UEGT2_API FUEGT2Purse
 
 	void Earn(float Amount) { Coins = FMath::Max(0.0f, Coins + FMath::Max(0.0f, Amount)); }
 };
+
+/** One-off payment, without elapsed life time. Failure preserves the purse exactly. */
+UEGT2_API bool UEGT2TryCredit(float Amount, FUEGT2Purse& Purse);
 
 /** One row of a routine: from StartHour, do Activity at Anchor. */
 USTRUCT(BlueprintType)

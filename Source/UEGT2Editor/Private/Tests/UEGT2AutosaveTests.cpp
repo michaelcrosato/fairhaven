@@ -3,6 +3,7 @@
 #if WITH_AUTOMATION_TESTS
 
 #include "Autosave/UEGT2AutosaveSubsystem.h"
+#include "Contracts/UEGT2SurveyContractSubsystem.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -571,6 +572,44 @@ bool FUEGT2AutosaveSmokeGateTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("malformed diagnostic cannot shorten timer"), Sim.Progress->IsAutosaveSmoke());
 	}
 	TestEqual(TEXT("gate checks perform no IO"), Sim.Storage->SyncCalls + Sim.Storage->AsyncReads + Sim.Storage->ByteReads + Sim.Storage->AsyncWrites, 0);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2AutosaveContractTest, "UEGT2.Autosave.ContractRestore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2AutosaveContractTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2AutosaveTests;
+	FFixture Sim;
+	if (!TestTrue(TEXT("autosave fixture"), Sim.Ready())) { return false; }
+	UUEGT2SurveyContractSubsystem* Contract = UUEGT2SurveyContractSubsystem::Get(Sim.World);
+	if (!TestNotNull(TEXT("contract service"), Contract)) { return false; }
+	for (FName Id : UUEGT2SurveyContractSubsystem::RequiredLandmarkIds())
+	{
+		AUEGT2Landmark* Place = Sim.World->SpawnActor<AUEGT2Landmark>();
+		if (!TestNotNull(TEXT("contract place"), Place)) { return false; }
+		Place->PersistentId = Id;
+		Place->SetDiscovered(true);
+	}
+	Sim.Pause();
+	TestTrue(TEXT("manual checkpoint before payment"), Sim.Progress->SaveProgress(Sim.Controller));
+	Sim.Resume();
+	Contract->RestorePaidState(true);
+	Contract->bFeatureEnabled = false;
+	Sim.Populate(155.625f);
+	TestTrue(TEXT("paid autosave request while contract off"), Sim.Progress->RequestAutosave(Sim.Controller));
+	Sim.Storage->Drain();
+	TestEqual(TEXT("verified paid autosave"), Sim.Progress->GetAutosaveStatus().SuccessfulWrites, uint64(1));
+	Contract->RestorePaidState(false);
+	Sim.Populate(8.25f);
+	Sim.Main();
+	TestTrue(TEXT("autosaved contract restores"), Sim.Progress->LoadAutosavedProgress(Sim.Controller));
+	TestTrue(TEXT("auto restores paid while off"), Contract->IsPaid());
+	TestEqual(TEXT("auto restores exact payment"), Sim.Player->GetLife()->GetPurse().Coins, 155.625f);
+	TestTrue(TEXT("manual remains before payment"), Sim.Progress->LoadProgress(Sim.Controller));
+	TestFalse(TEXT("manual restores unpaid"), Contract->IsPaid());
+	TestEqual(TEXT("manual restores matching prepayment purse"), Sim.Player->GetLife()->GetPurse().Coins, 137.625f);
 	return true;
 }
 

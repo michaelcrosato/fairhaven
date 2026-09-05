@@ -13,7 +13,7 @@ class UEGT2_API UUEGT2ProgressSave : public USaveGame
 	GENERATED_BODY()
 
 public:
-	static constexpr int32 CurrentSchemaVersion = 1;
+	static constexpr int32 CurrentSchemaVersion = 2;
 	/** Bump when generated geography or persistent landmark identity changes incompatibly. */
 	static constexpr int32 CurrentContentRevision = 1;
 	static constexpr int32 MaxEncodedBytes = 256 * 1024;
@@ -32,6 +32,10 @@ public:
 	UPROPERTY() float Hour = 10.5f;
 	UPROPERTY() EUEGT2Weather Weather = EUEGT2Weather::Clear;
 	UPROPERTY() TArray<FName> DiscoveredLandmarks;
+	UPROPERTY() bool bTownSurveyContractPaid = false;
+
+	/** Legacy saves omitted default values; new saves always store explicit versions. */
+	virtual void Serialize(FArchive& Ar) override;
 
 	/** Validate the complete payload without touching the world. */
 	bool Validate(const FString& ExpectedMap, const TSet<FName>& KnownLandmarks, FText& OutReason) const;

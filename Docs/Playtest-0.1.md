@@ -1,7 +1,7 @@
 # Fairhaven v0.1 playtest guide
 
 This is a playable world with exploration, conversation, companions, needs and
-paid work. There is no quest objective, progression system or game-over state.
+paid work and one optional town survey contract. There is no game-over state.
 Test whether it feels good to move through, whether the inhabitants' routines
 make sense, and whether living alongside them is worth doing.
 
@@ -104,6 +104,15 @@ Useful console commands (backtick to open the console):
 ## A suggested route
 
 You start just off the town square, facing east toward the harbour.
+
+Read the **Town Survey Contract** signpost near Fairhaven Square. It asks you to
+survey The Harbour, Fairhaven Light and Mill Rise with their ordinary markers,
+then return to the signpost to claim **18 coins**. Previous surveys count, and
+there is no deadline. The page shows straight-line distances and compass
+directions; choose a walkable route. Payment is once per journey and continues
+with your checkpoint. Save Progress after collecting it, or use your optional
+autosave. New Visit starts a new unpaid contract. Turning Town Survey Contract
+off in Gameplay keeps your surveys and any recorded payment.
 
 1. **Town square** — the well, the market stalls, and the crowd. Try `E` on a
    crate: you pick it up, carry it, and `E` again throws it. Open a house door.

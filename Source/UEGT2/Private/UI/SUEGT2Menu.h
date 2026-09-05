@@ -22,6 +22,7 @@ enum class EUEGT2MenuPage : uint8
 	SurveyJournal,
 	Rest,
 	Services,
+	SurveyContract,
 };
 
 /** Dev mode tab. */
@@ -70,6 +71,8 @@ public:
 	bool IsRestPanelOpen() const { return Page == EUEGT2MenuPage::Rest; }
 	TSharedPtr<SWidget> OpenServicesGuide();
 	bool IsServicesGuideOpen() const { return Page == EUEGT2MenuPage::Services; }
+	TSharedPtr<SWidget> OpenSurveyContract();
+	bool IsSurveyContractOpen() const { return Page == EUEGT2MenuPage::SurveyContract; }
 
 	virtual bool SupportsKeyboardFocus() const override { return true; }
 	virtual FReply OnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
@@ -80,6 +83,7 @@ private:
 	TSharedRef<SWidget> BuildSurveyJournal();
 	TSharedRef<SWidget> BuildRestPanel();
 	TSharedRef<SWidget> BuildServicesGuide();
+	TSharedRef<SWidget> BuildSurveyContract();
 	TSharedRef<SWidget> BuildSettings();
 	TSharedRef<SWidget> BuildGraphicsTab();
 	TSharedRef<SWidget> BuildAudioTab();
@@ -103,6 +107,7 @@ private:
 	TWeakObjectPtr<AUEGT2Amenity> RestBed;
 	TWeakPtr<SWidget> RestInitialFocus;
 	TWeakPtr<SWidget> ServicesInitialFocus;
+	TWeakPtr<SWidget> SurveyContractInitialFocus;
 	TWeakPtr<SWidget> MainInitialFocus;
 	EUEGT2MenuState MenuState = EUEGT2MenuState::Main;
 	EUEGT2MenuPage Page = EUEGT2MenuPage::Root;

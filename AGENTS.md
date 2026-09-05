@@ -207,11 +207,18 @@ Do not undo these without understanding why they are there.
   change tier at once and repath together, which is what rolls the dice often
   enough to hit it. Copy the value.
 - **The player and the town share one ledger.** `UEGT2AdvanceLife` is the only
-  place needs and money move, and both `AUEGT2NPCActor::AdvanceNeeds` and
+  place elapsed time changes needs and money, and both `AUEGT2NPCActor::AdvanceNeeds` and
   `UUEGT2NeedsComponent` call it. Do not give either a rate table of its own:
   the point of the player having needs at all is that they are the same needs,
   and a second table drifts silently. `UEGT2.Economy.LivingWage` runs every
   trade through three closed-loop days and fails if the numbers stop adding up.
+  One-off rewards use `UEGT2TryCredit` in the same ledger, with bounded purse
+  validation; never invent elapsed work hours or use the dev setter to pay one.
+- **Old checkpoints can omit their schema tag.** UE's default delta serializer
+  omitted schema 1 because it matched the class default. Increasing the C++
+  default alone makes old saves look current. `ProgressSave::Serialize` begins
+  loading at the legacy baseline and writes all new fields explicitly. Keep
+  the genuine schema-1 fixture; a new object relabelled as schema 1 misses this.
 - **Auto-walk needs a fresh raw press, not just an Enhanced Input edge.** The
   installed engine flushes a held key by synthesizing a release, then can rebuild
   a press from an OS repeat. Pausing also resets action trigger state. An action

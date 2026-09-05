@@ -329,6 +329,22 @@ float GetActivityPace(EUEGT2Activity Activity)
 // ---------------------------------------------------------------------------
 // The economy
 // ---------------------------------------------------------------------------
+bool UEGT2TryCredit(float Amount, FUEGT2Purse& Purse)
+{
+	if (!FMath::IsFinite(Amount) || Amount < 0.0f || !FMath::IsFinite(Purse.Coins)
+		|| Purse.Coins < 0.0f || Purse.Coins > FUEGT2Purse::MaxCoins) { return false; }
+	const double Sum = static_cast<double>(Purse.Coins) + static_cast<double>(Amount);
+	if (Sum > FUEGT2Purse::MaxCoins) { return false; }
+	const float Credited = static_cast<float>(Sum);
+	// Ordinary rate-driven balances have fractional float rounding. Allow less
+	// than a thousandth of a coin, but never consume an entitlement when large
+	// floats round the reward away or change it by meaningful money.
+	const double ActualCredit = static_cast<double>(Credited) - static_cast<double>(Purse.Coins);
+	if ((Amount > 0.0f && ActualCredit <= 0.0) || FMath::Abs(ActualCredit - static_cast<double>(Amount)) > 0.001) { return false; }
+	Purse.Coins = Credited;
+	return true;
+}
+
 bool FUEGT2Purse::Spend(float Amount)
 {
 	if (Amount <= 0.0f)

@@ -68,6 +68,7 @@ void UUEGT2GameUserSettings::SetToDefaults()
 	bAutosaveEnabled = false;
 	bSurveyJournalEnabled = true;
 	bNearbyServicesEnabled = true;
+	bTownSurveyContractEnabled = true;
 	bSleepUntilEnabled = true;
 	bUseFahrenheit = false;
 	CrowdDensity = 1.0f;
@@ -88,7 +89,7 @@ void UUEGT2GameUserSettings::ApplyNonResolutionSettings()
 	ApplyAudioSettings();
 
 	UE_LOG(LogUEGT2Settings, Log,
-		TEXT("Settings applied: fov=%.0f resScale=%.0f%% quality(view=%d shadow=%d gi=%d refl=%d pp=%d tex=%d fx=%d foliage=%d) master=%.2f progress=%s journal=%s sleepUntil=%s autosave=%s hud=%.0f%% autoWalk=%s services=%s"),
+		TEXT("Settings applied: fov=%.0f resScale=%.0f%% quality(view=%d shadow=%d gi=%d refl=%d pp=%d tex=%d fx=%d foliage=%d) master=%.2f progress=%s journal=%s sleepUntil=%s autosave=%s hud=%.0f%% autoWalk=%s services=%s contract=%s"),
 		FieldOfView, ResolutionScalePercent,
 		GetViewDistanceQuality(), GetShadowQuality(), GetGlobalIlluminationQuality(),
 		GetReflectionQuality(), GetPostProcessingQuality(), GetTextureQuality(),
@@ -96,7 +97,7 @@ void UUEGT2GameUserSettings::ApplyNonResolutionSettings()
 		GetAudioVolume(EUEGT2AudioBus::Master), bSaveProgressEnabled ? TEXT("on") : TEXT("off"),
 		bSurveyJournalEnabled ? TEXT("on") : TEXT("off"), bSleepUntilEnabled ? TEXT("on") : TEXT("off"),
 		bAutosaveEnabled ? TEXT("on") : TEXT("off"), GetHudScale() * 100.0f, bAutoWalkEnabled ? TEXT("on") : TEXT("off"),
-		bNearbyServicesEnabled ? TEXT("on") : TEXT("off"));
+		bNearbyServicesEnabled ? TEXT("on") : TEXT("off"), bTownSurveyContractEnabled ? TEXT("on") : TEXT("off"));
 
 	OnSettingsApplied.Broadcast();
 }
@@ -203,6 +204,7 @@ void UUEGT2GameUserSettings::SetAutosaveEnabled(bool bValue)
 }
 void UUEGT2GameUserSettings::SetSurveyJournalEnabled(bool bValue) { bSurveyJournalEnabled = bValue; }
 void UUEGT2GameUserSettings::SetNearbyServicesEnabled(bool bValue) { bNearbyServicesEnabled = bValue; }
+void UUEGT2GameUserSettings::SetTownSurveyContractEnabled(bool bValue) { bTownSurveyContractEnabled = bValue; }
 void UUEGT2GameUserSettings::SetSleepUntilEnabled(bool bValue) { bSleepUntilEnabled = bValue; }
 
 void UUEGT2GameUserSettings::SetShowAlmanac(bool bValue)

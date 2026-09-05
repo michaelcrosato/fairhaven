@@ -35,6 +35,11 @@ its maintainer switch and its verification.
 and track a surveyed place for a direction arrow and straight-line distance.
 The journal has its own switch in Settings → Gameplay.
 
+**Take the town survey contract.** Read the signpost near Fairhaven Square,
+survey The Harbour, Fairhaven Light and Mill Rise, then return for 18 coins.
+Existing surveys count. Payment is once per journey and saved with your
+checkpoint. Settings → Gameplay can turn the contract off independently.
+
 **Find a place to eat, wash, rest or work.** Pause → Nearby Services shows the
 nearest usable places and their service rates, including free food and sleep at
 your lodgings. Track one for straight-line directions, then use the normal

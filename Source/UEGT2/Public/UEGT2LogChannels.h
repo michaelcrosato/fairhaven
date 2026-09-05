@@ -36,3 +36,5 @@ UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Rest, Log, All);
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Autosave, Log, All);
 /** Explicit nearby service searches and transient direction targets. */
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Services, Log, All);
+/** Fixed survey-contract claims and their independent feature gate. */
+UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Contracts, Log, All);

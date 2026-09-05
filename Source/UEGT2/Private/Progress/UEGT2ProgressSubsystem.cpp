@@ -2,6 +2,7 @@
 
 #include "Components/CapsuleComponent.h"
 #include "Autosave/UEGT2AutosaveSubsystem.h"
+#include "Contracts/UEGT2SurveyContractSubsystem.h"
 #include "Diagnostics/UEGT2CaptureSubsystem.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
@@ -137,6 +138,32 @@ bool UUEGT2ProgressSubsystem::ResolveSlot(FString& OutSlot, bool* bOutAutosaveSm
 	const bool bAutoSmoke = FParse::Value(FCommandLine::Get(), TEXT("UEGT2AutosaveSmoke="), AutoMode);
 	const bool bBareProgress = FParse::Param(FCommandLine::Get(), TEXT("UEGT2ProgressSmoke"));
 	const bool bBareAuto = FParse::Param(FCommandLine::Get(), TEXT("UEGT2AutosaveSmoke"));
+	FString ContractMode, ContractSlot;
+	const bool bContractSmoke = FParse::Value(FCommandLine::Get(), TEXT("UEGT2ContractSmoke="), ContractMode);
+	const bool bContractSlot = FParse::Value(FCommandLine::Get(), TEXT("UEGT2ContractSlot="), ContractSlot);
+	if (bContractSmoke || bContractSlot || FParse::Param(FCommandLine::Get(), TEXT("UEGT2ContractSmoke"))
+		|| FParse::Param(FCommandLine::Get(), TEXT("UEGT2ContractSlot")))
+	{
+		// A malformed diagnostic must never fall through to the player's slot.
+		if (!bContractSmoke || !bContractSlot || bSmoke || bBareProgress || bAutoSmoke || bBareAuto
+			|| bOverride || FParse::Param(FCommandLine::Get(), TEXT("UEGT2ProgressSlot"))
+			|| (ContractMode != TEXT("Write") && ContractMode != TEXT("Read")
+				&& ContractMode != TEXT("NewVisit") && ContractMode != TEXT("Disabled"))) { return false; }
+		FString RunId = ContractSlot;
+		FGuid Guid;
+		FString Directory;
+		if (!RunId.RemoveFromStart(TEXT("UEGT2_ContractSmoke_"), ESearchCase::CaseSensitive)
+			|| !FGuid::ParseExact(RunId, EGuidFormats::Digits, Guid)
+			|| !FParse::Value(FCommandLine::Get(), TEXT("UserDir="), Directory)
+			|| Directory.IsEmpty() || FPaths::IsRelative(Directory)) { return false; }
+		FPaths::NormalizeDirectoryName(Directory);
+		FString Expected = FPaths::ConvertRelativePathToFull(FPaths::Combine(
+			FPaths::ProjectDir(), TEXT("Saved/ContractSmoke"), RunId));
+		FPaths::NormalizeDirectoryName(Expected);
+		if (!Directory.Equals(Expected, ESearchCase::IgnoreCase)) { return false; }
+		OutSlot = ContractSlot;
+		return true;
+	}
 	if (bAutoSmoke || bBareAuto)
 	{
 		if (!bAutoSmoke || bSmoke || bBareProgress || !bOverride
@@ -616,6 +643,10 @@ bool UUEGT2ProgressSubsystem::CaptureSnapshot(AUEGT2PlayerController* Controller
 	if (!GatherLandmarks(World, Ids, Reason)) { return false; }
 	const FString Map = MapIdentity(World);
 	Snapshot.DiscoveredLandmarks.Reset();
+	Snapshot.SchemaVersion = UUEGT2ProgressSave::CurrentSchemaVersion;
+	Snapshot.ContentRevision = UUEGT2ProgressSave::CurrentContentRevision;
+	const UUEGT2SurveyContractSubsystem* Contract = UUEGT2SurveyContractSubsystem::Get(World);
+	Snapshot.bTownSurveyContractPaid = Contract && Contract->IsPaid();
 	Snapshot.Sequence = Sequence;
 	Snapshot.MapPackageName = Map;
 	Snapshot.PlayerLocation = Character->GetActorLocation();
@@ -702,7 +733,9 @@ bool UUEGT2ProgressSubsystem::RestoreSnapshot(AUEGT2PlayerController* Controller
 	UUEGT2NeedsComponent* Life = Character ? Character->GetLife() : nullptr;
 	UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(World);
 	TSet<FName> Ids;
+	UUEGT2SurveyContractSubsystem* Contract = UUEGT2SurveyContractSubsystem::Get(World);
 	if (!Life || !Life->HasBegunPlay() || !Director || !AUEGT2SkyController::Get(World)
+		|| !Contract
 		|| !GatherLandmarks(World, Ids, Reason) || !Snapshot.Validate(MapIdentity(World), Ids, Reason))
 	{
 		if (Reason.IsEmpty()) { Reason = LOCTEXT("RestoreNotReady", "The player and world are not ready to restore progress."); }
@@ -735,13 +768,16 @@ bool UUEGT2ProgressSubsystem::RestoreSnapshot(AUEGT2PlayerController* Controller
 	{
 		It->ReleaseIfCarriedBy(Character);
 	}
-	Life->RestoreProgress(Snapshot.Needs, Snapshot.Purse, Snapshot.Trade);
 	Director->RestoreCalendar(Snapshot.DayIndex, Snapshot.Hour, Snapshot.Weather);
 	const TSet<FName> Discovered(Snapshot.DiscoveredLandmarks);
 	for (TActorIterator<AUEGT2Landmark> It(World); It; ++It)
 	{
 		if (!It->IsActorBeingDestroyed()) { It->SetDiscovered(Discovered.Contains(It->GetPersistentId())); }
 	}
+	Contract->RestorePaidState(Snapshot.bTownSurveyContractPaid);
+	// RestoreProgress broadcasts the new activity after assigning life/purse.
+	// Its observers must see the matching discoveries and paid state too.
+	Life->RestoreProgress(Snapshot.Needs, Snapshot.Purse, Snapshot.Trade);
 	return true;
 }
 
