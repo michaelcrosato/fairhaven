@@ -12,6 +12,9 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Components/StaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 #include "NPC/UEGT2NPCActor.h"
@@ -46,6 +49,56 @@ namespace UEGT2NPCTests
 		Buffer = GetActivityDisplayName(Activity).ToString();
 		return *Buffer;
 	}
+
+	struct FGroundWorld
+	{
+		UWorld* World = UWorld::CreateWorld(EWorldType::EditorPreview, false);
+		UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+
+		~FGroundWorld() { if (World) { World->DestroyWorld(false); } }
+
+		AStaticMeshActor* AddSurface(const FVector& Location, const FVector& Scale,
+			const FRotator& Rotation = FRotator::ZeroRotator)
+		{
+			if (!World || !Cube) { return nullptr; }
+			AStaticMeshActor* Surface = World->SpawnActor<AStaticMeshActor>(Location, Rotation);
+			if (Surface)
+			{
+				Surface->GetStaticMeshComponent()->SetStaticMesh(Cube);
+				Surface->SetActorScale3D(Scale);
+				Surface->GetStaticMeshComponent()->SetCollisionObjectType(ECC_WorldStatic);
+				Surface->GetStaticMeshComponent()->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+			}
+			return Surface;
+		}
+
+		bool SurfaceAt(const FVector& Location, FVector& Point) const
+		{
+			FHitResult Hit;
+			if (World->LineTraceSingleByObjectType(Hit,
+				FVector(Location.X, Location.Y, 3000.0), FVector(Location.X, Location.Y, -3000.0),
+				FCollisionObjectQueryParams(ECC_WorldStatic)))
+			{
+				Point = Hit.ImpactPoint;
+				return true;
+			}
+			return false;
+		}
+
+		AUEGT2NPCActor* AddWalker(const FVector& Start, const FVector& Work, EUEGT2NPCLOD LOD)
+		{
+			AUEGT2NPCActor* NPC = World->SpawnActor<AUEGT2NPCActor>(Start, FRotator::ZeroRotator);
+			if (NPC)
+			{
+				NPC->ConfigureNPC(TEXT("Grounding smith"), EUEGT2NPCRole::Smith, EUEGT2NPCSpecies::Person, 4242);
+				NPC->AddAnchor(EUEGT2Anchor::Work, Work);
+				NPC->DispatchBeginPlay();
+				NPC->SetLOD(LOD);
+				NPC->EvaluateSchedule(Plain(10.0f), true);
+			}
+			return NPC;
+		}
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -1007,6 +1060,59 @@ bool FUEGT2NPCMovementHitchTest::RunTest(const FString& Parameters)
 			Travelled < NPC->BaseSpeed * 2.0f * Seconds);
 		TestTrue(TEXT("a long tick keeps the requested destination"), NPC->GetDestination().Equals(Destination));
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2NPCFarSlopeTest,
+	"UEGT2.NPC.Grounding.FarSlope",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2NPCFarSlopeTest::RunTest(const FString& Parameters)
+{
+	UEGT2NPCTests::FGroundWorld Sim;
+	if (!TestNotNull(TEXT("sloped static surface"),
+		Sim.AddSurface(FVector::ZeroVector, FVector(80.0, 20.0, 1.0), FRotator(30.0, 0.0, 0.0)))) { return false; }
+	FVector Start, Work;
+	if (!TestTrue(TEXT("slope supports the starting position"), Sim.SurfaceAt(FVector(-1200.0, 0.0, 0.0), Start))
+		|| !TestTrue(TEXT("slope supports the workplace"), Sim.SurfaceAt(FVector(1200.0, 0.0, 0.0), Work))) { return false; }
+	AUEGT2NPCActor* NPC = Sim.AddWalker(Start, Work, EUEGT2NPCLOD::Far);
+	if (!TestNotNull(TEXT("far walker"), NPC)) { return false; }
+	for (int32 Step = 0; Step < 8; ++Step)
+	{
+		NPC->Tick(0.5f); // The real far-tier interval; this tier does not ground-trace.
+		FVector Ground;
+		if (!TestTrue(TEXT("walking position is over the slope"), Sim.SurfaceAt(NPC->GetActorLocation(), Ground))) { return false; }
+		TestTrue(TEXT("height follows this step's position rather than the previous step"),
+			FMath::IsNearlyEqual(NPC->GetActorLocation().Z, Ground.Z, 0.5));
+	}
+	TestTrue(TEXT("the far inhabitant walked along the slope"), FVector::Dist2D(Start, NPC->GetActorLocation()) > 400.0);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2NPCGroundCorrectionTest,
+	"UEGT2.NPC.Grounding.Correction",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2NPCGroundCorrectionTest::RunTest(const FString& Parameters)
+{
+	UEGT2NPCTests::FGroundWorld Sim;
+	if (!TestNotNull(TEXT("flat static ground"), Sim.AddSurface(FVector(0.0, 0.0, -50.0), FVector(100.0, 100.0, 1.0)))
+		|| !TestNotNull(TEXT("raised ground along the route"), Sim.AddSurface(FVector(800.0, 0.0, 30.0), FVector(12.0, 20.0, 0.6)))
+		|| !TestNotNull(TEXT("awning above the raised ground"), Sim.AddSurface(FVector(800.0, 0.0, 265.0), FVector(12.0, 20.0, 0.3)))) { return false; }
+	AUEGT2NPCActor* NPC = Sim.AddWalker(FVector::ZeroVector, FVector(3000.0, 0.0, 0.0), EUEGT2NPCLOD::Near);
+	if (!TestNotNull(TEXT("near walker"), NPC)) { return false; }
+	for (int32 Step = 0; Step < 6; ++Step) { NPC->Tick(0.5f); }
+	TestTrue(TEXT("the inhabitant has walked onto the raised ground"),
+		NPC->GetActorLocation().X > 200.0 && NPC->GetActorLocation().X < 1400.0);
+	TestTrue(TEXT("a ground sample settles the feet below the awning"),
+		FMath::IsNearlyEqual(NPC->GetActorLocation().Z, 60.0, 0.5));
+	const FVector Corrected = NPC->GetActorLocation();
+	NPC->Tick(0.1f); // No new sample yet: the prior correction must survive interpolation.
+	TestTrue(TEXT("walking continues after correction"), FVector::Dist2D(Corrected, NPC->GetActorLocation()) > 1.0);
+	TestTrue(TEXT("the next step retains the sampled surface height"),
+		FMath::IsNearlyEqual(NPC->GetActorLocation().Z, 60.0, 1.0));
 	return true;
 }
 

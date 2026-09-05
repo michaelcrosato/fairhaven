@@ -780,8 +780,8 @@ void UUEGT2NPCDirector::LogPopulationReport()
 
 	// Two different ways to be in the wrong place, and they need telling apart.
 	//
-	// *Airborne* is unambiguous: nothing solid under the feet at all. That is
-	// always a bug.
+	// A short underfoot trace flags feet away from a surface. It also misses
+	// when feet are below terrain, so a miss does not prove terrain is absent.
 	//
 	// *Raised* is more than two metres above the deepest surface below - which
 	// catches a villager perched on a market awning, and also catches a
@@ -791,6 +791,7 @@ void UUEGT2NPCDirector::LogPopulationReport()
 	int32 Airborne = 0;
 	int32 Raised = 0;
 	TMap<FString, int32> AirborneBy;
+	TArray<FString> GroundCheckExamples;
 	float WorstPerch = 0.0f;
 	const AUEGT2NPCActor* HighestPerched = nullptr;
 	TMap<EUEGT2Anchor, int32> RaisedByAnchor;
@@ -817,6 +818,15 @@ void UUEGT2NPCDirector::LogPopulationReport()
 				AirborneBy.FindOrAdd(FString::Printf(TEXT("%s/%s"),
 					*GetSpeciesDisplayName(NPC->GetSpecies()).ToString(),
 					GetAnchorName(NPC->GetTargetAnchor()))) += 1;
+				if (GroundCheckExamples.Num() < 5)
+				{
+					const TCHAR* Tier = NPC->GetLOD() == EUEGT2NPCLOD::Near ? TEXT("Near")
+						: NPC->GetLOD() == EUEGT2NPCLOD::Mid ? TEXT("Mid")
+						: NPC->GetLOD() == EUEGT2NPCLOD::Far ? TEXT("Far") : TEXT("Dormant");
+					GroundCheckExamples.Add(FString::Printf(TEXT("%s at %s, %s, %s, target %s"),
+						*NPC->GetDisplayName().ToString(), *Location.ToString(), Tier,
+						*GetActivityDisplayName(NPC->GetActivity()).ToString(), GetAnchorName(NPC->GetTargetAnchor())));
+				}
 			}
 
 			TArray<FHitResult> Hits;
@@ -868,8 +878,10 @@ void UUEGT2NPCDirector::LogPopulationReport()
 		{
 			Parts.Add(FString::Printf(TEXT("%s %d"), *Pair.Key, Pair.Value));
 		}
-		UE_LOG(LogUEGT2NPC, Warning, TEXT("%d inhabitant(s) standing on nothing at all: %s"),
+		UE_LOG(LogUEGT2NPC, Warning, TEXT("%d inhabitant(s) failed the short underfoot ground check: %s"),
 			Airborne, *FString::Join(Parts, TEXT(", ")));
+		UE_LOG(LogUEGT2NPC, Warning, TEXT("Ground check examples (%d of %d): %s"),
+			GroundCheckExamples.Num(), Airborne, *FString::Join(GroundCheckExamples, TEXT("; ")));
 	}
 
 	// How busy is each of the places we actually photograph?
@@ -946,7 +958,7 @@ void UUEGT2NPCDirector::LogPopulationReport()
 			HighestPerched ? *GetActivityDisplayName(HighestPerched->GetActivity()).ToString() : TEXT("?"),
 			HighestPerched ? GetAnchorName(HighestPerched->GetTargetAnchor()) : TEXT("?"));
 	}
-	else
+	else if (Airborne == 0)
 	{
 		UE_LOG(LogUEGT2NPC, Log, TEXT("Everybody has their feet on the ground."));
 	}

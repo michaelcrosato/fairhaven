@@ -934,12 +934,12 @@ void AUEGT2NPCActor::AdvanceMovement(float DeltaSeconds)
 	const FVector Direction = ToTarget / Distance;
 	const float Step = FMath::Min(Speed * DeltaSeconds, Distance);
 
-	// Height by progress along the leg, not by a time constant. Both ends of
-	// the leg carry a real ground height - path nodes are baked from the
-	// heightmap and destinations are traced - so walking the straight line
-	// between them in 3D follows the ground exactly.
+	// Interpolate at the new XY position, not one step behind it. Both ends
+	// carry ground heights; nearby ground checks rebase the segment where the
+	// terrain curves between them.
+	const float Remaining = FMath::Max(Distance - Step, 0.0f);
 	const float Progress = (SegmentLength > 1.0f)
-		? FMath::Clamp(1.0f - Distance / SegmentLength, 0.0f, 1.0f) : 1.0f;
+		? FMath::Clamp(1.0f - Remaining / SegmentLength, 0.0f, 1.0f) : 1.0f;
 	GroundZ = FMath::Lerp(SegmentStartZ, (float)Target.Z, Progress);
 
 	FVector Next = Current + Direction * Step;
@@ -1058,7 +1058,13 @@ float AUEGT2NPCActor::GroundZAt(const FVector& Point) const
 
 void AUEGT2NPCActor::UpdateGroundHeight()
 {
-	GroundZ = GroundZAt(GetActorLocation());
+	FVector Location = GetActorLocation();
+	GroundZ = GroundZAt(Location);
+	Location.Z = GroundZ;
+	SetActorLocation(Location);
+	// Continue from the sampled surface. Otherwise the next movement tick
+	// overwrites this correction with the old segment's interpolated height.
+	BeginSegment();
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -162,6 +162,11 @@ Do not undo these without understanding why they are there.
   anchor is one point and a crowd is spread around it horizontally, so
   inheriting the anchor's height leaves most of the crowd in the air on any
   ground that is not flat.
+- **Walking height belongs to the new horizontal position.** Interpolating
+  with the pre-step distance leaves feet behind on slopes, especially at the
+  far tier's half-second interval. A periodic ground correction must move the
+  actor and rebase the remaining segment, or the next tick overwrites it.
+  `UEGT2.NPC.Grounding.*` checks a slope and raised ground under an awning.
 - **A crowd's capacity is the number of distinct anchor points, not the spread
   radius.** Five market stalls served ninety villagers and produced one writhing
   mass; thirteen stalls and twelve benches produce a market.
