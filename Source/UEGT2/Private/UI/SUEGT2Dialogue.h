@@ -33,10 +33,12 @@ public:
 
 	virtual bool SupportsKeyboardFocus() const override { return true; }
 	virtual FReply OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
+	virtual void Tick(const FGeometry& Geometry, double CurrentTime, float DeltaTime) override;
 
 private:
-	/** Rebuild the topic list and the transcript from the partner's live state. */
+	/** Rebuild the available topics when the partner or a conversation action changes. */
 	void Refresh();
+	void UpdateState(const FUEGT2DialogueState& State);
 
 	/** Ask one thing. Actions (follow, dismiss) also change the world. */
 	FReply OnTopic(EUEGT2DialogueTopic Topic);
@@ -60,4 +62,6 @@ private:
 
 	/** Topic order as built, so the number keys can select them. */
 	TArray<EUEGT2DialogueTopic> Ordered;
+	float RefreshCountdown = 0.0f;
+	bool bShownFollowing = false;
 };

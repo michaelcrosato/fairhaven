@@ -57,6 +57,13 @@ void AUEGT2PlayerController::BeginPlay()
 
 void AUEGT2PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	SetPlayerConversing(false);
+	DialoguePartner.Reset();
+	if (DialogueWidget.IsValid() && GEngine && GEngine->GameViewport)
+	{
+		GEngine->GameViewport->RemoveViewportWidgetContent(DialogueWidget.ToSharedRef());
+	}
+	DialogueWidget.Reset();
 	if (MenuWidget.IsValid() && GEngine && GEngine->GameViewport)
 	{
 		GEngine->GameViewport->RemoveViewportWidgetContent(MenuWidget.ToSharedRef());

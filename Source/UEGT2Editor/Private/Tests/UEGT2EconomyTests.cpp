@@ -13,7 +13,10 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Engine/World.h"
 #include "Interaction/UEGT2Amenity.h"
+#include "Misc/ScopeExit.h"
+#include "NPC/UEGT2NPCActor.h"
 #include "NPC/UEGT2NPCRoutines.h"
 #include "NPC/UEGT2NPCTypes.h"
 
@@ -210,6 +213,52 @@ bool FUEGT2WageTableTest::RunTest(const FString& Parameters)
 		UEGT2WageFor(EUEGT2NPCRole::Merchant, EUEGT2Activity::Market) > 0.0f);
 	TestEqual(TEXT("a villager is not paid at the market"),
 		UEGT2WageFor(EUEGT2NPCRole::Villager, EUEGT2Activity::Market), 0.0f);
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2NPCStartingPurseTest,
+	"UEGT2.Economy.NPCStartingPurse",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2NPCStartingPurseTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::EditorPreview, false);
+	if (!TestNotNull(TEXT("isolated actor world"), World)) { return false; }
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AUEGT2NPCActor* Authored = World->SpawnActor<AUEGT2NPCActor>();
+	if (!TestNotNull(TEXT("authoring template"), Authored)) { return false; }
+	Authored->ConfigureNPC(TEXT("Test smith"), EUEGT2NPCRole::Smith,
+		EUEGT2NPCSpecies::Person, 4242);
+
+	// A template copies the baked UPROPERTY identity into a fresh actor, just
+	// as loading the generated map does. The non-UPROPERTY purse cannot ride
+	// along with it: a test that only calls ConfigureNPC would miss that loss.
+	FActorSpawnParameters Spawn;
+	Spawn.Template = Authored;
+	AUEGT2NPCActor* Loaded = World->SpawnActor<AUEGT2NPCActor>(Spawn);
+	AUEGT2NPCActor* Again = World->SpawnActor<AUEGT2NPCActor>(Spawn);
+	if (!TestNotNull(TEXT("loaded NPC"), Loaded)
+		|| !TestNotNull(TEXT("second loaded NPC"), Again)) { return false; }
+	TestEqual(TEXT("baked identity survives loading"), Loaded->GetSeed(), 4242);
+	Loaded->DispatchBeginPlay();
+	Again->DispatchBeginPlay();
+	const float StartingCoins = Loaded->GetPurse().Coins;
+	TestTrue(TEXT("a loaded citizen starts able to buy a meal"),
+		StartingCoins >= UEGT2PriceFor(EUEGT2NPCRole::Smith, EUEGT2Activity::Eat));
+	TestTrue(TEXT("starting money follows the trade's seeded range"),
+		StartingCoins >= UEGT2StartingCoins(EUEGT2NPCRole::Smith) * 0.55f
+		&& StartingCoins < UEGT2StartingCoins(EUEGT2NPCRole::Smith) * 1.45f);
+	TestEqual(TEXT("the same identity starts with the same purse"),
+		Again->GetPurse().Coins, StartingCoins);
+
+	AUEGT2NPCActor* Animal = World->SpawnActor<AUEGT2NPCActor>();
+	if (!TestNotNull(TEXT("animal"), Animal)) { return false; }
+	Animal->ConfigureNPC(TEXT("Test goat"), EUEGT2NPCRole::Smith,
+		EUEGT2NPCSpecies::Goat, 4242);
+	Animal->DispatchBeginPlay();
+	TestEqual(TEXT("an animal does not inherit a human purse"), Animal->GetPurse().Coins, 0.0f);
 	return true;
 }
 

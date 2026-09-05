@@ -5,14 +5,16 @@
 // to exploit: "a timid chicken with the player two metres away" is three lines
 // here and would be a map, a pawn and a stopwatch otherwise.
 //
-// What is deliberately NOT here: anything that needs the world. Walking,
-// pathing over the baked network, LOD tiers and the bubbles themselves are
-// covered by UEGT2ContentTests (which loads the map) and by looking at a
-// screenshot, because that is where their failure modes actually show up.
+// Actor behavior uses a small isolated world. Pathing over the baked network,
+// population placement and rendered bubbles are covered by UEGT2ContentTests
+// (which loads the map) and by looking at a screenshot.
 #include "Misc/AutomationTest.h"
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Engine/World.h"
+#include "Misc/ScopeExit.h"
+#include "NPC/UEGT2NPCActor.h"
 #include "NPC/UEGT2NPCRoutines.h"
 #include "NPC/UEGT2NPCSpeech.h"
 #include "NPC/UEGT2NPCTypes.h"
@@ -850,6 +852,70 @@ bool FUEGT2FullDayTest::RunTest(const FString& Parameters)
 		TestTrue(FString::Printf(TEXT("%s does more than one thing (got %d)"),
 			*Name, Seen.Num()), Seen.Num() >= 2);
 	}
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2NPCFollowingTest,
+	"UEGT2.NPC.Following",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2NPCFollowingTest::RunTest(const FString& Parameters)
+{
+	UWorld* World = UWorld::CreateWorld(EWorldType::EditorPreview, false);
+	if (!TestNotNull(TEXT("isolated actor world"), World)) { return false; }
+	ON_SCOPE_EXIT { World->DestroyWorld(false); };
+
+	AUEGT2NPCActor* NPC = World->SpawnActor<AUEGT2NPCActor>();
+	AUEGT2NPCActor* Target = World->SpawnActor<AUEGT2NPCActor>();
+	if (!TestNotNull(TEXT("companion"), NPC)
+		|| !TestNotNull(TEXT("follow target"), Target)) { return false; }
+	NPC->ConfigureNPC(TEXT("Test smith"), EUEGT2NPCRole::Smith,
+		EUEGT2NPCSpecies::Person, 4242);
+	NPC->AddAnchor(EUEGT2Anchor::Work, FVector(5000.0, 0.0, 0.0));
+	NPC->DispatchBeginPlay();
+	NPC->SetLOD(EUEGT2NPCLOD::Near);
+	FUEGT2NPCContext Context = UEGT2NPCTests::Plain(10.0f);
+	NPC->EvaluateSchedule(Context, true);
+	TestTrue(TEXT("the old route leads away from the player"),
+		FVector::Dist2D(NPC->GetActorLocation(), NPC->GetDestination()) > 1000.0);
+	Target->SetActorLocation(FVector(200.0, 0.0, 0.0));
+	const FVector WaitingAt = NPC->GetActorLocation();
+	NPC->SetFollowTarget(Target);
+	TestEqual(TEXT("agreeing to follow changes activity immediately"),
+		NPC->GetActivity(), EUEGT2Activity::Follow);
+	NPC->EvaluateSchedule(Context, false);
+	TestEqual(TEXT("the routine cannot replace a companion's activity"),
+		NPC->GetActivity(), EUEGT2Activity::Follow);
+	const float Coins = NPC->GetPurse().Coins;
+	NPC->AdvanceNeeds(0.1f);
+	TestEqual(TEXT("walking with the player does not earn a smith's wage"),
+		NPC->GetPurse().Coins, Coins);
+
+	// Long enough for the old job's arrival drift to fire, if either the stale
+	// destination or the routine activity survived the follow request.
+	for (int32 Tick = 0; Tick < 100; ++Tick) { NPC->Tick(0.1f); }
+	TestTrue(TEXT("a nearby companion stays put instead of following the old route"),
+		FVector::Dist2D(NPC->GetActorLocation(), WaitingAt) < 1.0);
+	Target->SetActorLocation(FVector(1200.0, 0.0, 0.0));
+	for (int32 Tick = 0; Tick < 20; ++Tick) { NPC->Tick(0.1f); }
+	TestTrue(TEXT("the companion resumes walking when the target moves away"),
+		NPC->GetActorLocation().X > WaitingAt.X + 100.0);
+
+	NPC->SetFollowTarget(nullptr);
+	NPC->EvaluateSchedule(Context, false);
+	TestFalse(TEXT("dismissal stops following"), NPC->IsFollowing());
+	TestNotEqual(TEXT("dismissal restores the routine activity"),
+		NPC->GetActivity(), EUEGT2Activity::Follow);
+	TestTrue(TEXT("dismissal restores the workplace route"), NPC->GetDestination().X > 4000.0);
+
+	NPC->SetFollowTarget(Target);
+	NPC->AdvanceNeeds(10.0f);
+	Context.PlayerDistance = 100.0f;
+	NPC->EvaluateSchedule(Context, false);
+	TestFalse(TEXT("a desperate companion breaks off even beside the player"), NPC->IsFollowing());
+	TestEqual(TEXT("the need survives the proximity greeting"),
+		NPC->GetActivityReason(), EUEGT2ActivityReason::Need);
 	return true;
 }
 

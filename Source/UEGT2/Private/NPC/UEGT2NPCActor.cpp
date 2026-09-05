@@ -170,6 +170,11 @@ void AUEGT2NPCActor::BeginPlay()
 	// Everyone starts somewhere different, so the town does not all get hungry
 	// at once on the first morning.
 	Needs.Relief = 0.35f + UEGT2HashUnit((uint32)Seed, 0x4444u) * 0.6f;
+	// The purse is runtime state, so ConfigureNPC's authoring-time value would
+	// not survive saving and loading the map. Seed it alongside the needs.
+	Purse.Coins = IsAnimal()
+		? 0.0f
+		: UEGT2StartingCoins(NPCRole) * (0.55f + UEGT2HashUnit((uint32)Seed, 0xC01Eu) * 0.9f);
 
 	if (UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(GetWorld()))
 	{
@@ -197,12 +202,6 @@ void AUEGT2NPCActor::ConfigureNPC(const FString& InDisplayName, EUEGT2NPCRole In
 	Species = InSpecies;
 	Seed = InSeed;
 	Personality = FUEGT2Personality::FromSeed(Seed);
-	// Everybody starts the day with something in their pocket, jittered by the
-	// seed so the town is not uniformly solvent. Animals keep the zero they
-	// were born with: nothing charges them and nothing pays them.
-	Purse.Coins = IsAnimal()
-		? 0.0f
-		: UEGT2StartingCoins(NPCRole) * (0.55f + UEGT2HashUnit((uint32)Seed, 0xC01Eu) * 0.9f);
 
 	// Draw cost scales with how big the thing actually is. A chicken's shadow
 	// is not worth a virtual shadow map page, and a chicken at two hundred
@@ -343,10 +342,19 @@ void AUEGT2NPCActor::SetFollowTarget(AActor* Target)
 {
 	FollowTarget = Target;
 	FollowRepathCountdown = 0.0f;
-	if (Target == nullptr)
+	if (Target)
 	{
-		// Straight back onto whatever the hour asks for, rather than standing
-		// where they were left until the next schedule tick.
+		// The activity must match the movement immediately: following somebody
+		// does not earn the wage of the job they just walked away from.
+		bActivityChanged |= Decision.Activity != EUEGT2Activity::Follow;
+		Decision.Activity = EUEGT2Activity::Follow;
+		Decision.Anchor = EUEGT2Anchor::Wander;
+		Decision.Reason = EUEGT2ActivityReason::Player;
+		ApplyIndoors(false);
+	}
+	else
+	{
+		// The next schedule pass sees Follow -> routine and restores its route.
 		bActivityChanged = true;
 		StuckSeconds = 0.0f;
 	}
@@ -376,8 +384,10 @@ void AUEGT2NPCActor::AdvanceFollowing(float DeltaSeconds)
 	// looks like they are walking with you.
 	if (Distance < 260.0f)
 	{
+		Destination = Ours;
 		bArrived = true;
 		PathPoints.Reset();
+		PathIndex = 0;
 		return;
 	}
 
@@ -512,25 +522,33 @@ void AUEGT2NPCActor::EvaluateSchedule(const FUEGT2NPCContext& Context, bool bFor
 	Local.Purse = Purse;
 	Local.Seed = Seed;
 	Local.bExposed = !bIndoors;
+	if (IsFollowing())
+	{
+		// The companion is already responding to the player. A second proximity
+		// greeting must not overwrite the need that should end the walk.
+		Local.PlayerDistance = 1.0e9f;
+	}
 
 	const FUEGT2ActivityDecision Previous = Decision;
 	Decision = ResolveActivity(NPCRole, Species, Local);
-
-	const bool bChanged = Previous.Activity != Decision.Activity
-		|| Previous.Anchor != Decision.Anchor;
-	bActivityChanged |= (Previous.Activity != Decision.Activity);
 
 	// Following overrides where they go, but not what they need: the decision
 	// above still ran, so a companion who gets hungry still says so, and still
 	// breaks off if the need is bad enough to send them somewhere.
 	if (IsFollowing() && Decision.Reason != EUEGT2ActivityReason::Need)
 	{
+		Decision.Activity = EUEGT2Activity::Follow;
+		Decision.Anchor = EUEGT2Anchor::Wander;
+		Decision.Reason = EUEGT2ActivityReason::Player;
 		return;
 	}
 	if (IsFollowing())
 	{
 		SetFollowTarget(nullptr);
 	}
+	const bool bChanged = Previous.Activity != Decision.Activity
+		|| Previous.Anchor != Decision.Anchor;
+	bActivityChanged |= (Previous.Activity != Decision.Activity);
 
 	if (bChanged || bForceRepath)
 	{

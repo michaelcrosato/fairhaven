@@ -16,15 +16,12 @@
 // translation units, and one leaking out of here made every colour name in
 // SUEGT2Menu.cpp ambiguous.
 
-namespace
+namespace UEGT2DialogueWidget
 {
 	/** A thin bar showing one need. Green when met, amber low, red urgent. */
-	TSharedRef<SWidget> NeedBar(const FText& Caption, float Value)
+	TSharedRef<SWidget> NeedBar(const FText& Caption, TAttribute<float> Value)
 	{
 		using namespace UEGT2UI;
-		const FLinearColor Fill = Value > 0.55f ? FLinearColor(0.45f, 0.78f, 0.52f, 1.0f)
-			: Value > 0.26f ? FLinearColor(0.90f, 0.74f, 0.36f, 1.0f)
-			: FLinearColor(0.88f, 0.42f, 0.38f, 1.0f);
 
 		return SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
@@ -41,14 +38,21 @@ namespace
 					.Padding(0.0f)
 					[
 						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().FillWidth(FMath::Max(Value, 0.02f))
+						+ SHorizontalBox::Slot().FillWidth(TAttribute<float>::CreateLambda(
+							[Value] { return FMath::Max(Value.Get(), 0.02f); }))
 						[
 							SNew(SBorder)
 							.BorderImage(Box())
-							.BorderBackgroundColor(FSlateColor(Fill))
+							.BorderBackgroundColor_Lambda([Value]
+							{
+								return FSlateColor(Value.Get() > 0.55f ? FLinearColor(0.45f, 0.78f, 0.52f, 1.0f)
+									: Value.Get() > 0.26f ? FLinearColor(0.90f, 0.74f, 0.36f, 1.0f)
+									: FLinearColor(0.88f, 0.42f, 0.38f, 1.0f));
+							})
 							.Padding(0.0f)
 						]
-						+ SHorizontalBox::Slot().FillWidth(FMath::Max(1.0f - Value, 0.0f))
+						+ SHorizontalBox::Slot().FillWidth(TAttribute<float>::CreateLambda(
+							[Value] { return FMath::Max(1.0f - Value.Get(), 0.0f); }))
 						[
 							SNew(SSpacer)
 						]
@@ -187,6 +191,7 @@ void SUEGT2Dialogue::SetPartner(AUEGT2NPCActor* InPartner)
 void SUEGT2Dialogue::Refresh()
 {
 	using namespace UEGT2UI;
+	using namespace UEGT2DialogueWidget;
 	AUEGT2NPCActor* NPC = Partner.Get();
 	if (NPC == nullptr || !TopicList.IsValid())
 	{
@@ -194,13 +199,7 @@ void SUEGT2Dialogue::Refresh()
 	}
 
 	const FUEGT2DialogueState State = NPC->MakeDialogueState();
-	NameText = State.DisplayName;
-	RoleText = GetRoleDisplayName(State.Role);
-	StatusText = State.bFollowing
-		? FText::Format(LOCTEXT("StatusFollowing", "{0}  -  walking with you"),
-			GetActivityDisplayName(State.Activity))
-		: GetActivityDisplayName(State.Activity);
-	Shown = State.Needs;
+	UpdateState(State);
 
 	TArray<FUEGT2DialogueOption> Options;
 	UEGT2DialogueTopics(State, Options);
@@ -272,19 +271,19 @@ void SUEGT2Dialogue::Refresh()
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 8.0f)
 			[
-				NeedBar(LOCTEXT("BarRested", "Rested"), Shown.Energy)
+				NeedBar(LOCTEXT("BarRested", "Rested"), TAttribute<float>::CreateLambda([this] { return Shown.Energy; }))
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 8.0f)
 			[
-				NeedBar(LOCTEXT("BarFed", "Fed"), Shown.Fed)
+				NeedBar(LOCTEXT("BarFed", "Fed"), TAttribute<float>::CreateLambda([this] { return Shown.Fed; }))
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(0.0f, 0.0f, 0.0f, 8.0f)
 			[
-				NeedBar(LOCTEXT("BarComfort", "Comfort"), Shown.Relief)
+				NeedBar(LOCTEXT("BarComfort", "Comfort"), TAttribute<float>::CreateLambda([this] { return Shown.Relief; }))
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				NeedBar(LOCTEXT("BarCompany", "Company"), Shown.Company)
+				NeedBar(LOCTEXT("BarCompany", "Company"), TAttribute<float>::CreateLambda([this] { return Shown.Company; }))
 			]
 		]
 		+ SHorizontalBox::Slot().FillWidth(1.0f)
@@ -292,6 +291,49 @@ void SUEGT2Dialogue::Refresh()
 			Columns
 		]
 	];
+}
+
+// ---------------------------------------------------------------------------
+void SUEGT2Dialogue::UpdateState(const FUEGT2DialogueState& State)
+{
+	NameText = State.DisplayName;
+	RoleText = GetRoleDisplayName(State.Role);
+	StatusText = State.bFollowing
+		? FText::Format(LOCTEXT("StatusFollowing", "{0}  -  walking with you"),
+			GetActivityDisplayName(State.Activity))
+		: GetActivityDisplayName(State.Activity);
+	Shown = State.Needs;
+	bShownFollowing = State.bFollowing;
+}
+
+void SUEGT2Dialogue::Tick(const FGeometry& Geometry, double CurrentTime, float DeltaTime)
+{
+	SCompoundWidget::Tick(Geometry, CurrentTime, DeltaTime);
+	RefreshCountdown -= DeltaTime;
+	if (RefreshCountdown > 0.0f)
+	{
+		return;
+	}
+	RefreshCountdown = 0.2f;
+	if (AUEGT2NPCActor* NPC = Partner.Get())
+	{
+		// Keep the buttons in place while needs change so keyboard focus and
+		// a mouse press survive the refresh.
+		const FUEGT2DialogueState State = NPC->MakeDialogueState();
+		if (State.bFollowing != bShownFollowing)
+		{
+			// A companion may leave to answer a need without another question.
+			Refresh();
+		}
+		else
+		{
+			UpdateState(State);
+		}
+	}
+	else if (AUEGT2PlayerController* Player = Controller.Get())
+	{
+		Player->CloseDialogue();
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -387,10 +429,11 @@ FReply SUEGT2Dialogue::OnKeyDown(const FGeometry& Geometry, const FKeyEvent& Key
 	}
 
 	// Number keys pick a topic, in the order they are listed.
-	for (int32 Index = 0; Index < Ordered.Num() && Index < 10; ++Index)
+	const FKey NumberKeys[] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four,
+		EKeys::Five, EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine, EKeys::Zero };
+	for (int32 Index = 0; Index < Ordered.Num() && Index < UE_ARRAY_COUNT(NumberKeys); ++Index)
 	{
-		const int32 Digit = (Index + 1) % 10;
-		if (Key == FKey(*FString::Printf(TEXT("%d"), Digit)))
+		if (Key == NumberKeys[Index])
 		{
 			return OnTopic(Ordered[Index]);
 		}

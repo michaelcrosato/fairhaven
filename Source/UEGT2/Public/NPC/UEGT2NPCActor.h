@@ -248,7 +248,7 @@ private:
 	/** Cached because the personality is a pure function of the seed. */
 	FUEGT2Personality Personality;
 	FUEGT2NPCNeeds Needs;
-	/** Wages in, meals and rounds out. Rolled from the seed in ConfigureNPC. */
+	/** Wages in, meals and rounds out. Rolled from the seed in BeginPlay. */
 	FUEGT2Purse Purse;
 
 	/** Who this NPC is walking with, if anyone. */

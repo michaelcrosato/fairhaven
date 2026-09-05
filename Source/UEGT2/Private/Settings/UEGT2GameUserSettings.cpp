@@ -4,11 +4,10 @@
 #include "HAL/IConsoleManager.h"
 #include "Sound/SoundClass.h"
 #include "UEGT2LogChannels.h"
-#include "UObject/ConstructorHelpers.h"
 
 FUEGT2SettingsApplied UUEGT2GameUserSettings::OnSettingsApplied;
 
-namespace
+namespace UEGT2SettingsLocal
 {
 	/** Sound class assets created by the content build. Missing assets are tolerated. */
 	const TCHAR* AudioBusSoundClassPaths[] = {
@@ -89,6 +88,7 @@ void UUEGT2GameUserSettings::ApplyNonResolutionSettings()
 
 void UUEGT2GameUserSettings::ApplyConsoleVariables() const
 {
+	using UEGT2SettingsLocal::SetCVar;
 	SetCVar(TEXT("r.MotionBlurQuality"), bMotionBlur ? 3.0f : 0.0f);
 	SetCVar(TEXT("r.BloomQuality"), bBloom ? 5.0f : 0.0f);
 	SetCVar(TEXT("r.ScreenPercentage"), FMath::Clamp(ResolutionScalePercent, 50.0f, 100.0f));
@@ -104,19 +104,17 @@ void UUEGT2GameUserSettings::ApplyConsoleVariables() const
 
 void UUEGT2GameUserSettings::ApplyAudioSettings() const
 {
-	const float Master = GetAudioVolume(EUEGT2AudioBus::Master);
 	for (int32 Index = 0; Index < static_cast<int32>(EUEGT2AudioBus::Count); ++Index)
 	{
 		const EUEGT2AudioBus Bus = static_cast<EUEGT2AudioBus>(Index);
-		USoundClass* SoundClass = LoadObject<USoundClass>(nullptr, AudioBusSoundClassPaths[Index]);
+		USoundClass* SoundClass = LoadObject<USoundClass>(nullptr, UEGT2SettingsLocal::AudioBusSoundClassPaths[Index]);
 		if (!SoundClass)
 		{
 			continue;
 		}
-		const float Volume = (Bus == EUEGT2AudioBus::Master)
-			? Master
-			: Master * GetAudioVolume(Bus);
-		SoundClass->Properties.Volume = FMath::Clamp(Volume, 0.0f, 1.0f);
+		// The generated classes are children of Master. Unreal propagates its
+		// volume down that tree; multiplying it here too would square the slider.
+		SoundClass->Properties.Volume = FMath::Clamp(GetAudioVolume(Bus), 0.0f, 1.0f);
 	}
 }
 

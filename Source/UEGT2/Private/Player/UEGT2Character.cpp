@@ -60,7 +60,7 @@ AUEGT2Character::AUEGT2Character()
 	Movement->SetWalkableFloorAngle(50.0f);
 	Movement->bCanWalkOffLedges = true;
 	Movement->NavAgentProps.bCanCrouch = true;
-	Movement->CrouchedHalfHeight = 52.0f;
+	Movement->SetCrouchedHalfHeight(52.0f);
 	Movement->bMaintainHorizontalGroundVelocity = true;
 
 	DefaultJumpMaxCount = JumpMaxCount;
