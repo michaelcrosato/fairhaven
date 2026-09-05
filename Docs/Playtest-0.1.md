@@ -1,11 +1,12 @@
 # Fairhaven v0.1 playtest guide
 
-This is the first playable foundation. It is a **place to walk around**, not a
-game: there is no objective, no progression and no failure state. What is being
-tested is whether the world reads at the right scale, whether it feels good to
-move through, and whether the technical foundation is worth building on.
+This is a playable world with exploration, conversation, companions, needs and
+paid work. There is no quest objective, progression system or game-over state.
+Test whether it feels good to move through, whether the inhabitants' routines
+make sense, and whether living alongside them is worth doing.
 
-Expect 10–20 minutes to see everything worth seeing.
+A short visit can cover the town; allow longer to explore Newhaven, its
+interiors and the outer regions.
 
 ## Launch
 
@@ -32,8 +33,8 @@ You will land on the main menu, shown over a live view of the town. Choose
 | Menu / pause | Escape | Start |
 | Diagnostics overlay | F3 | — |
 
-Every one of those can be rebound in **Settings → Controls**. Sprint can be made
-a toggle in the same place.
+The keyboard bindings can be changed in **Settings → Controls**. Sprint can be
+made a toggle in the same place. Mouse look and gamepad mappings are fixed.
 
 ## You live here
 
@@ -45,17 +46,19 @@ Press **E** at any of these. Pressing it again, or walking away, stops.
 
 | Where | What it does | Cost |
 |---|---|---|
-| A shop doorway or a market stall | eat | 5 an hour |
-| Your own lodgings | eat at home | free |
-| Your own bed | sleep, and it is the fastest way to rest | free |
+| A shop doorway or a stall offering food | eat | 5 an hour |
+| The eat prompt beside your lodgings | eat at home | free |
+| The sleep prompt beside your lodgings | sleep, and it is the fastest way to rest | free |
 | A privy or a public convenience | relief | 1 an hour |
 | Any bench | sit down | free |
 | The inn | a drink: feeds you and keeps you company | 6 an hour |
 | The church | sit quietly | free |
 | A warehouse, farm, pier, wharf, office or shop | put in a shift | **pays 6-12 an hour** |
-| A market stall | mind it, as a merchant would | **pays 10 an hour** |
+| A stall offering work | mind it, as a merchant would | **pays 10 an hour** |
 
-Taking work changes your trade for good, and the wage with it. Talking to
+Costs and wages are per world hour and accrue for the time you actually spend.
+Taking work changes your trade until you take another job, and the wage with it.
+This state resets when you start a new session. Talking to
 anybody keeps you company while the conversation is open - which is why they
 stop to talk too. Ask them how they are off for coin and the answer is their
 real purse.
@@ -78,9 +81,9 @@ You start just off the town square, facing east toward the harbour.
 
 1. **Town square** — the well, the market stalls, and the crowd. Try `E` on a
    crate: you pick it up, carry it, and `E` again throws it. Open a house door.
-   Try `E` on a villager: they answer, and the HUD tells you what they are
-   actually doing. Stand still for a minute and read what people say as they set
-   off somewhere.
+   Try `E` on a villager: the conversation panel shows their activity and needs,
+   and lets you ask questions or invite them along. Stand still for a minute
+   and read what people say as they set off somewhere.
 2. **East to the harbour** (about 300 m) — docks, boats, the beach. Walk into
    the sea: you should start swimming at chest depth.
 3. **North-east to the lighthouse** — the tallest landmark on the coast. Survey
@@ -90,6 +93,8 @@ You start just off the town square, facing east toward the harbour.
 5. **West to the farmland** — hedged fields, wheat, barns, scarecrows, the
    windmill, and a pond.
 6. **South** — the land gets warmer: palms, ferns, jungle trees, and a lagoon.
+7. **Further south to Newhaven** — visit the civic square, the wharf and a
+   shophouse street. Enter an office block or tower and try its stairs.
 
 There are 7 survey landmarks. Each shows a count when you use it.
 
@@ -98,8 +103,8 @@ There are 7 survey landmarks. Each shows a count when you use it.
 **Scale.** Does a house feel house-sized next to you? Do the villagers read as
 people? Is the walk from town to the coast the right length, or too long/short?
 
-**Inside the houses.** The other main new question. Every house on a town
-street now opens. Walk up to a front door, press the interact key, and go in.
+**Inside the houses.** Town street houses have working front doors and
+furnished interiors. Walk up, press the interact key, and go in.
 What to judge:
 
 - Does the room read as somewhere a person lives, or as a box with props in it?
@@ -115,11 +120,11 @@ What to judge:
 Dev Mode -> Teleport has four buttons that put you straight inside one:
 HouseInterior, HouseUpstairs, CottageInterior and HouseHearth.
 
-**Climb one.** Every floor of every Newhaven building is walkable, and the
-stairs run from the street to the roof. Go into a tower, keep going up, and come
-out on top of it. What to judge: is the climb worth making, does the stair ever
-put you somewhere you cannot get out of, and is the view from the roof worth the
-walk?
+**Climb one.** Newhaven's towers, offices, apartments and shophouses have
+stacked interiors with stairs leading to an accessible roof or terrace. On a
+setback tower, the decorative shaft continues above the terrace you can reach.
+What to judge: is the climb worth making, does a stair put you somewhere you
+cannot get out of, and can you see well enough on upper floors at night?
 
 **Fairhaven's high street.** Twelve trades, each with a signpost outside saying
 what it is: a grocery, a bakehouse, an ironmonger, a draper, a barber, a
@@ -152,13 +157,13 @@ eat, to sit down, to find a washroom or to find someone to talk to. What to
 judge: does it read as people with lives, or as people twitching between errands?
 Are there enough places to do each of those things near where they are?
 
-**Newhaven's ground floors.** Every building in the city opens, and every one
-of them is a business. There are twenty-seven trades in the city and at least
-one of each: a grocer, a baker, a pharmacy, a hardware shop, a clothier, a
+**Newhaven's ground floors.** Shops, offices, apartments and towers have
+ground-floor venues, with businesses distributed by building archetype:
+a grocer, a baker, a pharmacy, a hardware shop, a clothier, a
 bookshop, a furniture showroom, an electrical shop, a restaurant, a coffee
 house, a tavern, a barber, an optometrist, a post office, a gymnasium, a bank,
 a solicitor, a doctor, a dentist, a police station, a library, a school, a
-museum, a chapel, offices, apartment lobbies and a civic hall.
+museum, offices and apartment lobbies. The city hall has its own civic interior.
 
 Walk a shophouse street and go into three or four in a row. What to judge:
 
@@ -168,16 +173,17 @@ Walk a shophouse street and go into three or four in a row. What to judge:
   downtown, lobbies in the towers and apartments. Does that read on foot?
 - The city hall on the civic square opens too.
 
-**Windows.** Every window in the world is real glass now, inside and out. Look
-through one from the street and from a room.
+**Windows.** The material supports translucent panes, but town-house frames
+currently cover the openings with opaque geometry; two-storey houses also have
+wall geometry across their windows. Those blocked views are a known bug, not
+the intended style. Compare the city glazing from the street and from a room.
 
-**The town's day.** This is the main new question. Escape → Dev Mode → World →
-Time of Day, and drag it. Half four in the morning should be a fisher walking to
-the boats and nobody else; nine should be a working town; six in the evening
-should be a full square; one in the morning should be empty except for the
-constable and a light in the bakery. Does it read as a town keeping hours, or as
-actors hitting marks? Dev Mode → Life → **Show Plans** tells you what each of
-them thinks it is doing, and why.
+**The town's day.** Escape → Dev Mode → World → Time of Day, and drag it.
+Look for fishers heading to the boats before dawn, a working town in the
+morning, and more people gathering after work. Bakers and constables keep
+different hours, and needs or bad weather can interrupt any routine. Does it
+read as a town keeping hours, or as actors hitting marks? Dev Mode → Life →
+**Show Plans** tells you what each inhabitant is doing and why.
 
 **Crowds.** Does the market read as a market rather than a queue? Is anybody
 standing on a roof or in the air? (`F3`, or the `LogUEGT2NPC` population report
@@ -212,45 +218,44 @@ binding. Quit and relaunch: everything should persist.
 
 These are known. Reporting them again costs you time.
 
-- **No gameplay.** No objectives, inventory, combat or saving of world state.
-  Only settings persist. The inhabitants keep a routine and react to the hour,
-  the weather, the day and to you, but there is nothing to *do* with them beyond
-  talking; nothing you do changes their day.
+- **No quests, inventory, combat or world-state saves.** Needs, paid work,
+  conversation and following are playable. Talking interrupts an inhabitant's
+  routine, and inviting them along changes where they go until they leave or
+  need something. Only settings persist across sessions.
 - **Water is a stylised surface, not the Water plugin.** No waves, no buoyancy,
   no underwater post-process. Swimming works because there is a physics volume
-  under the sea plane. The river is a flat ribbon.
+  under the sea plane. The river is a generated ribbon following the valley.
 - **The windmill sails do not turn**, and there is no skeletal animation
   anywhere. A walking figure is a static mesh with a bob and a sway. That is
   deliberate for this milestone.
 - **You walk through people.** NPC collision is query-only, on purpose: the
   player starts in the busiest part of town and a solid crowd there means getting
   wedged.
-- **Nobody goes inside, even though inside now exists.** Sleeping and eating at
+- **NPC home activities are represented at the doorstep.** Sleeping and eating at
   home are still modelled by the inhabitant walking to their own doorstep and
   vanishing. Now that you can follow them in and see the room they are supposed
   to be in, that reads worse than it used to. Walking them through the door and
   sitting them at their own table is the obvious next job.
-- **You can only walk into the ground floor of a big building.** Newhaven's
-  towers, offices and apartment blocks open onto a lobby or a shop; the storeys
-  above them are solid. The town houses are the exception - those you can walk
-  all the way up.
-- **Interiors are lit by their own lamps, day and night.** Daylight does come
-  through the windows now that they are real glass, but a room is still mostly
-  lit by the point light hanging in its ceiling lamp, which is why it is about
-  as bright at noon as at midnight.
+- **Room lighting is still being tuned.** Town interiors and city ground
+  floors have point lights at their ceiling lamps. Opaque frame and wall
+  geometry currently blocks the town-house windows, leaving rooms dependent on
+  their lamps even during daylight; repairing the apertures comes before
+  judging their final brightness.
+  Upper city floors currently have emissive lamp meshes without those point
+  lights. Report floors that are too dark to navigate, especially at night.
 - **The kiosks, bus shelters and market stalls are not buildings** and have no
   inside. Neither do the lighthouse or the windmill.
 - **Vegetation pops** at its cull distance rather than fading.
 - **The town is one density everywhere** — no separate districts, and building
   placement is a simple street-side rule with overlap rejection.
-- **No level streaming.** The whole 2 km map is one level, loaded at once.
-  Loading takes a few seconds and memory is a few hundred MB.
+- **No level streaming.** The whole 4.03 km square map is one level, loaded
+  at once. Loading time and memory usage depend on the machine and build.
 - **Landmark discovery does not persist** between sessions.
 - **Ambient audio is generated and simple.** It is meant to prove the mix and
   the settings plumbing, not to be final.
-- **The asset showcase** (a grid of every mesh, in the farmland at roughly
-  X +27,000 / Y −53,000) is a development aid that is still in the map. Say if
-  you would rather it were not.
+- **The asset showcase is opt-in.** A normal full content build excludes the
+  inspection grid. Developers can add it with `-Stages showcase`; its two tour
+  viewpoints show ordinary farmland when the grid is absent.
 
 ## Reporting back
 

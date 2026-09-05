@@ -24,13 +24,15 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Build-Content.ps1 -Stages npc         # re-roll the population + road graph
 ./Scripts/Test.ps1                              # automation tests
 ./Scripts/Package.ps1                           # playable build
-./Scripts/Screenshot-Tour.ps1                   # 20 viewpoints -> PNG
+./Scripts/Screenshot-Tour.ps1                   # 33 registered viewpoints -> PNG
 ./Scripts/Screenshot-Tour.ps1 -Menu             # menu + settings -> PNG
 ./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureDialogue'   # the talk panel
 ./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'       # eat, wash, sit, work
 ./Scripts/Fly-Soak.ps1 -Minutes 10                                 # god mode, ten minutes, every hitch
 ./Scripts/Preview.ps1 -Stages lighting          # build + package + screenshot
-python Tools/Python/check_meshes.py             # every generated mesh, no editor, ~1s
+python Tools/Python/check_meshes.py             # every catalog mesh, no editor, a few seconds
+python Tools/Python/test_pipeline.py            # stage selection + mesh validation, no editor
+./Scripts/Tests/Test-Verification.ps1            # script failure handling, no engine
 python Tools/Terrain/generate_terrain.py        # re-roll terrain (+ PNG previews)
 python Tools/Audio/generate_audio.py            # re-generate sounds
 ```
@@ -41,8 +43,9 @@ python Tools/Audio/generate_audio.py            # re-generate sounds
    accepts. `ADirectionalLight::GetComponent()` compiled fine in the editor and
    broke the game target.
 1b. **`python Tools/Python/check_meshes.py`.** Builds every mesh in the catalog
-   with the `unreal` module stubbed out and checks bounds, winding buffers,
-   degenerate triangles, doorway clearance and interior fit. One second, no
+   with the `unreal` module stubbed out and checks bounds, vertex buffers,
+   triangle indices, finite attributes, degenerate triangles, doorway clearance
+   and interior fit. A few seconds, no
    editor. It will not tell you anything about materials, lighting or how a
    thing looks - only that the geometry is what you meant.
 2. **Look at a screenshot.** `./Scripts/Preview.ps1`. Several bugs here produced
@@ -276,9 +279,11 @@ Git LFS was the other option and was rejected for the reason already noted: on a
 195 MB a handful of clones would exhaust the free tier.
 
 **What a clone has to do:** run `./Scripts/Setup-Project.ps1`, which generates
-the terrain, builds both targets, rebuilds the world and packages it. Budget
-about ten minutes. `./Scripts/Build-Content.ps1 -Stages all` alone rebuilds just
-the map, in about two minutes, once the terrain output exists.
+the terrain, builds both targets, rebuilds the world and packages it. Allow
+time for mesh and shader generation as well as compilation; the scripts report
+their elapsed time. `./Scripts/Build-Content.ps1 -Stages all` rebuilds both the
+catalog assets and the map once the terrain output exists. Select individual
+stages when only part of the world needs rebuilding.
 
 If the map ever needs to ship with the repo again, LFS is the route, and it is
 one `git lfs track "*.umap"` away.

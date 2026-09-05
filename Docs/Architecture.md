@@ -38,8 +38,8 @@ dependency order regardless of the order given.
 
 | Stage | Module | Produces |
 |---|---|---|
-| `materials` | `uegt2/materials.py` | 5 master materials, no textures |
-| `meshes` | `uegt2/meshbuild.py` | 155 static meshes from the catalog |
+| `materials` | `uegt2/materials.py` | 6 master materials, no textures |
+| `meshes` | `uegt2/meshbuild.py` | 304 static meshes from the catalog |
 | `audio` | `uegt2/audio.py` | sound classes, imported waves, ambience |
 | `level` | `build_content.py` | opens/resets `L_Fairhaven` |
 | `landscape` | `uegt2/landscape.py` | imports heightmap + 7 weightmaps |
@@ -47,12 +47,14 @@ dependency order regardless of the order given.
 | `lighting` | `uegt2/lighting.py` | sun, sky, clouds, fog, post process |
 | `town` | `uegt2/town.py` | buildings, docks, landmarks, farms, fences |
 | `city` | `uegt2/city.py` | Newhaven: blocks, towers, street furniture, wharf |
-| `nature` | `uegt2/nature.py` | ~650,000 instanced plants and rocks |
-| `gameplay` | `uegt2/gameplay.py` | player start and interactables |
-| `npc` | `uegt2/npc.py` | the road graph, ~930 people and ~285 animals |
+| `nature` | `uegt2/nature.py` | instanced plants and rocks from 13 scatter rules |
+| `gameplay` | `uegt2/gameplay.py` | player start, interactables and amenities |
+| `npc` | `uegt2/npc.py` | the road graph, people, animals and their activity anchors |
 | `showcase` | `uegt2/showcase.py` | dev-only grid of every mesh |
 
-`showcase` is excluded from `-Stages all` on purpose.
+`showcase` is excluded from default builds and `-Stages all` on purpose. Request
+it explicitly with `-Stages showcase` when inspecting the catalog. Unknown
+stages and empty stage requests fail before the build touches the map.
 
 ## Modules
 
@@ -61,16 +63,19 @@ dependency order regardless of the order given.
 ```
 AUEGT2GameMode
 ├── AUEGT2Character            camera on a capsule; no skeletal mesh, no anim
-│   └── UUEGT2InteractionComponent ── IUEGT2Interactable
+│   ├── UUEGT2InteractionComponent ── IUEGT2Interactable
+│   └── UUEGT2NeedsComponent    player needs, purse and current activity
 ├── AUEGT2PlayerController     input, menu ownership, diagnostics toggle
-│   └── SUEGT2Menu             front end, pause, settings (Slate, in code)
-├── AUEGT2HUD                  crosshair, prompt, messages, F3 overlay
+│   ├── SUEGT2Menu             front end, pause, settings (Slate, in code)
+│   └── SUEGT2Dialogue         conversation and follow controls
+├── AUEGT2HUD                  prompts, needs, almanac, F3 overlay
 └── UUEGT2GameUserSettings     every persisted setting, one save file
 
 World actors:
   AUEGT2SkyController          drives sun/sky/fog from one TimeOfDay value
   AUEGT2ScatterField           hierarchical instanced mesh layers
   AUEGT2InteractableActor      base; Sign, Door, Lamp, Pickup, Landmark
+  AUEGT2Amenity                invisible interaction volume at a usable place
   AUEGT2NPCActor               one inhabitant, person or animal
   AUEGT2RouteNetwork           the baked walkable road graph
   UUEGT2NPCDirector            LOD tiers, schedule slices, the speech budget
@@ -95,17 +100,19 @@ UEGT2ContentTests         automation tests over the generated content
 
 ## Decisions worth knowing
 
-**One material for everything, and one exception.** Props, buildings and
-characters all use `M_Prop`, driven by vertex colour. The exception is
-`M_Glass`, which is translucent, and it earns the exception twice: a window that
+**Shared materials, with glass separate from the shell.** Opaque props,
+building shells and characters use `M_Prop`, driven by vertex colour. Window
+panes use translucent `M_Glass`: a window that
 is an opaque painted panel reads as a blank canvas from inside a room, and it
 seals the building against daylight. Because a static mesh carries exactly one
 material, every glazed building is generated as *two* meshes from one call - the
 shell and its panes - and `town.Placer._glaze` hangs the panes on the shell's
 transform automatically, so no call site has to remember. The panes cast no
-shadow, which is what lets the sun through them. The whole palette lives in
-`Tools/Python/uegt2/palette.py`. This keeps draw calls low, removes every
-texture dependency, and means a colour change is a one-line edit.
+shadow, but opaque frame geometry currently blocks the town-house openings
+(see the interior note below). Emissive details, foliage, landscape
+and water each have their own master material. The whole palette lives in
+`Tools/Python/uegt2/palette.py`; all six materials are procedural and use no
+textures.
 
 **Meshes are explicit vertex buffers, not primitives.** `meshkit.py` builds
 flat-shaded faces with their own normals and colours, then hands the lot to
@@ -146,12 +153,25 @@ cause of a bug:
   take up the slack downhill. Sitting it on the lowest corner put the hillside
   through the floor of 72 of 114 houses and buried 25 front doors.
 
-**Interiors are lit, not daylit.** There is no translucent material, so a window
-pane is an opaque panel and no light comes through it. Each room gets a point
-light at its ceiling lamp instead. They are unphysically bright - 45,000 lumens -
-because exposure is one global setting shared with the outdoors and floored at
-EV 7 so that night still reads as night; a room has to reach about EV 10 to be
-visible at all under that floor.
+**Room lamps provide local light; house windows still need repair.** Town
+interiors and Newhaven's ground floors receive movable point lights at their ceiling lamps.
+The current setting is 34,000 lumens with increased indirect lighting, tuned
+for exposure shared with the outdoors. The sky controller adjusts the exposure
+window over the day/night cycle. Upper city floors currently have emissive lamp
+meshes, but no separately placed point lights; their night readability needs
+visual checks. Room point lights cast shadows to keep light from leaking through
+walls and stop rendering beyond 42 m.
+
+The packaged house captures expose two geometry bugs that a translucent
+material cannot fix. `gen_town._glaze` makes each frame as a solid rectangle
+covering the pane, rather than four rails around it. Also, `meshkit.wall`
+fills vertically stacked openings back in: each opening's sill or lintel spans
+the neighbouring storey's window. All six house archetypes have opaque frame
+blockers; the two-storey HouseB and HouseD also have wall blockers. The
+outbuilding helper `_windows_on_wall` likewise uses solid frames, and its pane
+positions need to be reconciled with the shell cutouts. The next geometry pass
+must check sightlines through complete window apertures before retuning light
+intensity. The existing mesh checks cover doorways, but not window transparency.
 
 **A tall building is one mesh per floor, placed once per storey.** A twenty-two
 storey interior built as a single mesh is 43,000 triangles and a 48 MB build,
@@ -159,9 +179,9 @@ and the editor died somewhere around the twentieth tower cooking them. So
 `gen_interior.fit_out(..., stair_up=True, floor_hole=True)` builds ONE floor -
 its own slab with the stairwell punched through it, a flight up out of it, and
 enough furniture to say what the floor is for - and `city._place_interior`
-places that one mesh on every storey. A tower costs twenty-one actors and one
-mesh, each floor culls on its own, and no asset is bigger than about 2,000
-triangles.
+places it on each configured upper storey, alongside a reusable emissive mesh.
+Each floor culls independently; geometry is shared across every instance of
+the archetype. The catalog's largest interior is about 4,400 triangles.
 
 The stair column is the thing that makes it stack: `gen_interior.stair_column`
 puts the flight against the +X wall from the footprint alone, so every floor
@@ -170,12 +190,12 @@ keep-out so no partition is ever built through it. The roof reads the same
 rectangle back (`gen_city._roof_hole`) to punch its deck and stand a stair head
 on it, which is what makes a roof somewhere you can walk out onto.
 
-**Every building in the world opens.** The town's houses have a full
-multi-storey fit-out; every other building - the barn, the church, the
-warehouse, the shed, and all 334 blocks of Newhaven plus the city hall - has a
-walkable ground floor. Above that, a tower stays solid: you can walk into a
-building, not up it. That is the same bargain the roof makes with the attic, and
-it keeps a 31 storey tower from costing 31 storeys of furniture.
+**Interiors follow the building archetype.** Town houses have a full fit-out
+across their one or two storeys. The barn, church, warehouse, shed and city hall
+have ground-floor interiors. Newhaven's shops, apartments, offices and towers
+have stacked floors and stairs to an accessible roof or setback terrace; a
+tower's decorative upper shaft can extend beyond that terrace. The lighthouse,
+windmill and parking deck do not use these furnished interior plans.
 
 Newhaven's ground floors are **trades**. `meshbuild.CITY_INTERIORS` names the
 businesses each archetype can host and `city._venue_for` deals them out, one
@@ -200,10 +220,18 @@ handful of real places: `Food` (a stall, a tavern, a bakery, a grocer, a
 restaurant), `Washroom` (a privy, a public convenience, a gym), `Seat` (a bench)
 and `Square` for company. Home is the fallback for all of them, because a house
 has a chair, a kitchen and a washroom in it - so an inhabitant who cannot find a
-public one goes home, which is what a person does. There are twelve public
-conveniences in the town and eighteen in Newhaven, spread across the squares,
-the quay, the farms and every park, because a need answered in exactly one place
-is a need that sends the whole town to the same doorstep.
+public one goes home, which is what a person does. Public conveniences are
+spread across the settlements, because a need answered in exactly one place
+sends the whole town to the same doorstep. The NPC stage reports missing anchor
+sets so placement failures are visible in the content build log.
+
+The player uses the same ledger. `UEGT2AdvanceLife` advances needs and coin for
+both `UUEGT2NeedsComponent` and the NPCs, using the prices and wages in
+`UEGT2NPCTypes.cpp`. `gameplay._place_amenities` surveys the same venues and
+places invisible interaction volumes for food, washing, rest and work. Props
+keep their static collision while `AUEGT2Amenity` handles interaction. The
+player's free bed and larder are currently use points beside their lodgings'
+doorway, rather than furniture animations inside the house.
 
 **You can talk to anyone, and what they say is true.** `UEGT2Dialogue.h` is a
 set of pure functions over `FUEGT2DialogueState` - a snapshot of one
@@ -240,17 +268,17 @@ day the market is shut. There is a test that walks 400 days checking exactly
 that.
 
 There is no thermometer in the world, so the temperature is modelled from the
-things that would actually set it: the west of the map is tropical and the
-north-east is a 440 m mountain range (both read from the same constants in
+things that would actually set it: the south of the map is tropical and the
+north has the mountain range (following the region constants in
 `Tools/Terrain/world_config.py` that shaped the land), plus the standard 6.5
 degrees per kilometre lapse rate for altitude, a diurnal swing peaking at three
 in the afternoon, a seasonal swing peaking at midsummer, and an offset for the
 weather. Walk up the mountain road and it drops; walk south-west and it climbs.
 
 **Landscape, not World Partition.** One level, one landscape, no streaming. At
-4 km with instanced scatter this loads in seconds and keeps the content build
-simple. Streaming is the obvious next step if the world grows, and nothing here
-prevents it.
+4 km with instanced scatter this keeps the content build simple. Loading time
+and memory depend on the machine and generated content; measure the packaged
+build before deciding whether the world needs streaming.
 
 **Nanite is off for the landscape.** It bakes an ~8M triangle mesh into the map
 (about 150 MB) for little gain at this resolution. Flip
@@ -271,23 +299,19 @@ Target: 1920×1080, 60 fps on an RTX 3060-class GPU.
   triangles (`SM_Tower_D`, a thirty-one storey shell). No interior is bigger
   than about 4,400, because a tall building's floors are one mesh placed many
   times rather than one mesh containing them all.
-- About 7,700 actors in the level: 1,440 in the town, 6,090 in Newhaven, 1,190
-  inhabitants. Newhaven's count is dominated by stacked floors - a tower is
-  twenty-one floor actors - and by ~1,700 interior point lights. The lights are
-  movable and cast shadows, and are affordable only because `max_draw_distance`
-  is 42 m, so a handful are ever submitted.
-- ~650,000 scattered instances across 13 species, all in hierarchical instanced
-  components with per-species cull distances (grass 70 m, trees 700–900 m).
-- ~1,215 inhabitants as movable static mesh actors. Measured cost: **nothing
-  measurable** - 9.9 fps with the whole population present and walking against
-  9.1 fps with 707 of them hidden, in the same view. (Both figures are low because they come
-  through `-RenderOffscreen`; the point is the difference.) Four things buy that:
-  distance tiers, dormant NPCs teleporting along their schedule instead of
-  walking it, the population being walked in six slices per pass, and small
-  animals casting no shadow and culling at 90 m.
-- Only trees, rocks and fences have collision. Grass, crops and ferns have none.
-  NPCs are query-only against the Visibility channel: you walk through people.
-- Lamps are unshadowed point lights.
+- Stacked interiors reuse meshes but still add actors per floor. Geometry culls
+  at 90 m, glass at 300 m, and room point lights at 42 m. Placement and population
+  totals come from the current content build log, rather than a fixed budget.
+- Scatter uses hierarchical instanced components with per-rule cull distances:
+  grass uses 70–90 m; tree rules range from 600–800 m to 700–900 m.
+- Inhabitants are movable static mesh actors. Distance tiers, dormant movement
+  and six schedule slices spread their runtime work. Small animals cast no
+  shadows and cull at 90 m. These mechanisms do not establish a frame-rate
+  result; measure the live population and the packaged fly soak.
+- In scatter, trees and rocks have collision; grass, crops and ferns do not.
+  Buildings and solid props also block the player. NPCs are query-only against
+  the Visibility channel: you walk through people.
+- Street lamps are unshadowed; room point lights cast shadows.
 - The landscape material samples no textures: it is a 7-layer blend of flat
   colours times two octaves of procedural noise.
 
@@ -313,6 +337,31 @@ Lumen quality.
    editor-only API use.
 7. **Look at it.** `./Scripts/Preview.ps1` builds, packages and renders the tour.
    Several bugs in this project rendered perfectly clean logs.
+
+## Verification workflow
+
+Run the offline checks before paying for an engine build:
+
+```powershell
+python Tools/Python/check_meshes.py
+python Tools/Python/test_pipeline.py
+./Scripts/Tests/Test-Verification.ps1
+```
+
+The mesh checker visits every catalog entry and checks buffers, triangle
+indices, finite attributes, degenerate triangles and selected doorway/interior
+clearances. It cannot establish material appearance, collision cooking or
+walkability in the game. The pipeline tests cover stage selection and mesh
+validation failures; the PowerShell tests simulate engine processes to check
+that stale reports, crashes, timeouts and partial captures cannot pass.
+
+Build C++ with `./Scripts/Build.ps1 -Target Both -DisableAdaptiveUnity`, rebuild
+the affected content stages, and run `./Scripts/Test.ps1 -SkipBuild`. Package
+the result and use `./Scripts/Smoke-Packaged.ps1` for movement,
+`./Scripts/Screenshot-Tour.ps1` for appearance, and
+`./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'` for amenity use.
+Run `./Scripts/Fly-Soak.ps1 -Minutes 10` after changes to movement, population
+or performance. A screenshot or short test does not cover a sustained hitch.
 
 ## Diagnostics
 

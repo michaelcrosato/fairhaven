@@ -68,20 +68,17 @@ GLOW_CULL = 14000.0
 # whole point: it is what lets daylight through a window and into a room.
 GLASS_CULL = 30000.0
 
-# A room with no lamp in it is a black box. There is no static lighting here,
-# the window panes are opaque, and Lumen has nothing to carry through a sealed
-# shell, so every room gets a real point light hung where its emissive bulb is.
-# About three hundred of them over the town, which sounds like a lot until you
-# notice the draw distance: a light past forty metres is not submitted at all,
-# so two or three are ever actually lit. They cast shadows on purpose - a
-# shadowless light inside a house lights the street through the wall.
+# The panes are translucent, but the current solid window frames still block
+# daylight. Rooms also need local light at night. place_room_lights hangs point
+# lights below the emissive bulbs in town interiors and city ground floors.
+# The short draw distance limits how many are submitted. They cast shadows
+# because a shadowless light inside a house lights the street through the wall.
 INTERIOR_LIGHT_CULL = 4200.0
 INTERIOR_LIGHT_FADE = 900.0
 # These are not domestic numbers and they are not meant to be. Exposure is a
-# single global setting shared with the outdoors, and it is floored at EV 7 so
-# that night still looks like night - so a room has to be lit to somewhere near
-# EV 10 to read at all, and EV 10 at two and a half metres from the lamp is
-# about 34,000 lumens once the light hangs below the shade instead of inside it.
+# single global setting shared with the outdoors; the sky controller adjusts
+# its window over the day/night cycle. The lamps were tuned for that shared
+# exposure, and hang below the shade instead of inside it.
 # Measured off the screenshots, not guessed: at 3,000 the room was black, and at
 # 12,000 you could make out a window and nothing else.
 #
