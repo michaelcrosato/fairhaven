@@ -13,7 +13,7 @@ class AUEGT2Character;
 class AUEGT2PlayerController;
 struct FUEGT2SpeechBubble;
 struct FUEGT2HUDLife;
-struct FUEGT2HUDSurvey;
+struct FUEGT2HUDGuidance;
 
 UCLASS(Config = Game, ClassGroup = "UEGT2")
 class UEGT2_API AUEGT2HUD : public AHUD
@@ -34,10 +34,10 @@ public:
 private:
 	void DrawCrosshair(float CentreX, float CentreY, bool bHasFocus);
 	FBox2D DrawPrompt(float CentreX, float CentreY);
-	FBox2D DrawMessage(const TArray<FBox2D>& BottomPanels);
+	FBox2D DrawMessage(const TArray<FBox2D>& BottomPanels, bool bFitBounds = false);
 	FBox2D DrawAutoWalkIndicator(const AUEGT2Character* Explorer);
 	FUEGT2HUDLife PrepareLife(AUEGT2Character* Explorer, float MaxWidth);
-	FUEGT2HUDSurvey PrepareSurvey(AUEGT2PlayerController* PC);
+	FUEGT2HUDGuidance PrepareGuidance(AUEGT2PlayerController* PC);
 	void DrawDiagnostics(AUEGT2Character* Explorer);
 	/**
 	 * Top-left: the clock, the date and what it is doing outside.
@@ -50,8 +50,8 @@ private:
 
 	/** Top-right banner listing whatever dev mode currently has switched on. */
 	void DrawDevStatus(float ScreenWidth);
-	/** Bottom-right: straight-line direction to the selected surveyed place. */
-	void DrawSurveyTracking(const FUEGT2HUDSurvey& Survey);
+	/** Bottom-right: one straight-line direction to a landmark or service. */
+	void DrawGuidance(const FUEGT2HUDGuidance& Guidance);
 
 	/**
 	 * Bottom-left: the player's trade, their purse, what they are doing and
@@ -75,7 +75,7 @@ private:
 	 * legible at any distance because it never scales with perspective. What it
 	 * costs is that everything below has to be laid out by hand.
 	 */
-	void DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels, const FBox2D& AutoWalkBounds);
+	void DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels, const FBox2D& AutoWalkBounds, bool bFitBounds = false);
 	/**
 	 * Lay out and draw one bubble, pushing it clear of any already placed.
 	 *
@@ -99,7 +99,7 @@ private:
 	void DrawHudRect(FLinearColor Colour, float X, float Y, float W, float H);
 	void DrawHudLine(float X1, float Y1, float X2, float Y2, FLinearColor Colour, float Thickness);
 	void LayoutText(const FString& Text, class UFont* Font, float MaxWidth, TArray<FString>& Lines,
-		float& Width, float& LineHeight, int32 MaxLines = 4) const;
+		float& Width, float& LineHeight, int32 MaxLines = 4, bool bForceWrap = false) const;
 	FUEGT2HUDLayout HudLayout;
 	float LastLoggedScale = -1.0f;
 	bool bLastLoggedGate = true;

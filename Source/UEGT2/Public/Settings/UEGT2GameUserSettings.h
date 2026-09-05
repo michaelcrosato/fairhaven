@@ -122,6 +122,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetSurveyJournalEnabled() const { return bSurveyJournalEnabled; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetSurveyJournalEnabled(bool bValue);
+	/** Nearby amenity guide and its transient directions. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetNearbyServicesEnabled() const { return bNearbyServicesEnabled; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetNearbyServicesEnabled(bool bValue);
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetSleepUntilEnabled() const { return bSleepUntilEnabled; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetSleepUntilEnabled(bool bValue);
 
@@ -185,6 +188,7 @@ private:
 	UPROPERTY(Config) bool bSaveProgressEnabled = true;
 	UPROPERTY(Config) bool bAutosaveEnabled = false;
 	UPROPERTY(Config) bool bSurveyJournalEnabled = true;
+	UPROPERTY(Config) bool bNearbyServicesEnabled = true;
 	UPROPERTY(Config) bool bSleepUntilEnabled = true;
 	UPROPERTY(Config) bool bUseFahrenheit = false;
 	UPROPERTY(Config) float CrowdDensity = 1.0f;

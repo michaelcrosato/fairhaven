@@ -34,3 +34,5 @@ UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Survey, Log, All);
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Rest, Log, All);
 /** Periodic checkpoint scheduling, asynchronous completion and feature gates. */
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Autosave, Log, All);
+/** Explicit nearby service searches and transient direction targets. */
+UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Services, Log, All);

@@ -35,6 +35,11 @@ its maintainer switch and its verification.
 and track a surveyed place for a direction arrow and straight-line distance.
 The journal has its own switch in Settings → Gameplay.
 
+**Find a place to eat, wash, rest or work.** Pause → Nearby Services shows the
+nearest usable places and their service rates, including free food and sleep at
+your lodgings. Track one for straight-line directions, then use the normal
+interaction prompt. Settings → Gameplay has its own Nearby Services switch.
+
 **Make the HUD easier to read.** Settings → Gameplay → HUD Size offers Normal,
 125% and 150% sizes for in-game labels, needs, directions and speech. Normal is
 the default; larger sizes fit to the viewport.
@@ -130,6 +135,7 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Smoke-Autosave.ps1 -Capture` | Check periodic recovery saves, separate-process Continue Autosave and the off switches |
 | `./Scripts/Smoke-HudSize.ps1 -Capture` | Compare HUD sizes and the off switch in one frozen scene |
 | `./Scripts/Smoke-AutoWalk.ps1 -Capture` | Check assisted walking, cancellation, input and both off switches |
+| `./Scripts/Smoke-Services.ps1 -Capture` | Check nearby services, real amenity use, directions and both off switches |
 | `./Scripts/Screenshot-Tour.ps1` | Render the registered viewpoints headlessly to PNG |
 | `./Scripts/Screenshot-Tour.ps1 -Menu` | Render the menu and settings screens |
 | `./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'` | Exercise food, washing, sitting and work through player interaction |

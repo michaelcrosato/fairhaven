@@ -18,6 +18,7 @@
 #include "Player/UEGT2NeedsComponent.h"
 #include "Progress/UEGT2ProgressSubsystem.h"
 #include "Rest/UEGT2RestSubsystem.h"
+#include "Services/UEGT2ServicesSubsystem.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "Survey/UEGT2SurveySubsystem.h"
 #include "UEGT2LogChannels.h"
@@ -317,6 +318,7 @@ void AUEGT2PlayerController::AskDialogueTopic(int32 Topic)
 
 void AUEGT2PlayerController::ApplyMenuState(EUEGT2MenuState NewState)
 {
+	if (IsServicesGuideOpen()) { UE_LOG(LogUEGT2Services, Log, TEXT("Nearby services guide closed.")); }
 	if (NewState != EUEGT2MenuState::None || MenuState != EUEGT2MenuState::None)
 	{
 		bAutoWalkPressedThisTick = false;
@@ -506,6 +508,45 @@ bool AUEGT2PlayerController::IsSurveyJournalAvailable() const
 {
 	const UUEGT2SurveySubsystem* Survey = UUEGT2SurveySubsystem::Get(GetWorld());
 	return Survey && Survey->IsAvailable();
+}
+
+bool AUEGT2PlayerController::OpenServicesGuide()
+{
+	if (MenuState == EUEGT2MenuState::Main || !IsServicesEnabled() || !GetPawn()) { return false; }
+	ShowPauseMenu();
+	if (!MenuWidget.IsValid() || !GetWorld()->IsPaused())
+	{
+		CloseMenu();
+		return false;
+	}
+	const TSharedPtr<SWidget> InitialFocus = MenuWidget->OpenServicesGuide();
+	if (InitialFocus.IsValid())
+	{
+		// Queue Resume after the new page attaches and after the pause-root focus.
+		FInputModeUIOnly Mode;
+		Mode.SetWidgetToFocus(InitialFocus);
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(Mode);
+	}
+	UE_LOG(LogUEGT2Services, Log, TEXT("Nearby services guide opened."));
+	return true;
+}
+
+bool AUEGT2PlayerController::IsServicesGuideOpen() const
+{
+	return MenuState == EUEGT2MenuState::Pause && MenuWidget.IsValid() && MenuWidget->IsServicesGuideOpen();
+}
+
+bool AUEGT2PlayerController::IsServicesEnabled() const
+{
+	const UUEGT2ServicesSubsystem* Services = UUEGT2ServicesSubsystem::Get(GetWorld());
+	return Services && Services->IsEnabled();
+}
+
+bool AUEGT2PlayerController::IsServicesAvailable() const
+{
+	const UUEGT2ServicesSubsystem* Services = UUEGT2ServicesSubsystem::Get(GetWorld());
+	return Services && Services->IsAvailable();
 }
 
 bool AUEGT2PlayerController::ContinueProgress()

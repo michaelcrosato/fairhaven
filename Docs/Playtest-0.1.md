@@ -54,6 +54,15 @@ and confirm ordinary movement still works.
 
 ## You live here
 
+Open **Pause → Nearby Services** to find food, a washroom, a seat, paid work,
+your home kitchen or your bed. Rows show the nearest place in each category and
+the rate per world hour; home food and sleep are free. Track a row, then Resume
+to follow straight-line directions. Choose a route around buildings and use the
+ordinary interaction prompt when close enough. Tracking a service replaces the
+journal's directions; tracking a surveyed landmark replaces service directions.
+Turn Nearby Services off in Gameplay and check that the guide and its directions
+disappear while eating, washing, resting and working still function normally.
+
 You have the same four needs every inhabitant has, the same purse, and the same
 places to answer them. The panel bottom left is your trade, your coin, what you
 are doing, and how you are keeping. Turn it off in **Settings → Gameplay**.

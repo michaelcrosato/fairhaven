@@ -5,6 +5,20 @@ maintainer switch. Turning a feature off must leave the baseline game playable
 and preserve any data the player may want again later. New entries record the
 behavior, off path, compatibility and the checks actually run.
 
+All player controls below are in **Settings → Gameplay**. Maintainer switches
+live in `Config/DefaultGame.ini`; set the named property to `False` under its
+`[/Script/UEGT2.<class>]` section. Each entry below has the exact config block.
+
+| Feature | Player control | Maintainer class and property |
+|---|---|---|
+| [F001 · Player progress](#f001--player-progress) | Save Progress | `UEGT2ProgressSubsystem.bFeatureEnabled` |
+| [F002 · Survey journal](#f002--survey-journal-and-directions) | Survey Journal | `UEGT2SurveySubsystem.bFeatureEnabled` |
+| [F003 · Sleep until](#f003--sleep-until-a-chosen-hour) | Sleep Until | `UEGT2RestSubsystem.bFeatureEnabled` |
+| [F004 · Optional autosave](#f004--optional-autosave) | Autosave | `UEGT2AutosaveSubsystem.bFeatureEnabled` |
+| [F005 · HUD size](#f005--hud-size) | HUD Size → Normal | `UEGT2HUD.bHudScalingEnabled` |
+| [F006 · Optional auto-walk](#f006--optional-auto-walk) | Auto-walk Control | `UEGT2Character.bAutoWalkFeatureEnabled` |
+| [F007 · Nearby services](#f007--nearby-services) | Nearby Services | `UEGT2ServicesSubsystem.bFeatureEnabled` |
+
 ## F001 — Player progress
 
 Status: implemented and verified on `feature/player-progress`, 2026-09-04.
@@ -454,3 +468,87 @@ remain documented in [Audit.md](Audit.md).
 Local evidence uses `Saved/Logs/AutoWalk*`. Auto-walk screenshots are under
 `Saved/Screenshots/AutoWalkSmoke/da983d227f9e4f1e93aa5970ebbbc587/` (1080p) and
 `Saved/Screenshots/AutoWalkSmoke/0f81006076274b128ad9c8aff6b578b2/` (720p).
+
+## F007 — Nearby services
+
+Status: implemented and verified on 2026-09-05, on `feature/nearby-services`.
+
+**What it adds.** Pause → Nearby Services lists the nearest food counter,
+washroom, seat, paid work, home kitchen and bed. Each row shows the real venue,
+horizontal distance and service rate. Free food at home and sleep have their own
+rows, so a nearby commercial venue cannot hide them. Missing categories say no
+place was found. Work shows the offered trade and wage; opening or tracking a
+row never changes the player's trade or purse.
+
+Track a place, then Resume to follow its direction arrow. Selecting a service
+replaces landmark directions; selecting a surveyed landmark replaces service
+directions. The selected place stays fixed while walking. Directions show a
+straight line; the player chooses the route and uses the ordinary interaction
+prompt on reaching the place. Nearby indicates distance, not accessibility.
+
+**Player switch.** Settings → Gameplay → Nearby Services. Default On;
+`bNearbyServicesEnabled=True` in `[/Script/UEGT2.UEGT2GameUserSettings]`.
+The guide is opened explicitly and adds no HUD until the player tracks a place.
+Turning it off clears service tracking and hides the Pause action.
+
+**Maintainer switch.** In `Config/DefaultGame.ini`:
+
+```ini
+[/Script/UEGT2.UEGT2ServicesSubsystem]
+bFeatureEnabled=False
+```
+
+Off disables the guide's settings row while retaining the player preference.
+Ordinary amenities, landmark discovery and the journal remain available under
+their own controls. Set the gate back to `True` to allow the guide again;
+directions require a new selection.
+
+**Implementation.** A world subsystem scans live amenity actors once when the
+page opens and keeps one nearest candidate per category. Rates come from the
+shared life ledger. Active guidance validates one weak actor; it has no ticking
+subsystem, repeated actor scan, pathfinding, content rebuild or disk work.
+Destroyed or reconfigured targets are dropped. Service tracking is transient:
+it is lost with the world and is never stored in either checkpoint channel.
+A same-world Continue retains a still-valid current target, as the journal does;
+loading a checkpoint cannot restore an old target. Opening the guide cancels
+auto-walk through the normal Pause path.
+
+**Research.** The generated world already authors invisible amenities at the
+town's real service anchors. Their runtime getters provide venue, activity and
+hiring trade; no editor labels or second price table are needed. Epic's
+[world subsystem API](https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/Engine/UWorldSubsystem)
+ties a subsystem to its world, and its
+[object pointer guide](https://dev.epicgames.com/documentation/en-us/unreal-engine/object-pointers-in-unreal-engine)
+describes weak references for objects that may disappear. Those lifetimes fit
+session-only directions to generated actors.
+
+**Verification.** Both Development targets compile with adaptive unity disabled.
+All 100 automation tests pass, including four service tests and a checkpoint
+integration test. They cover nearest categories and real ledger rates, ties,
+missing and invalid actors, explicit refresh, fixed target identity, world
+isolation, reconfiguration, destruction, invalid directions, both handoff orders,
+failed selections and off/on retirement. Exact needs, fractional coins, trade
+and discoveries remain unchanged by guide operations. The checkpoint test
+confirms current tracking survives same-world Continue, cleared tracking stays
+cleared, and failed restore changes neither the target nor life.
+
+The package completed in 1m32s after fixing UAT's shared-build-mutex handling
+([Audit.md](Audit.md#shared-build-mutex-2026-09-05)). The isolated packaged guide
+smoke passes at 1920×1080 and 1280×720. From the live start it finds the Bakehouse,
+washroom, seat, paid work at the Solicitor, home kitchen and bed. Real Pause and
+D-pad input select Food at home, retain focus on Tracking and Resume normally.
+The real interaction probe starts and stops the free larder and paid workplace;
+the latter adopts its offered trade. Both off gates preserve ordinary larder
+use, discoveries and the exact 36.625-coin baseline. Opening Pause cancels
+auto-walk. All eight guide, Normal/Larger HUD and settings images were inspected;
+the selected row and controls remain readable, with scrolling for other rows.
+The wrapper's eleven success/failure cases pass in PowerShell 7 and 5.1.
+
+Packaged regressions pass for auto-walk, survey input/tracking, all HUD sizes at
+720p, sleep with 1,188 inhabitants, all four manual-checkpoint phases, all three
+autosave phases and an ordinary 23.02 m walk. Existing engine, distant-ground
+and ground-fixture warnings remain documented in [Audit.md](Audit.md).
+
+Local evidence uses `Saved/Logs/Services*`. Guide screenshots are under
+`Saved/Screenshots/ServicesSmoke/6afb7376a84e45dd9b86361e18c5fca6/` (1080p) and
+`Saved/Screenshots/ServicesSmoke/30247e01fd154ab88b6f999994a4ab36/` (720p).

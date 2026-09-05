@@ -4,6 +4,7 @@
 #include "EngineUtils.h"
 #include "Interaction/UEGT2WorldInteractables.h"
 #include "Settings/UEGT2GameUserSettings.h"
+#include "Services/UEGT2ServicesSubsystem.h"
 #include "UEGT2LogChannels.h"
 
 #define LOCTEXT_NAMESPACE "UEGT2Survey"
@@ -41,21 +42,33 @@ bool UUEGT2SurveySubsystem::DoesSupportWorldType(const EWorldType::Type WorldTyp
 	return WorldType == EWorldType::Game || WorldType == EWorldType::PIE;
 }
 
+void UUEGT2SurveySubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+	UUEGT2GameUserSettings::OnSettingsApplied.AddUObject(this, &UUEGT2SurveySubsystem::RefreshFromSettings);
+}
+
+void UUEGT2SurveySubsystem::RefreshFromSettings() { IsEnabled(); }
+
 void UUEGT2SurveySubsystem::Deinitialize()
 {
+	UUEGT2GameUserSettings::OnSettingsApplied.RemoveAll(this);
 	DropTracking(TEXT("world ended"));
 	Super::Deinitialize();
 }
 
 bool UUEGT2SurveySubsystem::IsAvailable() const
 {
+	if (!bFeatureEnabled) { DropTracking(TEXT("journal disabled")); }
 	return bFeatureEnabled;
 }
 
 bool UUEGT2SurveySubsystem::IsEnabled() const
 {
 	const UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get();
-	return IsAvailable() && Settings && Settings->GetSurveyJournalEnabled();
+	const bool bEnabled = IsAvailable() && Settings && Settings->GetSurveyJournalEnabled();
+	if (!bEnabled) { DropTracking(TEXT("journal disabled")); }
+	return bEnabled;
 }
 
 void UUEGT2SurveySubsystem::DropTracking(const TCHAR* Reason) const
@@ -155,6 +168,7 @@ bool UUEGT2SurveySubsystem::TrackLandmark(FName Id)
 		TrackedId = Id;
 		UE_LOG(LogUEGT2Survey, Log, TEXT("Tracking %s [%s]."), *(*Found)->GetLandmarkName().ToString(), *Id.ToString());
 	}
+	if (UUEGT2ServicesSubsystem* Services = UUEGT2ServicesSubsystem::Get(GetWorld())) { Services->ClearTracking(); }
 	return true;
 }
 

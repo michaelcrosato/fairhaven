@@ -40,6 +40,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	Settings->SetSaveProgressEnabled(false);
 	Settings->SetAutosaveEnabled(true);
 	Settings->SetSurveyJournalEnabled(false);
+	Settings->SetNearbyServicesEnabled(false);
 	Settings->SetSleepUntilEnabled(false);
 	Settings->SetUseFahrenheit(true);
 	Settings->SetCrowdDensity(0.2f);
@@ -70,6 +71,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("progress saving"), Settings->GetSaveProgressEnabled());
 	TestFalse(TEXT("autosave requires opt-in"), Settings->GetAutosaveEnabled());
 	TestTrue(TEXT("survey journal"), Settings->GetSurveyJournalEnabled());
+	TestTrue(TEXT("nearby services guide"), Settings->GetNearbyServicesEnabled());
 	TestTrue(TEXT("chosen wake times"), Settings->GetSleepUntilEnabled());
 	TestFalse(TEXT("Fahrenheit"), Settings->GetUseFahrenheit());
 	TestEqual(TEXT("crowd density"), Settings->GetCrowdDensity(), 1.0f);

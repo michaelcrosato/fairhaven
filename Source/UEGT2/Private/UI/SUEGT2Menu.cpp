@@ -1,6 +1,7 @@
 #include "SUEGT2Menu.h"
 #include "SUEGT2SurveyJournal.h"
 #include "SUEGT2RestPanel.h"
+#include "SUEGT2ServicesGuide.h"
 #include "Interaction/UEGT2Amenity.h"
 
 #include "Dev/UEGT2DevModeSubsystem.h"
@@ -289,6 +290,21 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRestPanel()
 	];
 }
 
+TSharedPtr<SWidget> SUEGT2Menu::OpenServicesGuide()
+{
+	GoToPage(EUEGT2MenuPage::Services);
+	return ServicesInitialFocus.Pin();
+}
+
+TSharedRef<SWidget> SUEGT2Menu::BuildServicesGuide()
+{
+	const TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	TSharedRef<SUEGT2ServicesGuide> Guide = SNew(SUEGT2ServicesGuide).Controller(WeakPC)
+		.OnClose(FSimpleDelegate::CreateLambda([WeakPC]() { if (WeakPC.IsValid()) { WeakPC->CloseMenu(); } }));
+	ServicesInitialFocus = Guide->GetInitialFocusWidget();
+	return SNew(SBox).WidthOverride(720.0f) [ Guide ];
+}
+
 void SUEGT2Menu::SelectTab(EUEGT2SettingsTab InTab)
 {
 	Tab = InTab;
@@ -314,6 +330,7 @@ void SUEGT2Menu::Rebuild()
 		Page == EUEGT2MenuPage::DevMode ? BuildDevMode() :
 		Page == EUEGT2MenuPage::SurveyJournal ? BuildSurveyJournal() :
 		Page == EUEGT2MenuPage::Rest ? BuildRestPanel() :
+		Page == EUEGT2MenuPage::Services ? BuildServicesGuide() :
 		                                  BuildSettings());
 }
 
@@ -422,6 +439,11 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 		{
 			AddButton(LOCTEXT("SurveyJournal", "Survey Journal"), [WeakPC]()
 				{ if (WeakPC.IsValid()) { WeakPC->ToggleSurveyJournal(); } });
+		}
+		if (WeakPC.IsValid() && WeakPC->IsServicesEnabled())
+		{
+			AddButton(LOCTEXT("NearbyServices", "Nearby Services"), [WeakPC]()
+				{ if (WeakPC.IsValid()) { WeakPC->OpenServicesGuide(); } });
 		}
 	}
 
@@ -1079,6 +1101,28 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 
 	List->AddSlot().AutoHeight().Padding(0, 16, 0, 10)
 	[ Label(LOCTEXT("TownHeading", "THE TOWN"), 12, Accent, "Bold") ];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		SNew(SBox)
+		.IsEnabled_Lambda([WeakPC]() { return WeakPC.IsValid() && WeakPC->IsServicesAvailable(); })
+		[
+			Row(LOCTEXT("NearbyServicesSetting", "Nearby Services"), MakeToggle(
+				[S]() { return S->GetNearbyServicesEnabled(); },
+				[this, S](bool bValue) { S->SetNearbyServicesEnabled(bValue); ApplyAndSave(); }))
+		]
+	];
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 12)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([WeakPC]()
+		{
+			return WeakPC.IsValid() && WeakPC->IsServicesAvailable()
+				? LOCTEXT("NearbyServicesHint", "Find food, washrooms, rest and paid work from Pause. Turning this off clears service directions; every place stays usable.")
+				: LOCTEXT("NearbyServicesUnavailable", "Nearby Services is disabled for this session. Your preference is kept and every place stays usable.");
+		})
+		.Font(Font("Regular", 11)).ColorAndOpacity(FSlateColor(Muted)).AutoWrapText(true)
+	];
 
 	List->AddSlot().AutoHeight().Padding(0, 7)
 	[
@@ -1768,7 +1812,7 @@ FReply SUEGT2Menu::OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEven
 	}
 
 	const FKey Key = KeyEvent.GetKey();
-	if (Page == EUEGT2MenuPage::Rest && (Key == EKeys::Escape
+	if ((Page == EUEGT2MenuPage::Rest || Page == EUEGT2MenuPage::Services) && (Key == EKeys::Escape
 		|| Key == UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Menu) || Key == EKeys::Gamepad_Special_Right))
 	{
 		if (AUEGT2PlayerController* PC = Controller.Get()) { PC->CloseMenu(); }
@@ -1818,6 +1862,7 @@ FReply SUEGT2Menu::OnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& 
 	// over Slate's Accept action on both Track and the pause root's buttons.
 	if (Page == EUEGT2MenuPage::SurveyJournal) { return OnKeyDown(Geometry, KeyEvent); }
 	if (Page == EUEGT2MenuPage::Rest) { return OnKeyDown(Geometry, KeyEvent); }
+	if (Page == EUEGT2MenuPage::Services) { return OnKeyDown(Geometry, KeyEvent); }
 	const AUEGT2PlayerController* PC = Controller.Get();
 	const FKey Key = KeyEvent.GetKey();
 	if (Page == EUEGT2MenuPage::Root && MenuState == EUEGT2MenuState::Pause

@@ -69,6 +69,12 @@ public:
 	bool IsSurveyJournalEnabled() const;
 	bool IsSurveyJournalAvailable() const;
 
+	/** A paused guide to existing places to eat, rest, wash and work. */
+	bool OpenServicesGuide();
+	bool IsServicesGuideOpen() const;
+	bool IsServicesEnabled() const;
+	bool IsServicesAvailable() const;
+
 	/** Chosen wake times are offered only at a bed during a visit. */
 	bool OpenRestPanel(AUEGT2Amenity* Bed);
 	bool IsRestPanelOpen() const;

@@ -13,6 +13,7 @@
 #include "GameFramework/PlayerStart.h"
 #include "GameFramework/PlayerState.h"
 #include "GameFramework/WorldSettings.h"
+#include "Interaction/UEGT2Amenity.h"
 #include "Interaction/UEGT2WorldInteractables.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
@@ -24,6 +25,7 @@
 #include "Player/UEGT2PlayerController.h"
 #include "Progress/UEGT2ProgressSave.h"
 #include "Progress/UEGT2ProgressSubsystem.h"
+#include "Services/UEGT2ServicesSubsystem.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "UObject/StrongObjectPtr.h"
 #include "World/UEGT2SkyController.h"
@@ -269,6 +271,55 @@ bool FUEGT2ProgressAutoWalkTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2ProgressServiceTrackingTest, "UEGT2.Progress.ServiceTrackingRestore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2ProgressServiceTrackingTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2ProgressTests;
+	FFixture Sim;
+	if (!TestTrue(TEXT("real checkpoint fixture"), Sim.Ready())) { return false; }
+	UUEGT2ServicesSubsystem* Services = UUEGT2ServicesSubsystem::Get(Sim.World);
+	if (!TestNotNull(TEXT("world service guide"), Services)) { return false; }
+	const bool bOriginalServices = Sim.Settings->GetNearbyServicesEnabled();
+	ON_SCOPE_EXIT { Sim.Settings->SetNearbyServicesEnabled(bOriginalServices); };
+	Sim.Settings->SetNearbyServicesEnabled(true);
+	Services->bFeatureEnabled = true;
+	AUEGT2Amenity* Kitchen = Sim.World->SpawnActor<AUEGT2Amenity>(FVector(5000, 0, 0), FRotator::ZeroRotator);
+	AUEGT2Amenity* Seat = Sim.World->SpawnActor<AUEGT2Amenity>(FVector(6000, 0, 0), FRotator::ZeroRotator);
+	if (!TestNotNull(TEXT("kitchen"), Kitchen) || !TestNotNull(TEXT("seat"), Seat)) { return false; }
+	Kitchen->ConfigureAmenity(EUEGT2AmenityKind::Larder, TEXT("Test lodgings"), EUEGT2NPCRole::Villager);
+	Seat->ConfigureAmenity(EUEGT2AmenityKind::Seat, FString(), EUEGT2NPCRole::Villager);
+	Kitchen->DispatchBeginPlay();
+	Seat->DispatchBeginPlay();
+	Sim.Populate();
+	const FUEGT2NPCNeeds SavedNeeds = Sim.Player->GetLife()->GetNeeds();
+	TestTrue(TEXT("track kitchen before saving"), Services->TrackAmenity(Kitchen));
+	Sim.Pause();
+	TestTrue(TEXT("checkpoint with directions saves"), Sim.Progress->SaveProgress(Sim.Controller));
+	TestTrue(TEXT("choose a different live target after saving"), Services->TrackAmenity(Seat));
+	TestTrue(TEXT("same-world Continue succeeds"), Sim.Progress->LoadProgress(Sim.Controller));
+	TestTrue(TEXT("Continue keeps current seat, not previously tracked kitchen"), Services->GetTrackedAmenity() == Seat);
+	CheckLife(*this, Sim.Player->GetLife(), SavedNeeds, 137.625f, EUEGT2NPCRole::Smith);
+	Services->ClearTracking();
+	TestTrue(TEXT("Continue succeeds after clearing directions"), Sim.Progress->LoadProgress(Sim.Controller));
+	TestNull(TEXT("loading cannot resurrect a saved target"), Services->GetTrackedAmenity());
+	TestTrue(TEXT("can choose kitchen again"), Services->TrackAmenity(Kitchen));
+	Sim.Settings->SetSaveProgressEnabled(false);
+	TestTrue(TEXT("guide remains enabled with checkpoint feature off"), Services->IsEnabled());
+	TestTrue(TEXT("tracking remains independent of checkpoint preference"), Services->TrackAmenity(Seat));
+	Sim.Settings->SetSaveProgressEnabled(true);
+	// Only the fixture's generated slot is damaged. Failed restore must leave
+	// the current directions and life alone, just as it leaves position alone.
+	const TArray<uint8> InvalidBytes = { 0xff, 0xff, 0xff, 0x7f };
+	TestTrue(TEXT("replace isolated checkpoint with damaged bytes"), UGameplayStatics::SaveDataToSlot(InvalidBytes, Sim.Slot + TEXT("_A"), 0));
+	Sim.Player->GetLife()->SetCoins(55.25f);
+	TestFalse(TEXT("damaged checkpoint refuses restore"), Sim.Progress->LoadProgress(Sim.Controller));
+	TestTrue(TEXT("failed restore keeps current directions"), Services->GetTrackedAmenity() == Seat);
+	CheckLife(*this, Sim.Player->GetLife(), SavedNeeds, 55.25f, EUEGT2NPCRole::Smith);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2ProgressValidationTest, "UEGT2.Progress.ValidationAndRecovery",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
@@ -391,7 +442,7 @@ bool FUEGT2ProgressDisabledTest::RunTest(const FString& Parameters)
 	Sim.Progress->bFeatureEnabled = true;
 	for (const TCHAR* Switch : { TEXT("-UEGT2Capture=TownSquare"), TEXT("-UEGT2CaptureLife"),
 		TEXT("-UEGT2SmokeWalk"), TEXT("-UEGT2SmokeFly"), TEXT("-UEGT2HudSizeSmoke"),
-		TEXT("-UEGT2AutoWalkSmoke") })
+		TEXT("-UEGT2AutoWalkSmoke"), TEXT("-UEGT2ServicesSmoke") })
 	{
 		Sim.SetCommandLine(Switch);
 		CheckOff();

@@ -38,6 +38,7 @@ class UEGT2_API UUEGT2SurveySubsystem : public UWorldSubsystem
 public:
 	static UUEGT2SurveySubsystem* Get(const UWorld* World);
 	virtual bool DoesSupportWorldType(const EWorldType::Type WorldType) const override;
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
 	virtual void Deinitialize() override;
 
 	bool IsAvailable() const;
@@ -56,6 +57,7 @@ public:
 	UPROPERTY(Config) bool bFeatureEnabled = true;
 
 private:
+	void RefreshFromSettings();
 	TMap<FName, AUEGT2Landmark*> GatherLandmarks() const;
 	AUEGT2Landmark* GetValidTrackedLandmark() const;
 	void DropTracking(const TCHAR* Reason) const;

@@ -13,6 +13,7 @@
 #include "Player/UEGT2PlayerController.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "Survey/UEGT2SurveySubsystem.h"
+#include "Services/UEGT2ServicesSubsystem.h"
 #include "World/UEGT2Almanac.h"
 #include "World/UEGT2Weather.h"
 #include "UEGT2LogChannels.h"
@@ -44,12 +45,14 @@ struct FUEGT2HUDLife
 	FBox2D Bounds = FBox2D(ForceInit);
 };
 
-struct FUEGT2HUDSurvey
+struct FUEGT2HUDGuidance
 {
 	TArray<FString> Name, Detail, Hint;
 	float NameH = 0.0f, DetailH = 0.0f, HintH = 0.0f;
 	float Bearing = 0.0f;
 	bool bNearby = false;
+	bool bService = false;
+	bool bFlexible = false;
 	FBox2D Bounds = FBox2D(ForceInit);
 };
 
@@ -92,14 +95,14 @@ void AUEGT2HUD::DrawHUD()
 		LastLoggedScale = HudLayout.Scale;
 		bLastLoggedGate = bHudScalingEnabled;
 	}
-	const FUEGT2HUDSurvey Survey = PrepareSurvey(PC);
-	const float SurveyWidth = Survey.Bounds.bIsValid ? Survey.Bounds.GetSize().X / HudLayout.Scale : 0.0f;
+	const FUEGT2HUDGuidance Guidance = PrepareGuidance(PC);
+	const float GuidanceWidth = Guidance.Bounds.bIsValid ? Guidance.Bounds.GetSize().X / HudLayout.Scale : 0.0f;
 	const FUEGT2HUDLife Life = (!Settings || Settings->GetShowNeeds())
-		? PrepareLife(Explorer, UEGT2HUDLayout::BottomLeftMaxWidth(HudLayout, SurveyWidth, Survey.Bounds.bIsValid))
+		? PrepareLife(Explorer, UEGT2HUDLayout::BottomLeftMaxWidth(HudLayout, GuidanceWidth, Guidance.Bounds.bIsValid))
 		: FUEGT2HUDLife();
 	TArray<FBox2D> PlayerPanels;
 	if (Life.Bounds.bIsValid) { PlayerPanels.Add(Life.Bounds); }
-	if (Survey.Bounds.bIsValid) { PlayerPanels.Add(Survey.Bounds); }
+	if (Guidance.Bounds.bIsValid) { PlayerPanels.Add(Guidance.Bounds); }
 
 	const float CentreX = Canvas->ClipX * 0.5f;
 	const float CentreY = Canvas->ClipY * 0.5f;
@@ -116,14 +119,14 @@ void AUEGT2HUD::DrawHUD()
 	{
 		Prompt = DrawPrompt(CentreX / HudLayout.Scale, CentreY / HudLayout.Scale);
 	}
-	const FBox2D Message = DrawMessage(PlayerPanels);
+	const FBox2D Message = DrawMessage(PlayerPanels, Guidance.bService);
 	const FBox2D AutoWalkBounds = DrawAutoWalkIndicator(Explorer);
 	if (Prompt.bIsValid) { PlayerPanels.Add(Prompt); }
 	if (Message.bIsValid) { PlayerPanels.Add(Message); }
 	if (AutoWalkBounds.bIsValid) { PlayerPanels.Add(AutoWalkBounds); }
 	if (!Settings || Settings->GetShowSpeechBubbles())
 	{
-		DrawSpeechBubbles(PlayerPanels, AutoWalkBounds);
+		DrawSpeechBubbles(PlayerPanels, AutoWalkBounds, Guidance.bService);
 	}
 
 	if (PC && PC->IsDiagnosticsVisible())
@@ -140,7 +143,7 @@ void AUEGT2HUD::DrawHUD()
 		DrawLife(Life);
 	}
 	DrawDevStatus(Canvas->ClipX);
-	DrawSurveyTracking(Survey);
+	DrawGuidance(Guidance);
 }
 
 FBox2D AUEGT2HUD::DrawAutoWalkIndicator(const AUEGT2Character* Explorer)
@@ -165,16 +168,21 @@ FBox2D AUEGT2HUD::DrawAutoWalkIndicator(const AUEGT2Character* Explorer)
 		HudLayout.ToScreen(FVector2D(X + Width + 12.0f, Y + Height * Lines.Num() + 6.0f)));
 }
 
-FUEGT2HUDSurvey AUEGT2HUD::PrepareSurvey(AUEGT2PlayerController* PC)
+FUEGT2HUDGuidance AUEGT2HUD::PrepareGuidance(AUEGT2PlayerController* PC)
 {
-	FUEGT2HUDSurvey Result;
+	FUEGT2HUDGuidance Result;
 	const UUEGT2SurveySubsystem* Survey = UUEGT2SurveySubsystem::Get(GetWorld());
-	if (!PC || PC->IsDialogueOpen() || !Survey) { return Result; }
+	const UUEGT2ServicesSubsystem* Services = UUEGT2ServicesSubsystem::Get(GetWorld());
+	if (!PC || PC->IsDialogueOpen()) { return Result; }
 	FVector ViewLocation;
 	FRotator ViewRotation;
 	PC->GetPlayerViewPoint(ViewLocation, ViewRotation);
 	FUEGT2SurveyDirection Direction;
-	if (!Survey->GetTrackedDirection(ViewLocation, ViewRotation.Yaw, Direction)) { return Result; }
+	// Successful selection retires the other owner's target; both queries use
+	// only their one weak actor and never enumerate the world during HUD drawing.
+	Result.bService = Services && Services->GetTrackedDirection(ViewLocation, ViewRotation.Yaw, Direction);
+	if (!Result.bService && (!Survey || !Survey->GetTrackedDirection(ViewLocation, ViewRotation.Yaw, Direction))) { return Result; }
+	Result.bFlexible = HudLayout.bEnhanced || Result.bService;
 
 	FNumberFormattingOptions Format;
 	Format.SetMaximumFractionalDigits(Direction.DistanceMetres >= 1000.0f ? 1 : 0);
@@ -184,14 +192,16 @@ FUEGT2HUDSurvey AUEGT2HUD::PrepareSurvey(AUEGT2PlayerController* PC)
 		FText::AsNumber(Direction.DistanceMetres >= 1000.0f ? Direction.DistanceMetres / 1000.0f : Direction.DistanceMetres, &Format));
 	const FText Detail = FText::Format(NSLOCTEXT("UEGT2SurveyHUD", "Direction", "{0} · {1} · straight line"),
 		Distance, Direction.CompassDirection);
-	const FKey Key = UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Journal);
-	const FText Hint = FText::Format(NSLOCTEXT("UEGT2SurveyHUD", "JournalKey", "[{0}] Survey Journal"), Key.GetDisplayName());
+	const FKey Key = UUEGT2InputConfig::GetEffectiveKey(Result.bService ? EUEGT2InputSlot::Menu : EUEGT2InputSlot::Journal);
+	const FText Hint = FText::Format(Result.bService
+		? NSLOCTEXT("UEGT2ServicesHUD", "GuideKey", "[{0}] Pause → Nearby Services")
+		: NSLOCTEXT("UEGT2SurveyHUD", "JournalKey", "[{0}] Survey Journal"), Key.GetDisplayName());
 	const float Width = 370.0f;
 	float Measured = 0.0f;
-	LayoutText(Direction.Name.ToString(), GEngine->GetMediumFont(), Width - 70.0f, Result.Name, Measured, Result.NameH, 2);
-	LayoutText(Detail.ToString(), GEngine->GetSmallFont(), Width - 70.0f, Result.Detail, Measured, Result.DetailH, 2);
-	LayoutText(Hint.ToString(), GEngine->GetSmallFont(), Width - 70.0f, Result.Hint, Measured, Result.HintH, 2);
-	const float Height = HudLayout.bEnhanced
+	LayoutText(Direction.Name.ToString(), GEngine->GetMediumFont(), Width - 70.0f, Result.Name, Measured, Result.NameH, 2, Result.bService);
+	LayoutText(Detail.ToString(), GEngine->GetSmallFont(), Width - 70.0f, Result.Detail, Measured, Result.DetailH, 2, Result.bService);
+	LayoutText(Hint.ToString(), GEngine->GetSmallFont(), Width - 70.0f, Result.Hint, Measured, Result.HintH, 2, Result.bService);
+	const float Height = Result.bFlexible
 		? 22.0f + Result.NameH * Result.Name.Num() + Result.DetailH * Result.Detail.Num() + Result.HintH * Result.Hint.Num() + 8.0f
 		: 82.0f;
 	Result.Bounds = UEGT2HUDLayout::AnchorPanel(HudLayout, FVector2D(Width, Height), EUEGT2HUDAnchor::BottomRight, FVector2D(24.0, 24.0));
@@ -200,28 +210,28 @@ FUEGT2HUDSurvey AUEGT2HUD::PrepareSurvey(AUEGT2PlayerController* PC)
 	return Result;
 }
 
-void AUEGT2HUD::DrawSurveyTracking(const FUEGT2HUDSurvey& Survey)
+void AUEGT2HUD::DrawGuidance(const FUEGT2HUDGuidance& Guidance)
 {
-	if (!Survey.Bounds.bIsValid) { return; }
-	const FVector2D Origin = HudLayout.ToLogical(Survey.Bounds.Min);
-	const FVector2D Size = HudLayout.ToLogical(Survey.Bounds.GetSize());
+	if (!Guidance.Bounds.bIsValid) { return; }
+	const FVector2D Origin = HudLayout.ToLogical(Guidance.Bounds.Min);
+	const FVector2D Size = HudLayout.ToLogical(Guidance.Bounds.GetSize());
 	const float X = Origin.X, Y = Origin.Y;
 	DrawHudRect(UEGT2Hud::Shade, X, Y, Size.X, Size.Y);
 	float Cursor = Y + 11.0f;
-	for (const FString& Line : Survey.Name) { DrawHudText(Line, UEGT2Hud::Ink, X + 58.0f, Cursor, GEngine->GetMediumFont()); Cursor += Survey.NameH; }
-	Cursor = HudLayout.bEnhanced ? Cursor + 4.0f : Y + 35.0f;
-	for (const FString& Line : Survey.Detail) { DrawHudText(Line, UEGT2Hud::Accent, X + 58.0f, Cursor, GEngine->GetSmallFont()); Cursor += Survey.DetailH; }
-	Cursor = HudLayout.bEnhanced ? Cursor + 4.0f : Y + 57.0f;
-	for (const FString& Line : Survey.Hint) { DrawHudText(Line, UEGT2Hud::Muted, X + 58.0f, Cursor, GEngine->GetSmallFont()); Cursor += Survey.HintH; }
+	for (const FString& Line : Guidance.Name) { DrawHudText(Line, UEGT2Hud::Ink, X + 58.0f, Cursor, GEngine->GetMediumFont()); Cursor += Guidance.NameH; }
+	Cursor = Guidance.bFlexible ? Cursor + 4.0f : Y + 35.0f;
+	for (const FString& Line : Guidance.Detail) { DrawHudText(Line, UEGT2Hud::Accent, X + 58.0f, Cursor, GEngine->GetSmallFont()); Cursor += Guidance.DetailH; }
+	Cursor = Guidance.bFlexible ? Cursor + 4.0f : Y + 57.0f;
+	for (const FString& Line : Guidance.Hint) { DrawHudText(Line, UEGT2Hud::Muted, X + 58.0f, Cursor, GEngine->GetSmallFont()); Cursor += Guidance.HintH; }
 
 	const FVector2D Centre(X + 28.0f, Y + 38.0f);
-	if (Survey.bNearby)
+	if (Guidance.bNearby)
 	{
 		DrawHudRect(UEGT2Hud::Accent, Centre.X - 4.0f, Centre.Y - 4.0f, 8.0f, 8.0f);
 		return;
 	}
 	// Up means ahead, right means turn right; the compass text is absolute north.
-	const float Radians = FMath::DegreesToRadians(Survey.Bearing);
+	const float Radians = FMath::DegreesToRadians(Guidance.Bearing);
 	const FVector2D Forward(FMath::Sin(Radians), -FMath::Cos(Radians));
 	const FVector2D Side(-Forward.Y, Forward.X);
 	const FVector2D Tip = Centre + Forward * 16.0f;
@@ -279,7 +289,7 @@ FBox2D AUEGT2HUD::DrawPrompt(float CentreX, float CentreY)
 		HudLayout.ToScreen(FVector2D(X + Width + 12.0f, Y + Height * Lines.Num() + 6.0f)));
 }
 
-FBox2D AUEGT2HUD::DrawMessage(const TArray<FBox2D>& BottomPanels)
+FBox2D AUEGT2HUD::DrawMessage(const TArray<FBox2D>& BottomPanels, bool bFitBounds)
 {
 	if (CurrentMessage.IsEmpty() || !GetWorld() || GetWorld()->GetTimeSeconds() > MessageExpiry)
 	{
@@ -289,11 +299,13 @@ FBox2D AUEGT2HUD::DrawMessage(const TArray<FBox2D>& BottomPanels)
 	UFont* Font = GEngine->GetMediumFont();
 	float Width = 0.0f, Height = 0.0f;
 	TArray<FString> Lines;
-	LayoutText(Text, Font, (Canvas->ClipX - 32.0f) / HudLayout.Scale - 28.0f, Lines, Width, Height, 3);
+	LayoutText(Text, Font, (Canvas->ClipX - 32.0f) / HudLayout.Scale - 28.0f, Lines, Width, Height, 3, bFitBounds);
 
 	const float Remaining = MessageExpiry - GetWorld()->GetTimeSeconds();
 	const float Alpha = FMath::Clamp(Remaining, 0.0f, 1.0f);
-	const FBox2D Bounds = UEGT2HUDLayout::PlaceMessage(HudLayout, FVector2D(Width + 28.0f, Height * Lines.Num() + 14.0f), BottomPanels);
+	FUEGT2HUDLayout MessageLayout = HudLayout;
+	MessageLayout.bEnhanced |= bFitBounds;
+	const FBox2D Bounds = UEGT2HUDLayout::PlaceMessage(MessageLayout, FVector2D(Width + 28.0f, Height * Lines.Num() + 14.0f), BottomPanels);
 	const FVector2D Origin = HudLayout.ToLogical(Bounds.Min);
 	const float X = Origin.X + 14.0f, Y = Origin.Y + 7.0f;
 
@@ -578,9 +590,9 @@ void AUEGT2HUD::DrawHudLine(float X1, float Y1, float X2, float Y2, FLinearColor
 }
 
 void AUEGT2HUD::LayoutText(const FString& Text, UFont* Font, float MaxWidth, TArray<FString>& Lines,
-	float& Width, float& LineHeight, int32 MaxLines) const
+	float& Width, float& LineHeight, int32 MaxLines, bool bForceWrap) const
 {
-	if (!HudLayout.bEnhanced)
+	if (!HudLayout.bEnhanced && !bForceWrap)
 	{
 		Lines = { Text };
 		MeasureHudText(Text, Width, LineHeight, Font);
@@ -670,7 +682,7 @@ void AUEGT2HUD::DrawRoundedRect(const FLinearColor& Colour, float X, float Y, fl
 	DrawHudRect(Colour, X + C * 0.4f, Y + C * 0.4f, W - C * 0.8f, H - C * 0.8f);
 }
 
-void AUEGT2HUD::DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels, const FBox2D& AutoWalkBounds)
+void AUEGT2HUD::DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels, const FBox2D& AutoWalkBounds, bool bFitBounds)
 {
 	const UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(GetWorld());
 	if (!Director || !PlayerOwner || !Canvas)
@@ -688,12 +700,12 @@ void AUEGT2HUD::DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels, const FBox
 	// Farthest first, so a near bubble that has to move ends up above the far
 	// one rather than the other way round.
 	TArray<FBox2D> Placed;
-	if (HudLayout.bEnhanced) { Placed = PlayerPanels; }
+	if (HudLayout.bEnhanced || bFitBounds) { Placed = PlayerPanels; }
 	else if (AutoWalkBounds.bIsValid) { Placed.Add(AutoWalkBounds); }
 	Placed.Reserve(Bubbles.Num());
 	for (const FUEGT2SpeechBubble& Bubble : Bubbles)
 	{
-		DrawOneBubble(Bubble, Placed, HudLayout.bEnhanced || AutoWalkBounds.bIsValid);
+		DrawOneBubble(Bubble, Placed, HudLayout.bEnhanced || AutoWalkBounds.bIsValid || bFitBounds);
 	}
 
 	// Under -UEGT2LiveNPCs, say where each bubble was laid out. A screenshot

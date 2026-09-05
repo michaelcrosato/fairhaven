@@ -69,7 +69,8 @@ AUEGT2GameMode
 │   ├── SUEGT2Menu             front end, pause, settings (Slate, in code)
 │   ├── SUEGT2Dialogue         conversation and follow controls
 │   ├── SUEGT2SurveyJournal    paused discovery roster and tracking controls
-│   └── SUEGT2RestPanel        chosen wake time, duration and date preview
+│   ├── SUEGT2RestPanel        chosen wake time, duration and date preview
+│   └── SUEGT2ServicesGuide    nearest amenities, real rates and tracking controls
 ├── AUEGT2HUD                  prompts, needs, almanac, F3 overlay
 └── UUEGT2GameUserSettings     every persisted setting, one settings file
 
@@ -89,6 +90,7 @@ World actors:
   UUEGT2SurveySubsystem        landmark roster and one weak direction target; no tick
   UUEGT2RestSubsystem          bed eligibility and explicit skipped life; no tick
   UUEGT2AutosaveSubsystem      optional active-play interval and save eligibility
+  UUEGT2ServicesSubsystem      explicit nearest-amenity scan and weak direction target
 ```
 
 **The inhabitants** get their own document: [NPCs.md](NPCs.md). The organising
@@ -142,6 +144,14 @@ The controller adds its input after normal input and camera rotation and before
 character movement. Manual actions, menus, focus loss and movement transitions
 cancel it. It uses ordinary collision and the shared needs model; checkpoints
 never restore an active walk. The HUD cue remains visible with needs hidden.
+
+**Directions have one owner.** The Nearby Services page queries live amenity
+actors once on opening and calculates rates from the shared life ledger. Its
+selected target is a weak actor validated during direction queries, with no
+per-frame search. A successful service selection clears journal tracking; a
+successful landmark selection clears service tracking. Failed selections leave
+the other owner's target alone. Both use one Canvas direction panel and the same
+horizontal bearing calculation. Neither target is checkpointed.
 
 **Shared materials, with glass separate from the shell.** Opaque props,
 building shells and characters use `M_Prop`, driven by vertex colour. Window
