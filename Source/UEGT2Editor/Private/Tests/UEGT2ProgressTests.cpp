@@ -5,6 +5,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/GameInstance.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
@@ -15,6 +16,7 @@
 #include "Interaction/UEGT2WorldInteractables.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/CommandLine.h"
+#include "Misc/ScopeExit.h"
 #include "NPC/UEGT2NPCActor.h"
 #include "NPC/UEGT2NPCDirector.h"
 #include "Player/UEGT2Character.h"
@@ -215,6 +217,58 @@ bool FUEGT2ProgressRoundTripTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2ProgressAutoWalkTest, "UEGT2.Progress.AutoWalkRestore",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2ProgressAutoWalkTest::RunTest(const FString& Parameters)
+{
+	using namespace UEGT2ProgressTests;
+	FFixture Sim;
+	if (!TestTrue(TEXT("real checkpoint fixture"), Sim.Ready())) { return false; }
+	const bool bOriginalAutoWalk = Sim.Settings->GetAutoWalkEnabled();
+	// Auto-walk belongs to a local human controller. Other checkpoint tests
+	// need no local input stack, so attach one only for this integration case.
+	TStrongObjectPtr<ULocalPlayer> LocalPlayer(NewObject<ULocalPlayer>(GEngine));
+	LocalPlayer->PlayerAdded(nullptr, 0);
+	Sim.Controller->SetPlayer(LocalPlayer.Get());
+	ON_SCOPE_EXIT
+	{
+		Sim.Controller->UnPossess();
+		LocalPlayer->PlayerRemoved();
+		Sim.Settings->SetAutoWalkEnabled(bOriginalAutoWalk);
+	};
+	if (!TestTrue(TEXT("checkpoint fixture has a local controller"), Sim.Controller->IsLocalController())) { return false; }
+	Sim.Settings->SetAutoWalkEnabled(true);
+	Sim.Player->bAutoWalkFeatureEnabled = true;
+	Sim.Populate();
+	Sim.Controller->CloseMenu();
+	Sim.Player->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	TestTrue(TEXT("assistance starts before opening Save Progress"), Sim.Player->ToggleAutoWalk());
+	Sim.Player->ApplyAutoWalkInput();
+	TestFalse(TEXT("assistance queued ordinary input"), Sim.Player->GetPendingMovementInputVector().IsNearlyZero());
+	Sim.Pause();
+	TestFalse(TEXT("actual pause path cancels assistance"), Sim.Player->IsAutoWalking());
+	TestTrue(TEXT("pause clears queued assistance"), Sim.Player->GetPendingMovementInputVector().IsNearlyZero());
+	TestTrue(TEXT("checkpoint saves after auto-walk stops"), Sim.Progress->SaveProgress(Sim.Controller));
+	Sim.Controller->CloseMenu();
+	Sim.World->GetWorldSettings()->SetPauserPlayerState(nullptr);
+	TestFalse(TEXT("closing menu does not resume assistance"), Sim.Player->IsAutoWalking());
+	TestTrue(TEXT("explicit toggle can start another walk"), Sim.Player->ToggleAutoWalk());
+	Sim.Player->ApplyAutoWalkInput();
+	// The shared restore service must clear movement even when its caller did
+	// not first open a menu. Both checkpoint channels use this restore path.
+	TestTrue(TEXT("checkpoint loads while assistance is active"), Sim.Progress->LoadProgress(Sim.Controller));
+	TestFalse(TEXT("restoration clears transient assistance"), Sim.Player->IsAutoWalking());
+	TestTrue(TEXT("restoration clears queued input"), Sim.Player->GetPendingMovementInputVector().IsNearlyZero());
+	TestTrue(TEXT("restoration clears velocity"), Sim.Player->GetVelocity().IsNearlyZero());
+	Sim.Player->GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	Sim.Player->ApplyAutoWalkInput();
+	TestFalse(TEXT("landing after restoration does not resume"), Sim.Player->IsAutoWalking());
+	TestTrue(TEXT("landing adds no movement"), Sim.Player->GetPendingMovementInputVector().IsNearlyZero());
+	TestTrue(TEXT("restoration retains player opt-in"), Sim.Settings->GetAutoWalkEnabled());
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2ProgressValidationTest, "UEGT2.Progress.ValidationAndRecovery",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
@@ -336,7 +390,8 @@ bool FUEGT2ProgressDisabledTest::RunTest(const FString& Parameters)
 	CheckOff();
 	Sim.Progress->bFeatureEnabled = true;
 	for (const TCHAR* Switch : { TEXT("-UEGT2Capture=TownSquare"), TEXT("-UEGT2CaptureLife"),
-		TEXT("-UEGT2SmokeWalk"), TEXT("-UEGT2SmokeFly"), TEXT("-UEGT2HudSizeSmoke") })
+		TEXT("-UEGT2SmokeWalk"), TEXT("-UEGT2SmokeFly"), TEXT("-UEGT2HudSizeSmoke"),
+		TEXT("-UEGT2AutoWalkSmoke") })
 	{
 		Sim.SetCommandLine(Switch);
 		CheckOff();

@@ -89,6 +89,8 @@ private:
 	bool bPreferencesChanged = false;
 	bool bOriginalSavePreference = true;
 	bool bOriginalRestPreference = true;
+	bool bOriginalAutoWalkPreference = false;
+	bool bOriginalAutoWalkGate = true;
 	bool bOriginalFeatureEnabled = true;
 	bool bOriginalClockEnabled = true;
 	bool bScreenshotRequested = false;

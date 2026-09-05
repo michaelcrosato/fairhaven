@@ -3,17 +3,22 @@
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "EnhancedInputComponent.h"
+#include "Engine/World.h"
+#include "Engine/Console.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/LocalPlayer.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/PhysicsVolume.h"
 #include "Interaction/UEGT2InteractionComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Player/UEGT2InputConfig.h"
 #include "Player/UEGT2NeedsComponent.h"
+#include "Player/UEGT2PlayerController.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "Sound/SoundBase.h"
 #include "UEGT2LogChannels.h"
 
-namespace
+namespace UEGT2Character
 {
 	USoundBase* TryLoadSound(const TCHAR* Path)
 	{
@@ -71,9 +76,9 @@ void AUEGT2Character::BeginPlay()
 	Super::BeginPlay();
 
 	BaseEyeZ = EyeHeight;
-	FootstepSound = TryLoadSound(TEXT("/Game/Fairhaven/Audio/S_FootstepGround"));
-	FootstepWaterSound = TryLoadSound(TEXT("/Game/Fairhaven/Audio/S_FootstepWater"));
-	JumpSound = TryLoadSound(TEXT("/Game/Fairhaven/Audio/S_Jump"));
+	FootstepSound = UEGT2Character::TryLoadSound(TEXT("/Game/Fairhaven/Audio/S_FootstepGround"));
+	FootstepWaterSound = UEGT2Character::TryLoadSound(TEXT("/Game/Fairhaven/Audio/S_FootstepWater"));
+	JumpSound = UEGT2Character::TryLoadSound(TEXT("/Game/Fairhaven/Audio/S_Jump"));
 
 	RefreshFromSettings();
 	UUEGT2GameUserSettings::OnSettingsApplied.AddUObject(this, &AUEGT2Character::RefreshFromSettings);
@@ -82,8 +87,16 @@ void AUEGT2Character::BeginPlay()
 		*GetActorLocation().ToCompactString());
 }
 
+void AUEGT2Character::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	CancelAutoWalk();
+	UUEGT2GameUserSettings::OnSettingsApplied.RemoveAll(this);
+	Super::EndPlay(EndPlayReason);
+}
+
 void AUEGT2Character::RefreshFromSettings()
 {
+	if (!IsAutoWalkEnabled()) { CancelAutoWalk(); }
 	if (const UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get())
 	{
 		CurrentFov = Settings->GetFieldOfView();
@@ -92,6 +105,90 @@ void AUEGT2Character::RefreshFromSettings()
 			Camera->SetFieldOfView(CurrentFov);
 		}
 	}
+}
+
+bool AUEGT2Character::IsAutoWalkEnabled() const
+{
+	const UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get();
+	return IsAutoWalkAvailable() && Settings && Settings->GetAutoWalkEnabled();
+}
+
+bool AUEGT2Character::CanAutoWalk() const
+{
+	const UWorld* World = GetWorld();
+	const AUEGT2PlayerController* PC = Cast<AUEGT2PlayerController>(Controller);
+	const UCharacterMovementComponent* Movement = GetCharacterMovement();
+	const ULocalPlayer* LocalPlayer = PC ? PC->GetLocalPlayer() : nullptr;
+	UGameViewportClient* Viewport = LocalPlayer ? LocalPlayer->ViewportClient.Get() : nullptr;
+	// The console flushes PlayerInput directly, bypassing the controller's
+	// FlushPressedKeys override. UI ownership must also be checked here.
+	if (Viewport && (Viewport->IgnoreInput() || (Viewport->ViewportConsole && Viewport->ViewportConsole->ConsoleActive()))) { return false; }
+	return IsAutoWalkEnabled() && World && (World->WorldType == EWorldType::Game || World->WorldType == EWorldType::PIE) && HasActorBegunPlay()
+		&& PC && PC->IsLocalController() && PC->GetPawn() == this
+		&& !World->IsPaused() && !PC->IsMenuOpen() && !PC->IsDialogueOpen() && !IsMoveInputIgnored()
+		&& Movement && Movement->IsMovingOnGround() && !Movement->bWantsToCrouch
+		&& !bIsCrouched && !bFlying && !bNoclip && (!Life || !Life->IsOccupied())
+		&& FMath::IsFinite(PC->GetControlRotation().Yaw);
+}
+
+bool AUEGT2Character::ToggleAutoWalk()
+{
+	if (bAutoWalking) { CancelAutoWalk(); return true; }
+	if (!CanAutoWalk() || bManualActionPending || GetPendingMovementInputVector().SizeSquared() >= 0.2f * 0.2f) { return false; }
+	// OnMove may already have queued resting-stick drift earlier in this input
+	// tick. Starting must behave the same whichever action delegate ran first.
+	ConsumeMovementInputVector();
+	bSprinting = false;
+	bAutoWalking = true;
+	UE_LOG(LogUEGT2Player, Log, TEXT("Auto-walk started."));
+	return true;
+}
+
+void AUEGT2Character::CancelAutoWalk()
+{
+	if (!bAutoWalking) { return; }
+	bAutoWalking = false;
+	ConsumeMovementInputVector();
+	// Menus must not preserve a forward velocity to resume later. When ground
+	// movement ends, retain the normal falling/swimming velocity and gravity.
+	if (UCharacterMovementComponent* Movement = GetCharacterMovement(); Movement && Movement->IsMovingOnGround())
+	{
+		Movement->StopMovementImmediately();
+	}
+	UE_LOG(LogUEGT2Player, Log, TEXT("Auto-walk stopped."));
+}
+
+void AUEGT2Character::ApplyAutoWalkInput()
+{
+	const bool bManualAction = bManualActionPending;
+	bManualActionPending = false;
+	if (!bAutoWalking) { return; }
+	if (bManualAction || !CanAutoWalk()) { CancelAutoWalk(); return; }
+	// Another input producer takes priority too; do not erase its input while
+	// retiring assistance. The normal OnMove path cancels before adding its own.
+	if (GetPendingMovementInputVector().SizeSquared() >= 0.2f * 0.2f)
+	{
+		const FVector ManualInput = ConsumeMovementInputVector();
+		CancelAutoWalk();
+		AddMovementInput(ManualInput, 1.0f);
+		return;
+	}
+	ConsumeMovementInputVector();
+	const FRotator Yaw(0.0f, Controller->GetControlRotation().Yaw, 0.0f);
+	AddMovementInput(Yaw.Vector(), 1.0f);
+}
+
+void AUEGT2Character::OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode)
+{
+	Super::OnMovementModeChanged(PrevMovementMode, PreviousCustomMode);
+	if (!GetCharacterMovement()->IsMovingOnGround()) { CancelAutoWalk(); }
+}
+
+bool AUEGT2Character::TeleportTo(const FVector& DestLocation, const FRotator& DestRotation, bool bIsATest, bool bNoCheck)
+{
+	const bool bMoved = Super::TeleportTo(DestLocation, DestRotation, bIsATest, bNoCheck);
+	if (bMoved && !bIsATest) { CancelAutoWalk(); }
+	return bMoved;
 }
 
 FVector AUEGT2Character::GetPawnViewLocation() const
@@ -145,6 +242,11 @@ void AUEGT2Character::OnMove(const FInputActionValue& Value)
 	{
 		return;
 	}
+	// A resting stick may still report small analog values. Only assistance
+	// ignores that noise; ordinary manual movement keeps its existing response.
+	if (bAutoWalking && Axis.SizeSquared() < 0.2f * 0.2f) { return; }
+	if (Axis.SizeSquared() >= 0.2f * 0.2f) { bManualActionPending = true; }
+	CancelAutoWalk();
 	// Flying follows the full camera rotation, so looking up and holding
 	// forward climbs. On foot it stays yaw-only or you would walk into the
 	// ground every time you looked down.
@@ -168,6 +270,8 @@ void AUEGT2Character::OnLook(const FInputActionValue& Value)
 
 void AUEGT2Character::OnJumpStarted()
 {
+	bManualActionPending = true;
+	CancelAutoWalk();
 	if (bFlying)
 	{
 		return;
@@ -186,6 +290,8 @@ void AUEGT2Character::OnJumpStopped()
 
 void AUEGT2Character::OnSprintStarted()
 {
+	bManualActionPending = true;
+	CancelAutoWalk();
 	const UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get();
 	if (Settings && Settings->GetToggleSprint())
 	{
@@ -219,6 +325,8 @@ void AUEGT2Character::OnSprintStopped()
 
 void AUEGT2Character::OnCrouchToggle()
 {
+	bManualActionPending = true;
+	CancelAutoWalk();
 	if (bFlying)
 	{
 		return;
@@ -236,6 +344,8 @@ void AUEGT2Character::OnCrouchToggle()
 
 void AUEGT2Character::OnInteract()
 {
+	bManualActionPending = true;
+	CancelAutoWalk();
 	if (Interaction)
 	{
 		Interaction->TryInteract();
@@ -258,6 +368,7 @@ void AUEGT2Character::SetGodMode(bool bEnabled)
 
 void AUEGT2Character::SetFlyEnabled(bool bEnabled)
 {
+	CancelAutoWalk();
 	if (bFlying == bEnabled)
 	{
 		return;
@@ -285,6 +396,7 @@ void AUEGT2Character::SetFlyEnabled(bool bEnabled)
 
 void AUEGT2Character::SetNoclipEnabled(bool bEnabled)
 {
+	CancelAutoWalk();
 	if (bNoclip == bEnabled)
 	{
 		return;
@@ -308,6 +420,7 @@ void AUEGT2Character::SetSpeedMultiplier(float Multiplier)
 
 void AUEGT2Character::ClearDevMovement()
 {
+	CancelAutoWalk();
 	SetNoclipEnabled(false);
 	SetFlyEnabled(false);
 	SetGodMode(false);

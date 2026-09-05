@@ -174,7 +174,9 @@ void UUEGT2RestSmokeSubsystem::RestorePreferences()
 	{
 		C.Settings->SetSaveProgressEnabled(bOriginalSavePreference);
 		C.Settings->SetSleepUntilEnabled(bOriginalRestPreference);
+		C.Settings->SetAutoWalkEnabled(bOriginalAutoWalkPreference);
 	}
+	if (C.Player) { C.Player->CancelAutoWalk(); C.Player->bAutoWalkFeatureEnabled = bOriginalAutoWalkGate; }
 	if (C.Rest) { C.Rest->bFeatureEnabled = bOriginalFeatureEnabled; }
 	if (C.Sky) { C.Sky->SetDayLengthMinutes(OriginalDayLength); C.Sky->SetDayNightCycleEnabled(bOriginalClockEnabled); }
 	if (C.Director) { C.Director->SetCrowdDensity(OriginalDensity); }
@@ -236,6 +238,8 @@ void UUEGT2RestSmokeSubsystem::StartCheck()
 		TEXT("rest smoke needs ordinary gameplay and live schedules"))) { return; }
 	bOriginalSavePreference = C.Settings->GetSaveProgressEnabled();
 	bOriginalRestPreference = C.Settings->GetSleepUntilEnabled();
+	bOriginalAutoWalkPreference = C.Settings->GetAutoWalkEnabled();
+	bOriginalAutoWalkGate = C.Player->bAutoWalkFeatureEnabled;
 	bOriginalFeatureEnabled = C.Rest->bFeatureEnabled;
 	OriginalDensity = C.Director->GetCrowdDensity();
 	OriginalDayLength = C.Sky->GetDayLengthMinutes();
@@ -243,6 +247,8 @@ void UUEGT2RestSmokeSubsystem::StartCheck()
 	bPreferencesChanged = true;
 	C.Settings->SetSaveProgressEnabled(false);
 	C.Settings->SetSleepUntilEnabled(true);
+	C.Settings->SetAutoWalkEnabled(true);
+	C.Player->bAutoWalkFeatureEnabled = true;
 	C.Director->SetCrowdDensity(1.0f);
 	C.Sky->SetDayLengthMinutes(20.0f);
 	C.Sky->SetDayNightCycleEnabled(true);
@@ -299,7 +305,17 @@ bool UUEGT2RestSmokeSubsystem::UseBed()
 		return false;
 	}
 	ProbeAttempts = 0;
-	return Check(Probe->TryInteract(), TEXT("real interaction probe refused the bed"));
+	if (C.Rest->IsEnabled())
+	{
+		// Exercise the rest panel's own cancellation path: a probe interaction
+		// need not pass through the pawn's input callback first.
+		if (!Check(C.Player->ToggleAutoWalk(), TEXT("auto-walk could not start beside the bed"))) { return false; }
+		C.Player->ApplyAutoWalkInput();
+		if (!Check(!C.Player->GetPendingMovementInputVector().IsNearlyZero(), TEXT("auto-walk queued no input before bed interaction"))) { return false; }
+	}
+	if (!Check(Probe->TryInteract(), TEXT("real interaction probe refused the bed"))) { return false; }
+	return Check(!C.Player->IsAutoWalking() && C.Player->GetPendingMovementInputVector().IsNearlyZero(),
+		TEXT("bed interaction left assisted movement active or queued"));
 }
 
 bool UUEGT2RestSmokeSubsystem::CheckFocusedButton(const FText& Caption)
@@ -366,7 +382,8 @@ bool UUEGT2RestSmokeSubsystem::CheckWakeSnapshot()
 {
 	using namespace UEGT2RestSmoke;
 	FContext C(GetWorld());
-	if (!Check(C.IsValid() && Equal(C.Life->GetNeeds(), SnapshotNeeds) && FMath::IsNearlyEqual(C.Life->GetPurse().Coins, SnapshotPurse.Coins, 0.0001f)
+	if (!Check(C.IsValid() && !C.Player->IsAutoWalking() && C.Player->GetPendingMovementInputVector().IsNearlyZero()
+		&& Equal(C.Life->GetNeeds(), SnapshotNeeds) && FMath::IsNearlyEqual(C.Life->GetPurse().Coins, SnapshotPurse.Coins, 0.0001f)
 		&& C.Director->GetDayIndex() == 8 && FMath::IsNearlyEqual(C.Director->GetHour(), 8.0f, 0.0001f),
 		TEXT("player or calendar changed after waking with clock frozen"))) { return false; }
 	for (const FUEGT2RestSmokeNPCState& State : WakePopulation)
@@ -407,6 +424,7 @@ void UUEGT2RestSmokeSubsystem::Advance()
 		auto CheckCancelState = [&](bool bOpen, const TCHAR* Stage)
 		{
 			return Check(C.PC->IsRestPanelOpen() == bOpen && GetWorld()->IsPaused() == bOpen
+				&& !C.Player->IsAutoWalking() && C.Player->GetPendingMovementInputVector().IsNearlyZero()
 				&& C.PC->GetMenuState() == (bOpen ? EUEGT2MenuState::Pause : EUEGT2MenuState::None)
 				&& Equal(C.Life->GetNeeds(), SnapshotNeeds) && C.Life->GetPurse().Coins == SnapshotPurse.Coins
 				&& C.Director->GetDayIndex() == SnapshotDay && C.Director->GetHour() == SnapshotHour,

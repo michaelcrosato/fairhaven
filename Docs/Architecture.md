@@ -136,6 +136,13 @@ pixels. Normal and the independent HUD config gate retain the original layout.
 Slate keeps its existing DPI curve, and the crosshair and dev diagnostics retain
 their original size. No content assets or per-frame settings writes are needed.
 
+**Auto-walk is transient player input.** The character owns an optional forward
+walk latch, gated by its own config switch and an Off-by-default player setting.
+The controller adds its input after normal input and camera rotation and before
+character movement. Manual actions, menus, focus loss and movement transitions
+cancel it. It uses ordinary collision and the shared needs model; checkpoints
+never restore an active walk. The HUD cue remains visible with needs hidden.
+
 **Shared materials, with glass separate from the shell.** Opaque props,
 building shells and characters use `M_Prop`, driven by vertex colour. Window
 panes use translucent `M_Glass`. Each generated mesh uses one material, so

@@ -117,11 +117,13 @@ void AUEGT2HUD::DrawHUD()
 		Prompt = DrawPrompt(CentreX / HudLayout.Scale, CentreY / HudLayout.Scale);
 	}
 	const FBox2D Message = DrawMessage(PlayerPanels);
+	const FBox2D AutoWalkBounds = DrawAutoWalkIndicator(Explorer);
 	if (Prompt.bIsValid) { PlayerPanels.Add(Prompt); }
 	if (Message.bIsValid) { PlayerPanels.Add(Message); }
+	if (AutoWalkBounds.bIsValid) { PlayerPanels.Add(AutoWalkBounds); }
 	if (!Settings || Settings->GetShowSpeechBubbles())
 	{
-		DrawSpeechBubbles(PlayerPanels);
+		DrawSpeechBubbles(PlayerPanels, AutoWalkBounds);
 	}
 
 	if (PC && PC->IsDiagnosticsVisible())
@@ -139,6 +141,28 @@ void AUEGT2HUD::DrawHUD()
 	}
 	DrawDevStatus(Canvas->ClipX);
 	DrawSurveyTracking(Survey);
+}
+
+FBox2D AUEGT2HUD::DrawAutoWalkIndicator(const AUEGT2Character* Explorer)
+{
+	if (!Explorer || !Explorer->IsAutoWalking()) { return FBox2D(ForceInit); }
+	const FText Text = FText::Format(NSLOCTEXT("UEGT2HUD", "AutoWalkActive", "Auto-walk  [{0}] Stop"),
+		UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::ToggleAutoWalk).GetDisplayName());
+	TArray<FString> Lines;
+	float Width = 0.0f, Height = 0.0f;
+	LayoutText(Text.ToString(), GEngine->GetMediumFont(),
+		(Canvas->ClipX - 32.0f) / HudLayout.Scale - 24.0f, Lines, Width, Height, 2);
+	const float X = (Canvas->ClipX / HudLayout.Scale - Width) * 0.5f;
+	// The upper quarter clears the almanac at 720p and 1080p and
+	// leaves the crosshair/prompt and bottom player panels in their own space.
+	const float Y = Canvas->ClipY * 0.25f / HudLayout.Scale;
+	DrawRoundedRect(UEGT2Hud::Shade, X - 12.0f, Y - 6.0f, Width + 24.0f, Height * Lines.Num() + 12.0f, 5.0f);
+	for (int32 Row = 0; Row < Lines.Num(); ++Row)
+	{
+		DrawHudText(Lines[Row], UEGT2Hud::Accent, X, Y + Row * Height, GEngine->GetMediumFont());
+	}
+	return FBox2D(HudLayout.ToScreen(FVector2D(X - 12.0f, Y - 6.0f)),
+		HudLayout.ToScreen(FVector2D(X + Width + 12.0f, Y + Height * Lines.Num() + 6.0f)));
 }
 
 FUEGT2HUDSurvey AUEGT2HUD::PrepareSurvey(AUEGT2PlayerController* PC)
@@ -646,7 +670,7 @@ void AUEGT2HUD::DrawRoundedRect(const FLinearColor& Colour, float X, float Y, fl
 	DrawHudRect(Colour, X + C * 0.4f, Y + C * 0.4f, W - C * 0.8f, H - C * 0.8f);
 }
 
-void AUEGT2HUD::DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels)
+void AUEGT2HUD::DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels, const FBox2D& AutoWalkBounds)
 {
 	const UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(GetWorld());
 	if (!Director || !PlayerOwner || !Canvas)
@@ -665,10 +689,11 @@ void AUEGT2HUD::DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels)
 	// one rather than the other way round.
 	TArray<FBox2D> Placed;
 	if (HudLayout.bEnhanced) { Placed = PlayerPanels; }
+	else if (AutoWalkBounds.bIsValid) { Placed.Add(AutoWalkBounds); }
 	Placed.Reserve(Bubbles.Num());
 	for (const FUEGT2SpeechBubble& Bubble : Bubbles)
 	{
-		DrawOneBubble(Bubble, Placed);
+		DrawOneBubble(Bubble, Placed, HudLayout.bEnhanced || AutoWalkBounds.bIsValid);
 	}
 
 	// Under -UEGT2LiveNPCs, say where each bubble was laid out. A screenshot
@@ -690,7 +715,7 @@ void AUEGT2HUD::DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels)
 	}
 }
 
-void AUEGT2HUD::DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& Placed)
+void AUEGT2HUD::DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& Placed, bool bFitBounds)
 {
 	// bClampToZeroPlane must be off: with it on, a speaker behind the camera
 	// projects onto the screen edge and their bubble hovers over nothing.
@@ -760,7 +785,9 @@ void AUEGT2HUD::DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& 
 	const float TailHeight = 9.0f;
 	float BoxX = Screen.X - BoxWidth * 0.5f;
 	float BoxY = Screen.Y - BoxHeight - TailHeight;
-	if (HudLayout.bEnhanced)
+	// Reserve the tail as well as the body around the active control indicator.
+	// Normal size without assistance keeps its original placement below.
+	if (bFitBounds)
 	{
 		FBox2D Bounds(ForceInit);
 		if (!UEGT2HUDLayout::PlaceBubble(HudLayout, FVector2D(PhysicalScreen.X, PhysicalScreen.Y),

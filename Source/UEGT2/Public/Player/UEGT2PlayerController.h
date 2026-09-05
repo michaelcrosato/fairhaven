@@ -32,6 +32,9 @@ public:
 	AUEGT2PlayerController();
 
 	virtual void BeginPlay() override;
+	virtual void PlayerTick(float DeltaTime) override;
+	virtual void FlushPressedKeys() override;
+	virtual bool InputKey(const FInputKeyEventArgs& Params) override;
 	virtual void SetupInputComponent() override;
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void OnUnPossess() override;
@@ -133,6 +136,7 @@ private:
 	void BindPawnActions();
 	void OnMenuAction();
 	void OnDiagnosticsAction();
+	void OnAutoWalkAction();
 	void EnsureMenuWidget();
 	void EnsureDialogueWidget();
 	void ApplyDialogueInputMode();
@@ -147,4 +151,6 @@ private:
 	EUEGT2MenuState MenuState = EUEGT2MenuState::None;
 	bool bDiagnosticsVisible = false;
 	bool bPawnActionsBound = false;
+	/** Only an actual press received by this controller can authorize the toggle. */
+	bool bAutoWalkPressedThisTick = false;
 };

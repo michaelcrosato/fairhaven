@@ -15,7 +15,7 @@ class UUEGT2NeedsComponent;
 class USoundBase;
 struct FInputActionValue;
 
-UCLASS(ClassGroup = "UEGT2")
+UCLASS(Config = Game, ClassGroup = "UEGT2")
 class UEGT2_API AUEGT2Character : public ACharacter
 {
 	GENERATED_BODY()
@@ -24,8 +24,12 @@ public:
 	AUEGT2Character();
 
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void Tick(float DeltaSeconds) override;
 	virtual FVector GetPawnViewLocation() const override;
+	virtual void OnMovementModeChanged(EMovementMode PrevMovementMode, uint8 PreviousCustomMode = 0) override;
+	virtual bool TeleportTo(const FVector& DestLocation, const FRotator& DestRotation,
+		bool bIsATest = false, bool bNoCheck = false) override;
 
 	/** Bind this pawn's actions onto an already-created Enhanced Input component. */
 	void BindInputActions(class UEnhancedInputComponent* Input, class UUEGT2InputConfig* Config);
@@ -50,6 +54,16 @@ public:
 
 	/** Re-read anything that depends on player settings (FOV, bob scale). */
 	void RefreshFromSettings();
+
+	/** Optional, session-only forward walking. Looking steers; manual actions cancel. */
+	UPROPERTY(Config) bool bAutoWalkFeatureEnabled = true;
+	bool IsAutoWalkAvailable() const { return bAutoWalkFeatureEnabled; }
+	bool IsAutoWalkEnabled() const;
+	bool IsAutoWalking() const { return bAutoWalking; }
+	bool ToggleAutoWalk();
+	void CancelAutoWalk();
+	/** Called after controller input/rotation, before character movement consumes input. */
+	void ApplyAutoWalkInput();
 
 	// ---- Dev mode ---------------------------------------------------------
 	// Owned by UUEGT2DevModeSubsystem; the pawn only knows how to be in these
@@ -103,6 +117,7 @@ private:
 	void UpdateFieldOfView(float DeltaSeconds);
 	void PlayFootstep();
 	float DesiredMaxSpeed() const;
+	bool CanAutoWalk() const;
 
 	UPROPERTY(VisibleAnywhere, Category = "UEGT2") TObjectPtr<UCameraComponent> Camera;
 	UPROPERTY(VisibleAnywhere, Category = "UEGT2") TObjectPtr<UUEGT2InteractionComponent> Interaction;
@@ -113,6 +128,9 @@ private:
 	UPROPERTY(Transient) TObjectPtr<USoundBase> JumpSound;
 
 	bool bSprinting = false;
+	bool bAutoWalking = false;
+	/** Manual actions win even if the toggle delegate runs later in the same input tick. */
+	bool bManualActionPending = false;
 	bool bGodMode = false;
 	bool bFlying = false;
 	bool bNoclip = false;

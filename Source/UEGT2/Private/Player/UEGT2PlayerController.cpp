@@ -64,6 +64,8 @@ void AUEGT2PlayerController::BeginPlay()
 
 void AUEGT2PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	bAutoWalkPressedThisTick = false;
+	if (AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn())) { Explorer->CancelAutoWalk(); }
 	if (UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld()))
 	{
 		Progress->SetJourneyActive(false);
@@ -81,6 +83,45 @@ void AUEGT2PlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
 	}
 	MenuWidget.Reset();
 	Super::EndPlay(EndPlayReason);
+}
+
+void AUEGT2PlayerController::PlayerTick(float DeltaTime)
+{
+	Super::PlayerTick(DeltaTime);
+	bAutoWalkPressedThisTick = false;
+	// Controller input and view rotation run before character movement. Adding
+	// this in the pawn's later actor tick would queue forward input for next frame.
+	if (AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn())) { Explorer->ApplyAutoWalkInput(); }
+}
+
+void AUEGT2PlayerController::FlushPressedKeys()
+{
+	bAutoWalkPressedThisTick = false;
+	if (AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn())) { Explorer->CancelAutoWalk(); }
+	Super::FlushPressedKeys();
+}
+
+bool AUEGT2PlayerController::InputKey(const FInputKeyEventArgs& Params)
+{
+	// Enhanced Input can rebuild a Started edge from an OS repeat after a flush
+	// or pause. Its synthetic release also clears the engine's ignore-held flag.
+	// Require the real press here, before engine reconciliation, for this action.
+	if ((Params.Event == IE_Pressed || Params.Event == IE_DoubleClick) && !Params.IsSimulatedInput()
+		&& GetWorld() && !GetWorld()->IsPaused()
+		&& MenuState == EUEGT2MenuState::None && !IsDialogueOpen()
+		&& (Params.Key == UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::ToggleAutoWalk)
+			|| Params.Key == EKeys::Gamepad_RightThumbstick))
+	{
+		bAutoWalkPressedThisTick = true;
+	}
+	return Super::InputKey(Params);
+}
+
+void AUEGT2PlayerController::OnAutoWalkAction()
+{
+	if (!bAutoWalkPressedThisTick) { return; }
+	bAutoWalkPressedThisTick = false;
+	if (AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn())) { Explorer->ToggleAutoWalk(); }
 }
 
 void AUEGT2PlayerController::SetupInputComponent()
@@ -105,6 +146,9 @@ void AUEGT2PlayerController::SetupInputComponent()
 	Input->BindAction(InputConfig->MenuAction, ETriggerEvent::Started, this, &AUEGT2PlayerController::OnMenuAction);
 	Input->BindAction(InputConfig->DiagnosticsAction, ETriggerEvent::Started, this, &AUEGT2PlayerController::OnDiagnosticsAction);
 	Input->BindAction(InputConfig->JournalAction, ETriggerEvent::Started, this, &AUEGT2PlayerController::ToggleSurveyJournal);
+	// A quick release/repress can stay Triggered across an input tick. The raw
+	// press ticket, rather than an engine-generated Started edge, toggles once.
+	Input->BindAction(InputConfig->AutoWalkAction, ETriggerEvent::Triggered, this, &AUEGT2PlayerController::OnAutoWalkAction);
 
 	// SetupInputComponent usually runs BEFORE the pawn is possessed, so the
 	// pawn's own actions are bound from whichever of the two happens second.
@@ -119,6 +163,8 @@ void AUEGT2PlayerController::OnPossess(APawn* InPawn)
 
 void AUEGT2PlayerController::OnUnPossess()
 {
+	bAutoWalkPressedThisTick = false;
+	if (AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn())) { Explorer->CancelAutoWalk(); }
 	if (GetPawn() && InputComponent)
 	{
 		// Pawn actions live on this controller's persistent input component.
@@ -148,6 +194,8 @@ void AUEGT2PlayerController::BindPawnActions()
 
 void AUEGT2PlayerController::RebuildInputMappings()
 {
+	bAutoWalkPressedThisTick = false;
+	if (AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn())) { Explorer->CancelAutoWalk(); }
 	if (!InputConfig)
 	{
 		return;
@@ -217,6 +265,8 @@ void AUEGT2PlayerController::OpenDialogue(AUEGT2NPCActor* NPC)
 	{
 		return;
 	}
+	bAutoWalkPressedThisTick = false;
+	if (AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn())) { Explorer->CancelAutoWalk(); }
 	EnsureDialogueWidget();
 	DialoguePartner = NPC;
 	if (DialogueWidget.IsValid())
@@ -231,6 +281,7 @@ void AUEGT2PlayerController::OpenDialogue(AUEGT2NPCActor* NPC)
 
 void AUEGT2PlayerController::CloseDialogue()
 {
+	bAutoWalkPressedThisTick = false;
 	SetPlayerConversing(false);
 	DialoguePartner.Reset();
 	if (DialogueWidget.IsValid())
@@ -266,6 +317,11 @@ void AUEGT2PlayerController::AskDialogueTopic(int32 Topic)
 
 void AUEGT2PlayerController::ApplyMenuState(EUEGT2MenuState NewState)
 {
+	if (NewState != EUEGT2MenuState::None || MenuState != EUEGT2MenuState::None)
+	{
+		bAutoWalkPressedThisTick = false;
+		if (AUEGT2Character* Explorer = Cast<AUEGT2Character>(GetPawn())) { Explorer->CancelAutoWalk(); }
+	}
 	if (IsRestPanelOpen()) { UE_LOG(LogUEGT2Rest, Log, TEXT("Sleep panel closed.")); }
 	if (IsSurveyJournalOpen() && NewState != EUEGT2MenuState::Pause)
 	{

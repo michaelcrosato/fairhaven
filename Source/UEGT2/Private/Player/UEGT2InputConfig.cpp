@@ -38,6 +38,7 @@ const TArray<FUEGT2InputSlotDef>& UUEGT2InputConfig::GetSlotDefs()
 		Add(EUEGT2InputSlot::Menu,        TEXT("Menu"),        LOCTEXT("Menu", "Menu"),                EKeys::Escape, EKeys::Gamepad_Special_Right, false);
 		Add(EUEGT2InputSlot::Diagnostics, TEXT("Diagnostics"), LOCTEXT("Diagnostics", "Diagnostics Overlay"), EKeys::F3, FKey(), false);
 		Add(EUEGT2InputSlot::Journal,     TEXT("Journal"),     LOCTEXT("Journal", "Survey Journal"), EKeys::J, EKeys::Gamepad_Special_Left, false);
+		Add(EUEGT2InputSlot::ToggleAutoWalk, TEXT("ToggleAutoWalk"), LOCTEXT("ToggleAutoWalk", "Toggle Auto-walk"), EKeys::V, EKeys::Gamepad_RightThumbstick, false);
 		return Result;
 	}();
 	return Defs;
@@ -88,6 +89,7 @@ void UUEGT2InputConfig::Initialize()
 	MenuAction = MakeAction(TEXT("IA_Menu"), Boolean);
 	DiagnosticsAction = MakeAction(TEXT("IA_Diagnostics"), Boolean);
 	JournalAction = MakeAction(TEXT("IA_Journal"), Boolean);
+	AutoWalkAction = MakeAction(TEXT("IA_AutoWalk"), Boolean);
 
 	// The menu must still respond while the world is paused.
 	MenuAction->bTriggerWhenPaused = true;
@@ -178,6 +180,7 @@ UInputMappingContext* UUEGT2InputConfig::BuildMappingContext()
 		{ EUEGT2InputSlot::Menu,        &UUEGT2InputConfig::MenuAction },
 		{ EUEGT2InputSlot::Diagnostics, &UUEGT2InputConfig::DiagnosticsAction },
 		{ EUEGT2InputSlot::Journal,     &UUEGT2InputConfig::JournalAction },
+		{ EUEGT2InputSlot::ToggleAutoWalk, &UUEGT2InputConfig::AutoWalkAction },
 	};
 
 	for (const FButtonMapping& Button : ButtonMappings)

@@ -39,9 +39,18 @@ the old checkpoint until you explicitly save the new one. Settings → Gameplay
 | Menu / pause | Escape | Start |
 | Diagnostics overlay | F3 | — |
 | Survey Journal | J | Back / View |
+| Toggle auto-walk (enable in Gameplay first) | V | Right stick click |
 
 The keyboard bindings can be changed in **Settings → Controls**. Sprint can be
 made a toggle in the same place. Mouse look and gamepad mappings are fixed.
+
+For longer walks, enable **Settings → Gameplay → Auto-walk Control**. Press V
+to walk and look to steer. Press V again, use manual movement, jump, sprint,
+crouch or interact to stop assistance. Menus, dialogue, the console, window focus
+loss, leaving the ground and teleports also stop it; returning never resumes it.
+Choose your own route around obstacles, water and ledges. Check the active
+HUD cue with Show Needs off and at both HUD sizes, then turn the feature off
+and confirm ordinary movement still works.
 
 ## You live here
 

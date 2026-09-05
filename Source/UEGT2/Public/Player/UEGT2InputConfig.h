@@ -29,6 +29,7 @@ enum class EUEGT2InputSlot : uint8
 	Menu,
 	Diagnostics,
 	Journal,
+	ToggleAutoWalk,
 	Count UMETA(Hidden)
 };
 
@@ -75,6 +76,7 @@ public:
 	UPROPERTY(Transient) TObjectPtr<UInputAction> MenuAction = nullptr;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> DiagnosticsAction = nullptr;
 	UPROPERTY(Transient) TObjectPtr<UInputAction> JournalAction = nullptr;
+	UPROPERTY(Transient) TObjectPtr<UInputAction> AutoWalkAction = nullptr;
 	UPROPERTY(Transient) TObjectPtr<UInputMappingContext> MappingContext = nullptr;
 
 private:

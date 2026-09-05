@@ -31,6 +31,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	Settings->SetHeadBobScale(0.0f);
 	Settings->SetHudSizeLevel(2);
 	Settings->SetToggleSprint(true);
+	Settings->SetAutoWalkEnabled(true);
 	Settings->SetShowCrosshair(false);
 	Settings->SetShowInteractPrompts(false);
 	Settings->SetShowSpeechBubbles(false);
@@ -60,6 +61,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("head bob"), Settings->GetHeadBobScale(), 1.0f);
 	TestEqual(TEXT("normal HUD size"), Settings->GetHudSizeLevel(), 0);
 	TestFalse(TEXT("toggle sprint"), Settings->GetToggleSprint());
+	TestFalse(TEXT("auto-walk requires opt-in"), Settings->GetAutoWalkEnabled());
 	TestTrue(TEXT("crosshair"), Settings->GetShowCrosshair());
 	TestTrue(TEXT("interaction prompts"), Settings->GetShowInteractPrompts());
 	TestTrue(TEXT("speech bubbles"), Settings->GetShowSpeechBubbles());

@@ -35,6 +35,7 @@ private:
 	void DrawCrosshair(float CentreX, float CentreY, bool bHasFocus);
 	FBox2D DrawPrompt(float CentreX, float CentreY);
 	FBox2D DrawMessage(const TArray<FBox2D>& BottomPanels);
+	FBox2D DrawAutoWalkIndicator(const AUEGT2Character* Explorer);
 	FUEGT2HUDLife PrepareLife(AUEGT2Character* Explorer, float MaxWidth);
 	FUEGT2HUDSurvey PrepareSurvey(AUEGT2PlayerController* PC);
 	void DrawDiagnostics(AUEGT2Character* Explorer);
@@ -74,7 +75,7 @@ private:
 	 * legible at any distance because it never scales with perspective. What it
 	 * costs is that everything below has to be laid out by hand.
 	 */
-	void DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels);
+	void DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels, const FBox2D& AutoWalkBounds);
 	/**
 	 * Lay out and draw one bubble, pushing it clear of any already placed.
 	 *
@@ -82,7 +83,7 @@ private:
 	 * together and talking is the most common case there is, and without this
 	 * their bubbles land on top of each other and neither can be read.
 	 */
-	void DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& Placed);
+	void DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& Placed, bool bFitBounds);
 
 	/** Split Text into lines no wider than MaxWidth in the given font. */
 	void WrapText(const FString& Text, class UFont* Font, float Scale, float MaxWidth,

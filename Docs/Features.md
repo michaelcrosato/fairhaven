@@ -379,3 +379,78 @@ remain documented in [Audit.md](Audit.md).
 Local evidence uses `Saved/Logs/HudSize*`. Screenshots are under
 `Saved/Screenshots/HudSizeSmoke/36b97824f6664c30b6502d1629fa7ea0/` (1080p) and
 `Saved/Screenshots/HudSizeSmoke/c4d983822e804c66bd3d476a2e7db59b/` (720p).
+
+## F006 — Optional auto-walk
+
+Status: implemented and verified on 2026-09-05, on `feature/optional-auto-walk`.
+
+**What it adds.** Toggle ordinary forward walking without holding a movement
+key or stick. Looking steers the player; collision, walking speed and fatigue
+still apply. Press the toggle again or use a movement key or stick to stop.
+Jump, sprint, crouch, interaction, menus, dialogue, the console and window focus
+loss also cancel it. Leaving ground movement or teleporting cancels it; landing, returning
+to the game and loading a checkpoint do not resume it. The player chooses the
+route and watches for water and ledges.
+
+**Player switch.** Settings → Gameplay → Auto-walk Control. Default Off;
+`bAutoWalkEnabled=False` in `[/Script/UEGT2.UEGT2GameUserSettings]`.
+When enabled, **V** or right-stick click toggles walking. Settings → Controls
+can rebind the keyboard action. An active HUD cue shows the stop binding even
+when the needs panel is hidden, and follows the HUD Size preference.
+
+**Maintainer switch.** In `Config/DefaultGame.ini`:
+
+```ini
+[/Script/UEGT2.UEGT2Character]
+bAutoWalkFeatureEnabled=False
+```
+
+Off cancels assistance and disables its settings row while keeping the player's
+preference. Set it back to `True` to permit player opt-in. Neither enabling the
+switch nor restoring defaults starts movement.
+
+**Implementation.** The character owns transient active state. The controller
+applies forward input after normal input and view updates, before movement.
+Cancellation clears assistance without changing ordinary inactive controls.
+The input action also requires a fresh physical press: a repeat reconciled by
+the engine after an input flush cannot restart walking when a menu closes.
+State changes use `LogUEGT2Player`. There is no pathfinding, additional ticking
+subsystem, world-content change or checkpoint schema change.
+
+**Research.** Epic's [Enhanced Input context options](https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Plugins/EnhancedInput/FModifyContextOptions)
+describe suppressing held keys during mapping rebuilds, and its
+[controller focus API](https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/Engine/APlayerController/ShouldFlushKeysWhenViewportFocus-)
+documents the key flush on viewport focus loss. The installed engine processes
+controller input and view rotation before character movement. These behaviors
+determine where assisted input is added and where it must be cancelled.
+
+**Verification.** Both Development targets compile with adaptive unity disabled.
+All 95 automation tests pass, including four auto-walk tests and a checkpoint
+integration test. They exercise actual Enhanced Input mapping and delegates,
+rebound keyboard and gamepad controls, small stick drift, manual input priority,
+quick taps, held keys across menus and focus flushes, simulated input rejection,
+view updates, physical ground movement, shared fatigue, movement modes, teleports,
+venue occupancy and both off switches. The checkpoint test saves after assisted
+walking, restores while another walk is active and confirms landing adds no
+movement. Recommended Defaults restores player opt-out.
+
+The packaged wrapper's eleven success/failure cases pass under PowerShell 7
+and 5.1. The package completed in 2m18s. Packaged smoke passes at 1920×1080 and
+1280×720 through real keyboard and gamepad input: rebound forward movement,
+exactly 90 degrees of view steering, manual takeover, held keys across menus,
+focus flushes and the console, and ordinary manual movement with either switch
+off. All six screenshots were inspected, including Normal and Larger active
+cues with needs hidden and the actual settings row. No checkpoint is written.
+
+The packaged bed regression starts auto-walk before the real interaction probe,
+then confirms that opening Sleep Until, cancelling and waking leave no assisted
+movement or queued input. Its 1,188-inhabitant calendar advance and exact
+137.625-coin checks pass. All four manual checkpoint phases, all three autosave
+phases, survey input/tracking, and the 720p HUD comparison pass. The ordinary
+packaged walk smoke moves the player 23.01 m. The survey and all five HUD
+regression images were inspected. Existing engine and ground-fixture warnings
+remain documented in [Audit.md](Audit.md).
+
+Local evidence uses `Saved/Logs/AutoWalk*`. Auto-walk screenshots are under
+`Saved/Screenshots/AutoWalkSmoke/da983d227f9e4f1e93aa5970ebbbc587/` (1080p) and
+`Saved/Screenshots/AutoWalkSmoke/0f81006076274b128ad9c8aff6b578b2/` (720p).

@@ -89,6 +89,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetToggleSprint() const { return bToggleSprint; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetToggleSprint(bool bValue);
+	/** Optional movement assistance; the active walk is never persisted. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetAutoWalkEnabled() const { return bAutoWalkEnabled; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetAutoWalkEnabled(bool bValue);
 
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowCrosshair() const { return bShowCrosshair; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetShowCrosshair(bool bValue);
@@ -173,6 +176,7 @@ private:
 	UPROPERTY(Config) float HeadBobScale = 1.0f;
 	UPROPERTY(Config) int32 HudSizeLevel = 0;
 	UPROPERTY(Config) bool bToggleSprint = false;
+	UPROPERTY(Config) bool bAutoWalkEnabled = false;
 	UPROPERTY(Config) bool bShowCrosshair = true;
 	UPROPERTY(Config) bool bShowInteractPrompts = true;
 	UPROPERTY(Config) bool bShowSpeechBubbles = true;

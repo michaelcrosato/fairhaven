@@ -39,6 +39,11 @@ The journal has its own switch in Settings → Gameplay.
 125% and 150% sizes for in-game labels, needs, directions and speech. Normal is
 the default; larger sizes fit to the viewport.
 
+**Walk without holding a key.** Settings → Gameplay → Auto-walk Control is an
+optional toggle, Off by default. Once enabled, V or right-stick click starts
+ordinary walking; looking steers. Toggle again, move manually or open a menu
+to stop. The active HUD cue shows the rebound stop key.
+
 **Choose when to wake.** Use the bed beside the lodgings to sleep until a chosen
 hour. The town carries on, and your needs still change. Settings → Gameplay →
 Sleep Until switches this back to ordinary sleep.
@@ -124,6 +129,7 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Smoke-Rest.ps1 -Capture` | Check the bed panel, a full day of sleep, resumed life and both off switches |
 | `./Scripts/Smoke-Autosave.ps1 -Capture` | Check periodic recovery saves, separate-process Continue Autosave and the off switches |
 | `./Scripts/Smoke-HudSize.ps1 -Capture` | Compare HUD sizes and the off switch in one frozen scene |
+| `./Scripts/Smoke-AutoWalk.ps1 -Capture` | Check assisted walking, cancellation, input and both off switches |
 | `./Scripts/Screenshot-Tour.ps1` | Render the registered viewpoints headlessly to PNG |
 | `./Scripts/Screenshot-Tour.ps1 -Menu` | Render the menu and settings screens |
 | `./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'` | Exercise food, washing, sitting and work through player interaction |

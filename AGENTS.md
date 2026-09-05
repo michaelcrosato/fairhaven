@@ -208,6 +208,14 @@ Do not undo these without understanding why they are there.
   the point of the player having needs at all is that they are the same needs,
   and a second table drifts silently. `UEGT2.Economy.LivingWage` runs every
   trade through three closed-loop days and fails if the numbers stop adding up.
+- **Auto-walk needs a fresh raw press, not just an Enhanced Input edge.** The
+  installed engine flushes a held key by synthesizing a release, then can rebuild
+  a press from an OS repeat. Pausing also resets action trigger state. An action
+  bound only to `Started` can therefore restart walking on menu close; a fast
+  release/repress can instead remain `Triggered` without another `Started`.
+  The controller's one-tick raw-press token authorizes exactly one action and
+  survives a real quick tap, while repeats never authorize it. Keep the held-key,
+  quick-tap and focus regressions in `UEGT2.Player.AutoWalk.*`.
 - **Schedule slices do not determine elapsed life time.** The director records
   each NPC's last charged world hour. Multiplying the latest slice interval by
   six overcharged small populations and uneven frames. Registration, crowd

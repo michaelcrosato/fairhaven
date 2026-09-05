@@ -8,6 +8,7 @@
 
 #include "Framework/Application/SlateApplication.h"
 #include "Player/UEGT2InputConfig.h"
+#include "Player/UEGT2Character.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "Styling/CoreStyle.h"
 #include "UEGT2LogChannels.h"
@@ -1049,6 +1050,31 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 		Row(LOCTEXT("Prompts", "Show Interact Prompts"), MakeToggle(
 			[S]() { return S->GetShowInteractPrompts(); },
 			[this, S](bool bValue) { S->SetShowInteractPrompts(bValue); ApplyAndSave(); }))
+	];
+
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		SNew(SBox)
+		.IsEnabled_Lambda([]() { return GetDefault<AUEGT2Character>()->bAutoWalkFeatureEnabled; })
+		[
+			Row(LOCTEXT("AutoWalkSetting", "Auto-walk Control"), MakeToggle(
+				[S]() { return S->GetAutoWalkEnabled(); },
+				[this, S](bool bValue) { S->SetAutoWalkEnabled(bValue); ApplyAndSave(); }))
+		]
+	];
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 12)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([]()
+		{
+			if (!GetDefault<AUEGT2Character>()->bAutoWalkFeatureEnabled)
+			{
+				return LOCTEXT("AutoWalkUnavailable", "Auto-walk is disabled for this session. Your preference is kept.");
+			}
+			return FText::Format(LOCTEXT("AutoWalkSettingHint", "Off by default. [{0}] or right-stick click toggles forward walking; looking steers. Move, jump, sprint, crouch, interact or open a menu to stop. It does not find routes or avoid ledges."),
+				UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::ToggleAutoWalk).GetDisplayName());
+		})
+		.Font(Font("Regular", 11)).ColorAndOpacity(FSlateColor(Muted)).AutoWrapText(true)
 	];
 
 	List->AddSlot().AutoHeight().Padding(0, 16, 0, 10)
