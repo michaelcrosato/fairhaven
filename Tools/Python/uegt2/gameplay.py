@@ -340,11 +340,10 @@ def _place_lamps(world_data, meshes):
 
     This is the one thing in the stage that *consumes* an actor another stage
     placed: the plain lamp is destroyed and an interactable one takes its spot.
-    That makes it the one thing here that must not be undone and redone, which
-    is why the Play Lamp actors survive the clear at the top of build() and why
-    this returns early when they are already standing. Rebuilding the stage on
-    its own used to cost the square sixteen lamp posts a time - they went into
-    the clear and the town lamps that had paid for them were long gone.
+    Play Lamp actors survive a gameplay-only rebuild: destroying them used to
+    cost the square sixteen lamp posts because their source props were gone.
+    A preceding town rebuild brings those props back, so consume any exact
+    replacements before keeping the existing interactive lamps.
     """
     cls = _load_class("UEGT2Lamp")
     mesh = meshes.get("SM_LampPost_A")
@@ -353,7 +352,20 @@ def _place_lamps(world_data, meshes):
     kept = [actor for actor in _subsystem().get_all_level_actors()
             if actor.get_actor_label().startswith(LAMP_PREFIX)]
     if kept:
-        ctx.log("gameplay: %d interactable lamps (already placed)" % len(kept))
+        locations = [actor.get_actor_location() for actor in kept]
+        consumed = 0
+        for actor in _subsystem().get_all_level_actors():
+            if not actor.get_actor_label().startswith("Town Lamp "):
+                continue
+            location = actor.get_actor_location()
+            if any((location.x - old.x) ** 2 + (location.y - old.y) ** 2
+                   + (location.z - old.z) ** 2 <= 1.0 for old in locations):
+                if not _subsystem().destroy_actor(actor):
+                    ctx.fail("gameplay: could not consume rebuilt lamp %s"
+                             % actor.get_actor_label())
+                consumed += 1
+        ctx.log("gameplay: %d interactable lamps (kept; consumed %d rebuilt props)"
+                % (len(kept), consumed))
         return len(kept)
 
     placed = 0

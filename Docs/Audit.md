@@ -201,3 +201,69 @@ through the batch-file boundary, including output paths with spaces or trailing
 separators. A real failed child process still fails the wrapper. Local evidence
 uses `Saved/Tests/PackageMutexWrapperAudit.ps1` and
 `Saved/Logs/ServicesPackage*`.
+
+## Lower river crossing, 2026-09-05
+
+The F008 survey route review found that the existing lower MountainRoad bridge
+was a seven-metre catalog prop placed at the nearest sampled road point, facing
+world X. Its deck was 17–42 cm below the rendered river surface, and its ends
+stood roughly two metres above the terrain without ramps. The normal player
+can step only 45 cm. Close packaged views from both approaches confirm the
+raised platform and the waterline across its deck.
+
+The river crosses this road obliquely. Clipping the actual river mesh triangles
+to a 5.2-metre-wide bridge corridor gives a wet span of about 49.3 metres,
+compared with about 39.8 metres along the centreline alone. A wider or taller
+copy of the old prop would still miss the bank connections. The road also bends
+near the mountain-side landing, so the approach must follow that change.
+
+The before captures are under `Saved/Screenshots/BridgeBefore`, with build,
+package and capture evidence under `Saved/Logs/BridgeView*` and
+`Saved/Logs/BridgeBefore*`. The original side camera was obscured by trees; the
+registered viewpoint has been raised for subsequent checks. The tour's `-Only`
+filter matches one complete name, so the three bridge views run separately.
+
+The river ribbon has no collision and the swimming volume covers only water
+below sea level. Walking along the riverbed could therefore pass a movement-only
+check. Crossing verification must also observe the bridge as the player's
+actual floor support while traversing the deck and ramps. Repairing this lower
+crossing does not establish that other road crossings, NPC routes or the full
+three-landmark survey circuit have been walked successfully.
+
+While preparing the town rebuild, the audit also found that its plain lamp
+props returned underneath sixteen interactive lamps retained by gameplay. The
+gameplay stage now consumes only plain `Town Lamp ` actors within one centimetre
+of a retained interactive lamp. It preserves glow meshes, other street furniture
+and lamps at different locations, and fails if a duplicate cannot be destroyed.
+Three offline regressions cover gameplay-only preservation, a town/gameplay
+rebuild followed by another gameplay rebuild, and failed duplicate removal.
+
+The replacement has a 53.33-metre deck, 21.00/9.29-metre road-aligned approaches
+and 26 terrain-sunk supports, using 1,340 triangles. Its underside clears the
+actual water by 50 cm. Both nonadaptive targets build, all 111 engine tests pass,
+and all 403 geometry checks plus 14 Python pipeline tests pass. The generated-map
+test checks 258 floor samples owned by the bridge and six dry capsule landings.
+Its first run exposed a sampling error: a perpendicular lane near the skewed
+ramp end fell 4.91 cm outside the mesh. Sampling the authored cross-sections
+corrected that error without relaxing support or clearance checks.
+
+The town/gameplay rebuild completed without project Python warnings and consumed
+all sixteen regenerated duplicate lamp props. The survey sign remains at its
+original position, with 11 landmarks and 189 amenities. Local evidence uses the
+`Saved/Logs/CrossingBuild*`, `CrossingContent*` and `CrossingTests*` prefixes.
+
+Packaging passed in 2 minutes 23 seconds. The packaged crossing smoke completed
+both directions in 22.60 seconds each, walking 85.55/85.57 metres including the
+dry endpoints. It retained the normal capsule and movement settings throughout;
+each leg observed both ramps and the deck as floor support. The three bridge
+captures and town-square comparison were visually inspected. The lower deck is
+above the water, its ramps are continuous, and its supports reach the terrain.
+The side view still partly obscures the mountain-side landing with foreground
+foliage; its actual capsule traversal and collision probes pass.
+
+The four-phase survey contract regression and standard packaged walk smoke also
+pass. Evidence is in `CrossingTraversal.log`, `CrossingContractRegression.log`,
+`CrossingWalkRegression*` and `Saved/Screenshots/BridgeAfter`. Existing renderer
+and distant-NPC underfoot diagnostics remain visible and are described earlier
+in this audit. The crossing wrapper passed nine mocked failure/isolation checks
+under both PowerShell 7 and Windows PowerShell 5.1.

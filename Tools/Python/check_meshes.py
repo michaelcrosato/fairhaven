@@ -20,6 +20,7 @@ What it catches, all of which have cost real time in this project:
 - meshes that have grown past their triangle budget
 - opaque shell or frame geometry blocking town window apertures
 - UV0 triangles collapsed to a line, which break generated tangent bases
+- the lower bridge's actual water clearance, terrain seams and ramp grades
 
 It does NOT catch anything about materials, collision cooking, winding or how a
 thing looks. Those need the editor and a screenshot; see AGENTS.md.
@@ -443,6 +444,141 @@ def check_doorway(report, name, mesh, width, depth, storeys=1):
 
 
 # ---------------------------------------------------------------------------
+def _floor_z(mesh, x, y):
+    """Independent vertical ray against upward triangles, including obstacles."""
+    highest = -math.inf
+    for ia, ib, ic in mesh.triangles:
+        if mesh.normals[ia][2] < 0.5:
+            continue
+        a, b, c = mesh.vertices[ia], mesh.vertices[ib], mesh.vertices[ic]
+        if not min(a[0], b[0], c[0])-1e-7 <= x <= max(a[0], b[0], c[0])+1e-7:
+            continue
+        if not min(a[1], b[1], c[1])-1e-7 <= y <= max(a[1], b[1], c[1])+1e-7:
+            continue
+        denominator = (b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1])
+        if abs(denominator) < 1e-8:
+            continue
+        u = ((b[1]-c[1])*(x-c[0])+(c[0]-b[0])*(y-c[1]))/denominator
+        v = ((c[1]-a[1])*(x-c[0])+(a[0]-c[0])*(y-c[1]))/denominator
+        if min(u, v) >= -1e-7 and u+v <= 1+1e-7:
+            highest = max(highest, u*a[2]+v*b[2]+(1-u-v)*c[2])
+    return highest
+
+
+def _terrain_triangle_bounds(world, x, y):
+    """Test both raw heightfield diagonals, instead of assuming bilinear collision."""
+    fx, fy = world._grid_coords(x, y)
+    ix, iy = int(fx), int(fy)
+    tx, ty = fx-ix, fy-iy
+    heights = world._load_heights()
+    def height(dx, dy):
+        return (heights[(iy+dy)*world.size+ix+dx]-32768)/128*world.z_scale
+    a, b, c, d = height(0, 0), height(1, 0), height(1, 1), height(0, 1)
+    first = ((1-tx)*a+(tx-ty)*b+ty*c if ty <= tx else (1-ty)*a+tx*c+(ty-tx)*d)
+    second = ((1-tx-ty)*a+tx*b+ty*d if tx+ty <= 1 else (1-ty)*b+(tx+ty-1)*c+(1-tx)*d)
+    return min(first, second), max(first, second)
+
+
+def check_lower_crossing(report):
+    from uegt2 import bridges, ctx, water
+    from uegt2.meshkit import MeshBuilder
+
+    report.checked += 1
+    try:
+        # Slanted banks widen the full-width span beyond its centreline. A
+        # disconnected, much higher reach in the same corridor must be ignored.
+        polygons = [[(-10, -10, 2), (10, -10, 4), (30, 10, 8), (-30, 10, 6)],
+                    [(100, -10, 100), (120, -10, 100), (120, 10, 100), (100, 10, 100)]]
+        lo, hi, top = bridges.wet_span(polygons, 4)
+        assert abs(lo+22) < 1e-7 and abs(hi-22) < 1e-7 and abs(top-6.4) < 1e-7
+        assert not bridges._dry(polygons, 4, (-30, 0), (30, 0)), "wet approach accepted"
+        assert bridges._dry(polygons, 4, (40, 0), (60, 0)), "dry approach rejected"
+        for invalid_width in (0, math.nan, math.inf):
+            try:
+                bridges.make_profile(None, None, invalid_width)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("invalid width accepted")
+    except (AssertionError, ValueError) as error:
+        report.fail("bridge footprint clipping", str(error))
+    else:
+        print("  ok    bridge footprint clipping      full width / separate reaches / invalid input")
+
+    # Catalog and synthetic checks still run on a fresh clone without generated
+    # terrain. The world-specific check is explicit about this missing evidence.
+    if not all(os.path.isfile(ctx.terrain_file(name)) for name in ("world_features.json", "heightmap.r16")):
+        print("  skip  lower bridge terrain            generate terrain to check the fitted world mesh")
+        return
+    report.checked += 1
+    try:
+        world = ctx.WorldData()
+        river = water._river_builder(world)
+        profile = bridges.make_profile(world, river)
+        mesh = bridges.make_mesh(profile)
+        report.mesh("SM_Bridge_LowerRiver", mesh, budget=3000)
+        assert profile == bridges.make_profile(world, river), "profile is not deterministic"
+        assert mesh.vertices == bridges.make_mesh(profile).vertices, "mesh is not deterministic"
+        assert tuple(profile.sockets()) == bridges.SOCKET_NAMES, "missing floor stations"
+        assert profile.rows[1][2] == profile.rows[2][2], "deck is not level"
+        assert abs(profile.deck_z-profile.thickness-profile.max_water-profile.clearance) < 1e-6
+        assert profile.rows[1][0] <= profile.wet_start-199.9
+        assert profile.rows[2][0] >= profile.wet_end+199.9
+        for a, b in zip(profile.rows, profile.rows[1:]):
+            count = math.ceil((b[0]-a[0])/50)
+            for j in range(count+1):
+                t = j/count
+                u, offset = a[0]+t*(b[0]-a[0]), a[1]+t*(b[1]-a[1])
+                for lane in range(33):
+                    # Avoid exact shared rail boundary, but inspect the entire
+                    # floor width, not merely the walking diagnostic's centre.
+                    v = (profile.width-0.02)*(lane/32-0.5)
+                    actual = _floor_z(mesh, u, v+offset)+profile.deck_z
+                    expected = bridges.floor_height(a, b, profile.lanes, u, v)
+                    assert math.isfinite(actual) and abs(actual-expected) < 1e-5, "floor gap or rail intrudes"
+                    xy = profile.xy(u, v+offset)
+                    assert actual >= _terrain_triangle_bounds(world, *xy)[1]+0.99, "terrain breaks through floor"
+                    wet_z = _floor_z(river, *xy)
+                    if math.isfinite(wet_z):
+                        assert actual-profile.thickness >= wet_z+49.99, "deck does not clear actual river"
+        # Mesh normals independently verify the final triangulated slope, rather
+        # than trusting the profile's acceptance formula.
+        for normal in mesh.normals:
+            if normal[2] > 0.5:
+                assert math.hypot(normal[0], normal[1])/normal[2] <= 0.250001, "ramp steeper than 1:4"
+        for end, deck, side in ((profile.rows[0], profile.rows[1], -1),
+                                (profile.rows[-1], profile.rows[-2], 1)):
+            assert abs(end[1]-bridges._road_offset(world, profile, end[0])) < 1e-6, "landing misses road"
+            for v, z in zip(profile.lanes, end[2]):
+                ground = world.height_uu(*profile.xy(end[0], end[1]+v))
+                assert abs(z-ground-3) < 1e-6, "tall landing lip"
+            length = math.hypot(end[0]-deck[0], end[1]-deck[1])
+            du, dv = (end[0]-deck[0])/length, (end[1]-deck[1])/length
+            for distance in range(0, 301, 25):
+                for v in (-226, -34, 0, 34, 226):
+                    u, lateral = end[0]+du*distance, end[1]+dv*distance+v
+                    xy = profile.xy(u, lateral)
+                    terrain = _terrain_triangle_bounds(world, *xy)[1]
+                    assert _floor_z(river, *xy) < terrain, "wet dry-ground approach"
+                    nearby = _terrain_triangle_bounds(world, *profile.xy(u+du*10, lateral+dv*10))[1]
+                    assert abs(nearby-terrain)/10 <= 0.25, "steep dry-ground approach"
+        for u, v, bottom, top in profile.supports:
+            for dx in (-35, 0, 35):
+                for dy in (-35, 0, 35):
+                    assert bottom < _terrain_triangle_bounds(world, *profile.xy(u+dx, v+dy))[0]-28, "floating footing"
+            assert top < profile.deck_z, "support protrudes through deck"
+        try:
+            bridges.make_profile(world, MeshBuilder())
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("missing water accepted")
+    except (AssertionError, ValueError) as error:
+        report.fail("lower bridge floor / terrain", str(error))
+    else:
+        print("  ok    lower bridge floor / terrain    seams, full-width water, gentle ramps, dry road landings")
+
+
 def main():
     _install_unreal_stub()
     sys.path.insert(0, os.path.join(_repo_root(), "Tools", "Python"))
@@ -459,6 +595,7 @@ def main():
         report.build(name, factory)
 
     check_window_apertures(report)
+    check_lower_crossing(report)
 
     print("meshkit primitives")
     # A wall with a door and two windows is the shape every hollowed building

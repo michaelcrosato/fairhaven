@@ -207,6 +207,14 @@ const TArray<FUEGT2Viewpoint>& UUEGT2CaptureSubsystem::GetTour()
 			TEXT("Asset showcase, front row"));
 		Add(TEXT("ShowcaseB"), 27200.0f, -59500.0f, 16.0f, 90.0f, -13.0f,
 			TEXT("Asset showcase, raised"));
+		// The valley overview faces away from the lower road crossing. Keep close
+		// views of both approaches and the water clearance (world seed 20260826).
+		Add(TEXT("BridgeSouth"), 20720.0f, 14960.0f, 1.7f, 16.26f, 1.5f,
+			TEXT("Lower river bridge from the town-side approach"));
+		Add(TEXT("BridgeNorth"), 26096.0f, 16528.0f, 1.7f, 196.26f, 1.5f,
+			TEXT("Lower river bridge from the mountain-side approach"));
+		Add(TEXT("BridgeSide"), 22148.0f, 20064.0f, 35.0f, -73.74f, -36.0f,
+			TEXT("Lower river crossing, deck and both banks from the side"));
 		return Result;
 	}();
 	return Points;

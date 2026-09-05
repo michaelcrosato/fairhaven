@@ -141,6 +141,8 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Smoke-HudSize.ps1 -Capture` | Compare HUD sizes and the off switch in one frozen scene |
 | `./Scripts/Smoke-AutoWalk.ps1 -Capture` | Check assisted walking, cancellation, input and both off switches |
 | `./Scripts/Smoke-Services.ps1 -Capture` | Check nearby services, real amenity use, directions and both off switches |
+| `./Scripts/Smoke-Contract.ps1 -Capture` | Check survey eligibility, one-time payment, saved state and both off switches |
+| `./Scripts/Smoke-Crossing.ps1` | Walk the lower river bridge out and back using normal input and collision |
 | `./Scripts/Screenshot-Tour.ps1` | Render the registered viewpoints headlessly to PNG |
 | `./Scripts/Screenshot-Tour.ps1 -Menu` | Render the menu and settings screens |
 | `./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'` | Exercise food, washing, sitting and work through player interaction |

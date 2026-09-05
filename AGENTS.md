@@ -26,8 +26,9 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Build-Content.ps1 -Stages nature      # rebuild one stage
 ./Scripts/Build-Content.ps1 -Stages npc         # re-roll the population + road graph
 ./Scripts/Test.ps1                              # automation tests
+./Scripts/Smoke-Crossing.ps1                    # ordinary walking across the lower bridge, both ways
 ./Scripts/Package.ps1                           # playable build
-./Scripts/Screenshot-Tour.ps1                   # 33 registered viewpoints -> PNG
+./Scripts/Screenshot-Tour.ps1                   # registered viewpoints -> PNG
 ./Scripts/Screenshot-Tour.ps1 -Menu             # menu + settings -> PNG
 ./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureDialogue'   # the talk panel
 ./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'       # eat, wash, sit, work
@@ -153,6 +154,11 @@ Do not undo these without understanding why they are there.
   applies, or distant samples silently keep distance 1e12.
 - **`is_street` includes the Newhaven grid.** Anything that means "town street"
   has to filter on `not is_city` too, or it will lay cottages down city avenues.
+- **Fit bridges across the full rendered river width.** At the lower crossing,
+  the water spans about 40 m along the road centreline but 49 m across the whole
+  deck footprint. `bridges.py` clips the actual water triangles and fits dry
+  road landings. The river has no collision: a walking check must verify bridge
+  floor support, or it can pass while the player walks along the riverbed.
 - **Scatter actor class does not identify stage ownership.** Nature and town
   fences both use `AUEGT2ScatterField`. Nature replaces only its opted-in fields
   or legacy `Scatter ` labels; fences survive a nature rebuild and keep their

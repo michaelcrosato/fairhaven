@@ -246,6 +246,7 @@ bool UUEGT2ProgressSubsystem::IsAvailable() const
 		&& !FParse::Param(FCommandLine::Get(), TEXT("UEGT2HudSizeSmoke"))
 		&& !FParse::Param(FCommandLine::Get(), TEXT("UEGT2AutoWalkSmoke"))
 		&& !FParse::Param(FCommandLine::Get(), TEXT("UEGT2ServicesSmoke"))
+		&& !FParse::Param(FCommandLine::Get(), TEXT("UEGT2CrossingSmoke"))
 		&& ResolveSlot(Slot);
 }
 

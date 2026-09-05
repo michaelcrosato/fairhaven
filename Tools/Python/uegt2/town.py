@@ -865,27 +865,44 @@ def _place_fences(placer, rng, world):
     ctx.log("town: %d fence sections along field boundaries" % len(transforms))
 
 
-def _place_bridge(placer, rng):
-    """Bridge where the mountain road crosses the river."""
-    river = placer.wd.river["points"]
-    roads = [r for r in placer.wd.roads if r["name"] == "MountainRoad"]
-    if not roads:
-        return
+def _place_bridge(placer):
+    """Fit the lower crossing to the same water geometry built by its stage."""
+    from . import bridges, materials, meshkit, water
 
-    best = None
-    for (rx, ry, _rz) in river:
-        for point in roads[0]["points"]:
-            distance = math.hypot(point[0] - rx, point[1] - ry)
-            if best is None or distance < best[0]:
-                best = (distance, point[0], point[1], rx, ry)
-
-    if best is None or best[0] > 4000.0:
-        ctx.warn("town: no road/river crossing found for a bridge")
-        return
-
-    _distance, bx, by, _rx, _ry = best
-    placer.place("SM_Bridge_A", bx, by, 0.0, "Bridge", z_offset=180.0, check=False)
-    ctx.log("town: bridge at (%.0f, %.0f)" % (bx, by))
+    profile = bridges.make_profile(placer.wd, water._river_builder(placer.wd))
+    builder = bridges.make_mesh(profile)
+    path = "%s/Town/%s" % (ctx.P_MESH, bridges.MESH_NAME)
+    material = ctx.load_asset(materials.M_PROP)
+    if material is None:
+        ctx.fail("town: bridge requires M_Prop; run the materials stage")
+    mesh = meshkit.create_static_mesh(builder, path, material, collision="complex")
+    # These cooked sockets describe the actual floor and its bend. Diagnostics
+    # follow them with an ordinary capsule instead of duplicating world maths.
+    for name, location in profile.sockets().items():
+        socket = unreal.new_object(unreal.StaticMeshSocket, outer=mesh)
+        socket.set_editor_property("socket_name", name)
+        socket.set_editor_property("relative_location", unreal.Vector(*location))
+        socket.set_editor_property("relative_rotation", unreal.Rotator(0.0, 0.0, 0.0))
+        socket.set_editor_property("relative_scale", unreal.Vector(1.0, 1.0, 1.0))
+        mesh.add_socket(socket)
+    if not ctx.save_asset(path):
+        ctx.fail("town: could not save lower bridge floor sockets")
+    placer.meshes[bridges.MESH_NAME] = mesh
+    actor = placer.place_at(bridges.MESH_NAME,
+                           unreal.Vector(*profile.center, profile.deck_z), profile.yaw, "Bridge")
+    if actor is None:
+        ctx.fail("town: could not place the fitted lower bridge")
+    actor.set_editor_property("tags", [unreal.Name(bridges.ACTOR_TAG)])
+    component = actor.get_editor_property("static_mesh_component")
+    component.set_collision_profile_name("BlockAll")
+    ramp_lengths = [math.hypot(b[0]-a[0], b[1]-a[1])/100.0
+                    for a, b in ((profile.rows[0], profile.rows[1]),
+                                 (profile.rows[2], profile.rows[3]))]
+    ctx.log("town: lower bridge at (%.1f, %.1f), yaw %.3f; wet %.2fm, deck %.2fm, "
+            "ramps %.2f/%.2fm, underside clearance %.0fcm, %d supports, %d tris"
+            % (*profile.center, profile.yaw, (profile.wet_end-profile.wet_start)/100.0,
+               (profile.rows[2][0]-profile.rows[1][0])/100.0, *ramp_lengths,
+               profile.clearance, len(profile.supports), builder.triangle_count))
 
 
 # ---------------------------------------------------------------------------
@@ -913,7 +930,7 @@ def build(world, world_data, meshes=None):
     # After the farms, because it puts one at each of them.
     _place_conveniences(placer, rng)
     _place_fences(placer, rng, world)
-    _place_bridge(placer, rng)
+    _place_bridge(placer)
 
     ctx.log("town: %d actors placed" % placer.count)
     return placer.count

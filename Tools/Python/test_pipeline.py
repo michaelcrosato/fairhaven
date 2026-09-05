@@ -7,6 +7,8 @@ from __future__ import annotations
 import contextlib
 import io
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import check_meshes
 
@@ -158,6 +160,53 @@ class WallOpeningTests(unittest.TestCase):
             with self.subTest(building=name):
                 pawn = (-34.0, 34.0, front, inside, floor + 50.0, floor + 180.0)
                 self.assertEqual(check_meshes._blocking(factories[name](), pawn), 0)
+
+
+class LampRebuildTests(unittest.TestCase):
+    @staticmethod
+    def actor(label, x=100.0, y=200.0, z=30.0):
+        return SimpleNamespace(get_actor_label=lambda: label,
+                               get_actor_location=lambda: SimpleNamespace(x=x, y=y, z=z))
+
+    def place_kept_lamps(self, actors, fail_destroy=False):
+        from uegt2 import gameplay
+
+        destroyed = []
+        def destroy(actor):
+            if fail_destroy:
+                return False
+            actors.remove(actor)
+            destroyed.append(actor)
+            return True
+        subsystem = SimpleNamespace(get_all_level_actors=lambda: list(actors),
+                                    destroy_actor=destroy)
+        with patch.object(gameplay, "_subsystem", return_value=subsystem), \
+                patch.object(gameplay, "_load_class", return_value=object()), \
+                patch.object(gameplay, "_spawn_interactable", side_effect=AssertionError("kept lamps must not respawn")):
+            count = gameplay._place_lamps(SimpleNamespace(town={"center": (0.0, 0.0)}), {})
+        return count, destroyed
+
+    def test_gameplay_only_keeps_interactive_lamps_and_glows(self):
+        actors = [self.actor("Play Lamp 0"), self.actor("Town LampGlow 0")]
+        before = list(actors)
+        self.assertEqual(self.place_kept_lamps(actors), (1, []))
+        self.assertEqual(actors, before)
+
+    def test_town_then_gameplay_consumes_only_coincident_plain_lamps(self):
+        kept = self.actor("Play Lamp 0")
+        replacement = self.actor("Town Lamp 7")
+        unrelated = [self.actor("Town LampGlow 7"), self.actor("Town Lamp 8", x=102.0),
+                     self.actor("Town Lamp 9", z=50.0), self.actor("Town Bench 7")]
+        actors = [kept, replacement] + unrelated
+        self.assertEqual(self.place_kept_lamps(actors), (1, [replacement]))
+        self.assertEqual(actors, [kept] + unrelated)
+        self.assertEqual(self.place_kept_lamps(actors), (1, []))
+
+    def test_failed_consumption_cannot_report_a_clean_rebuild(self):
+        actors = [self.actor("Play Lamp 0"), self.actor("Town Lamp 7")]
+        with self.assertRaisesRegex(RuntimeError, "could not consume rebuilt lamp"):
+            self.place_kept_lamps(actors, fail_destroy=True)
+        self.assertEqual(len(actors), 2)
 
 
 if __name__ == "__main__":
