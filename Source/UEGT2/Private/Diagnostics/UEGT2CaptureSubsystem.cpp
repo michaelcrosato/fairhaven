@@ -2,8 +2,10 @@
 
 #include "Camera/CameraActor.h"
 #include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "InputAction.h"
@@ -67,7 +69,8 @@ bool UUEGT2CaptureSubsystem::IsWalkSmokeRequested()
 
 bool UUEGT2CaptureSubsystem::IsLifeCaptureRequested()
 {
-	return FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureLife"));
+	return FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureLife"))
+		|| FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureSquareWashrooms"));
 }
 
 bool UUEGT2CaptureSubsystem::IsFlySoakRequested()
@@ -295,6 +298,7 @@ void UUEGT2CaptureSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	bMenuMode = FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureMenu"));
 	bDialogueMode = FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureDialogue"));
 	bLifeMode = IsLifeCaptureRequested();
+	bSquareWashrooms = FParse::Param(FCommandLine::Get(), TEXT("UEGT2CaptureSquareWashrooms"));
 
 	// Give Lumen, virtual shadow maps and streaming time to settle first.
 	InWorld.GetTimerManager().SetTimer(TimerHandle,
@@ -765,35 +769,98 @@ void UUEGT2CaptureSubsystem::BeginLifeTour()
 		return;
 	}
 
-	// The nearest one of each kind to where the player woke up. Nearest rather
-	// than named, so re-rolling the seed does not break the tour.
-	const FVector From = Explorer->GetActorLocation();
-	for (EUEGT2AmenityKind Kind : UEGT2Capture::LifeKinds)
+	if (bSquareWashrooms)
 	{
-		AUEGT2Amenity* Best = nullptr;
-		double BestDistance = TNumericLimits<double>::Max();
-		for (TActorIterator<AUEGT2Amenity> It(World); It; ++It)
+		// Cooked tags identify the four required square props even after a seed
+		// change. Their local -Y doors and the shared NPC survey define the venue.
+		for (int32 Stop = 0; Stop < 4; ++Stop)
 		{
-			AUEGT2Amenity* Amenity = *It;
-			if (!Amenity || Amenity->GetKind() != Kind)
+			const FName Tag(*FString::Printf(TEXT("UEGT2.SquarePrivy.%d"), Stop));
+			AActor* Privy = nullptr;
+			int32 PropCount = 0;
+			for (TActorIterator<AActor> It(World); It; ++It)
 			{
-				continue;
+				if (It->ActorHasTag(Tag)) { Privy = *It; ++PropCount; }
 			}
-			const double Distance = FVector::DistSquared(From, Amenity->GetActorLocation());
-			if (Distance < BestDistance)
+			if (PropCount != 1)
 			{
-				BestDistance = Distance;
-				Best = Amenity;
+				UE_LOG(LogUEGT2Diag, Error, TEXT("Square washroom capture: %s has %d props."), *Tag.ToString(), PropCount);
+				FinishTour(); return;
 			}
+			const FVector Front = -Privy->GetActorRightVector();
+			const FVector Venue = Privy->GetActorLocation() + Front * 225.0;
+			AUEGT2Amenity* Match = nullptr;
+			int32 VenueCount = 0;
+			for (TActorIterator<AUEGT2Amenity> It(World); It; ++It)
+			{
+				if (It->GetKind() == EUEGT2AmenityKind::Washroom && It->GetActorLocation().Equals(Venue, 1.0))
+				{
+					Match = *It; ++VenueCount;
+				}
+			}
+			if (VenueCount != 1)
+			{
+				UE_LOG(LogUEGT2Diag, Error, TEXT("Square washroom capture: %s has %d front amenities."), *Tag.ToString(), VenueCount);
+				FinishTour(); return;
+			}
+			// The 350cm approach reservation has a 120cm radius. This pose still
+			// fits the normal capsule inside it, with room to frame the doorstep.
+			const FVector Approach = Privy->GetActorLocation() + Front * 425.0;
+			FHitResult Ground;
+			const FCollisionQueryParams Params(SCENE_QUERY_STAT(SquareWashroomCapture), false, Explorer);
+			const UCapsuleComponent* Capsule = Explorer->GetCapsuleComponent();
+			const float Half = Capsule->GetScaledCapsuleHalfHeight();
+			if (!World->LineTraceSingleByObjectType(Ground, Approach + FVector(0, 0, 120), Approach - FVector(0, 0, 120),
+				FCollisionObjectQueryParams(ECC_WorldStatic), Params) || !Explorer->GetCharacterMovement()->IsWalkable(Ground))
+			{
+				UE_LOG(LogUEGT2Diag, Error, TEXT("Square washroom capture: %s approach has no walkable ground."), *Tag.ToString());
+				FinishTour(); return;
+			}
+			const FVector Stand = Ground.ImpactPoint + FVector(0, 0, Half + 2.4);
+			if (World->OverlapBlockingTestByChannel(Stand, FQuat::Identity, ECC_Pawn,
+				FCollisionShape::MakeCapsule(Capsule->GetScaledCapsuleRadius(), Half), Params))
+			{
+				UE_LOG(LogUEGT2Diag, Error, TEXT("Square washroom capture: %s approach blocks the player capsule."), *Tag.ToString());
+				FinishTour(); return;
+			}
+			LifeStops.Add(Match);
+			LifeStands.Add(Stand);
+			UE_LOG(LogUEGT2Diag, Log, TEXT("Square washroom capture: %s stand=%s amenity=%s."),
+				*Tag.ToString(), *Stand.ToCompactString(), *Match->GetActorLocation().ToCompactString());
 		}
-		if (Best)
+	}
+	else
+	{
+		// The nearest one of each kind to where the player woke up. Nearest rather
+		// than named, so re-rolling the seed does not break the tour.
+		const FVector From = Explorer->GetActorLocation();
+		for (EUEGT2AmenityKind Kind : UEGT2Capture::LifeKinds)
 		{
-			LifeStops.Add(Best);
-		}
-		else
-		{
-			UE_LOG(LogUEGT2Diag, Warning, TEXT("Amenity capture: no %s anywhere in the world."),
-				UEGT2AmenityKindName(Kind));
+			AUEGT2Amenity* Best = nullptr;
+			double BestDistance = TNumericLimits<double>::Max();
+			for (TActorIterator<AUEGT2Amenity> It(World); It; ++It)
+			{
+				AUEGT2Amenity* Amenity = *It;
+				if (!Amenity || Amenity->GetKind() != Kind)
+				{
+					continue;
+				}
+				const double Distance = FVector::DistSquared(From, Amenity->GetActorLocation());
+				if (Distance < BestDistance)
+				{
+					BestDistance = Distance;
+					Best = Amenity;
+				}
+			}
+			if (Best)
+			{
+				LifeStops.Add(Best);
+			}
+			else
+			{
+				UE_LOG(LogUEGT2Diag, Warning, TEXT("Amenity capture: no %s anywhere in the world."),
+					UEGT2AmenityKindName(Kind));
+			}
 		}
 	}
 
@@ -842,7 +909,7 @@ void UUEGT2CaptureSubsystem::RunLifeStep()
 	const float Reach = 175.0f;      // inside the 320 cm probe and every use range
 
 	FVector Stand = Point + FVector(Reach, 0.0f, 0.0f);
-	for (int32 Step = 0; Step < 8; ++Step)
+	for (int32 Step = 0; !bSquareWashrooms && Step < 8; ++Step)
 	{
 		const float Angle = FMath::DegreesToRadians(Step * 45.0f);
 		const FVector Candidate(Point.X + FMath::Cos(Angle) * Reach,
@@ -861,8 +928,25 @@ void UUEGT2CaptureSubsystem::RunLifeStep()
 		}
 	}
 
-	Explorer->TeleportTo(Stand, Explorer->GetActorRotation(), false, true);
-	PC->SetControlRotation((Point - Explorer->GetPawnViewLocation()).Rotation());
+	if (bSquareWashrooms)
+	{
+		Stand = LifeStands[LifeIndex];
+		if (!Explorer->TeleportTo(Stand, Explorer->GetActorRotation(), false, false)
+			|| !Explorer->GetActorLocation().Equals(Stand, 1.0))
+		{
+			UE_LOG(LogUEGT2Diag, Error, TEXT("Square washroom capture: stop %d rejected its validated standing position."), LifeIndex);
+			FinishTour(); return;
+		}
+		Life->SetNeedsSatisfied(false);
+	}
+	else
+	{
+		Explorer->TeleportTo(Stand, Explorer->GetActorRotation(), false, true);
+	}
+	// A level view through the tall washroom volume keeps both the doorstep
+	// and roof in frame; looking down at its centre crops the roof at this range.
+	const FVector Aim = bSquareWashrooms ? FVector(Point.X, Point.Y, Explorer->GetPawnViewLocation().Z) : Point;
+	PC->SetControlRotation((Aim - Explorer->GetPawnViewLocation()).Rotation());
 
 	const FUEGT2NPCNeeds Before = Life->GetNeeds();
 	const int32 CoinsBefore = Life->GetCoins();
@@ -873,13 +957,18 @@ void UUEGT2CaptureSubsystem::RunLifeStep()
 		{
 			UUEGT2InteractionComponent* Probe = Explorer->GetInteraction();
 			const bool bFound = Probe && Probe->GetFocusedActor() == Amenity;
-			const bool bUsed = Probe && Probe->TryInteract();
+			const bool bUsed = bFound && Probe->TryInteract();
 
 			// A fixed slice of world time, charged through the same function
 			// the whole town runs on.
 			Life->AdvanceLife(UEGT2Capture::LifeHoursPerStop);
 
 			const FUEGT2NPCNeeds& After = Life->GetNeeds();
+			if (bSquareWashrooms && (!bUsed || Life->GetActivity() != EUEGT2Activity::Washroom || After.Relief <= Before.Relief))
+			{
+				UE_LOG(LogUEGT2Diag, Error, TEXT("Square washroom capture: stop %d did not use the washroom and improve relief."), LifeIndex);
+				FinishTour(); return false;
+			}
 			UE_LOG(LogUEGT2Diag, Log,
 				TEXT("Amenity capture %02d: %s '%s' - %s, %s. %s. ")
 				TEXT("fed %.2f->%.2f energy %.2f->%.2f relief %.2f->%.2f coins %d->%d"),

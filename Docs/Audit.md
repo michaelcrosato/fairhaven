@@ -301,3 +301,73 @@ performs no Zen oplog read. The resulting game passes the ordinary packaged
 walk and the lower-bridge round trip with normal input and floor support.
 Local evidence uses `Saved/Logs/DiskCook*`; the installed-source investigation
 is in `Saved/Notes/Zen-CookStore-Audit.md`.
+
+## Square washroom clearance, 2026-09-05
+
+Comparing the bridge audit's town-square capture with the earlier audit image
+confirmed an existing collision between `Town Privy 2` and `Town Stall 7`.
+Their centres were only 127 cm apart, and the washroom stood inside the stall's
+canopy. All four preferred square-washroom sites conflicted with the plaza's
+occupancy reservations. They had been forced into place with `check=False`,
+which preserved availability but defeated the placement checks.
+
+The square now requires four washrooms with clear footprints and door approaches.
+Each tries at most 33 positions within 13 metres of its original location and
+three door orientations. The footprint and two approach circles must be free;
+sampled terrain across the body and approach may vary by at most 15 cm. The
+floor sits 8 cm above the highest body sample. An exhausted search or failed
+spawn fails the content build. The four legacy random draws are retained so
+later shoreline and farm washrooms keep their sequence.
+
+Rebuilding `town,gameplay,npc` moves the shared activity anchors with their
+washrooms. Cooked tags identify the four square props for verification.
+`-UEGT2CaptureSquareWashrooms` uses the existing amenity-capture path to find
+each matching front volume, validate a normal capsule standing position, use
+the real interaction probe and photograph the result. It seeds low needs and
+advances a fixed life slice, as the existing life capture does. These are four
+individual interaction checks; the capture does not walk continuously between
+the washrooms.
+
+All eight offline placement regressions pass, including a replay of the current
+town's earlier stages, blocked entrances, invalid terrain, exhausted candidates,
+spawn failure and repeatability after translating the town. Shoreline and farm
+washroom transforms and subsequent random state match the old placement path.
+The existing 403 mesh checks and 14 pipeline regressions also pass. The real
+town/gameplay/NPC rebuild completed in 37 seconds without project warnings,
+retaining 189 amenities, 30 washrooms and 1,188 inhabitants. The survey board
+keeps its original position.
+
+The first engine run passed 111 tests and failed the new square-privy check.
+The ordinary capsule overlapped a carryable prop at privy 1's entrance. A focused
+run identified `UEGT2Pickup_3`: the later gameplay stage had scattered it into
+space that town had reserved. Pickup placement now omits optional crates or
+barrels whose conservative collision footprint overlaps a tagged square privy's
+body or approach. It still consumes each original random draw and preserves
+the surviving pickups' labels and transforms. The ground and capsule tests
+remain in place to catch later-stage obstructions.
+
+The final gameplay rebuild omits only pickup 3 and retains 17 carryable props,
+360 interactables and all 189 amenities. All 11 placement regressions pass,
+including pickup clearance against the real town layout and collision-box
+footprint bounds. Both nonadaptive targets build and all 112 engine tests pass.
+The new content check verifies 108 terrain-supported normal capsule poses and
+120 approach/doorway samples across the four privies, including their distinct
+washroom anchors. A small rise from the floor to the approach is allowed within
+the real player's step height; test poses do not start below that ground.
+
+The final package completed in 1 minute 3 seconds without material or cook
+warnings. All four washrooms were found and used through the packaged player's
+interaction probe, raising relief from 0.10 to 0.98 at each stop through the
+shared ledger. The six-stop life regression and ordinary 23.03-metre packaged
+walk also pass. The four complete doorway captures, town-square comparison and
+market view were inspected: the washrooms have visible ground-level thresholds
+and the former washroom/stall intersection is gone. Initial close captures
+cropped the roof and threshold; the final view stands farther back within the
+reserved approach and validates that capsule position again at runtime.
+
+The final ten-minute live fly soak completed 63 legs without stalls. Its worst
+frame was 25.9 ms; nine garbage collections peaked at 4.3 ms.
+
+Local evidence is under `Saved/Logs/Privy*` and `Saved/Screenshots/PrivyAfter`.
+The map remains generated and untracked; no catalog mesh or material changes
+are needed for this placement repair.

@@ -388,11 +388,37 @@ def _place_lamps(world_data, meshes):
     return placed
 
 
+# Encloses the upright crate/barrel simple collision boxes at any yaw;
+# their largest XY half-diagonal is the barrel's 79.2 cm.
+PICKUP_FOOTPRINT = 100.0
+
+
+def _square_privy_keepouts():
+    """Preserve town's required entrances when later optional props are placed."""
+    expected_tags = [unreal.Name("UEGT2.SquarePrivy.%d" % i) for i in range(4)]
+    keepouts = []
+    for actor in _subsystem().get_all_level_actors():
+        tags = actor.get_editor_property("tags")
+        if not any(tag in tags for tag in expected_tags):
+            continue
+        location = actor.get_actor_location()
+        yaw = math.radians(actor.get_actor_rotation().yaw)
+        if not all(math.isfinite(value) for value in (location.x, location.y, yaw)):
+            ctx.fail("gameplay: square privy has a non-finite keepout transform")
+        keepouts.append((location.x, location.y, town_mod.SQUARE_PRIVY_RADIUS))
+        for distance in town_mod.SQUARE_PRIVY_FRONT_DISTANCES:
+            keepouts.append((location.x+math.sin(yaw)*distance,
+                             location.y-math.cos(yaw)*distance,
+                             town_mod.SQUARE_PRIVY_APPROACH_RADIUS))
+    return keepouts
+
+
 def _place_pickups(world_data, meshes):
     """Carryable crates and barrels around the square and the docks."""
     cls = _load_class("UEGT2Pickup")
     rng = _SmallRng(world_data.seed + 771)
     cx, cy = world_data.town["center"]
+    keepouts = _square_privy_keepouts()
 
     def coast_y(wx):
         best = None
@@ -412,15 +438,24 @@ def _place_pickups(world_data, meshes):
                       coast_y(cx) - rng.uniform(1500.0, 2600.0)))
 
     placed = 0
-    for wx, wy in spots:
+    skipped = 0
+    for index, (wx, wy) in enumerate(spots):
         name = "SM_Crate_A" if rng.next() > 0.45 else "SM_Barrel_A"
+        # Consume both original draws even when a candidate is rejected, so
+        # every later prop keeps its mesh, yaw and original spot-index label.
+        yaw = rng.uniform(0.0, 360.0)
+        if any(math.hypot(wx-x, wy-y) < radius+PICKUP_FOOTPRINT for x, y, radius in keepouts):
+            ctx.log("gameplay: skipped pickup %d at (%.1f, %.1f): square washroom clearance"
+                    % (index, wx, wy))
+            skipped += 1
+            continue
         mesh = meshes.get(name)
         wz = world_data.height_uu(wx, wy) + 70.0
-        if _spawn_interactable(cls, mesh, wx, wy, wz, rng.uniform(0.0, 360.0),
-                               "Pickup %d" % placed, unreal.ComponentMobility.MOVABLE):
+        if _spawn_interactable(cls, mesh, wx, wy, wz, yaw,
+                               "Pickup %d" % index, unreal.ComponentMobility.MOVABLE):
             placed += 1
 
-    ctx.log("gameplay: %d carryable props" % placed)
+    ctx.log("gameplay: %d carryable props, %d skipped for square washroom clearance" % (placed, skipped))
     return placed
 
 

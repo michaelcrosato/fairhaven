@@ -129,6 +129,7 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Build-Content.ps1 -Stages npc` | Re-roll the population and the road graph |
 | `python Tools/Python/check_meshes.py` | Check catalog geometry, UVs, window apertures and interior fit without Unreal |
 | `python Tools/Python/test_pipeline.py` | Check stage selection, wall openings, UVs and mesh validation without Unreal |
+| `python Tools/Python/test_privy_placement.py` | Check bounded square washroom placement and entrance reservations without Unreal |
 | `./Scripts/Tests/Test-Verification.ps1` | Check build and test script failure handling without Unreal |
 | `./Scripts/Tests/Test-ResolveEngine.ps1` | Check engine discovery and association matching without Unreal |
 | `./Scripts/Test.ps1` | Run the automation tests |
@@ -146,6 +147,7 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Screenshot-Tour.ps1` | Render the registered viewpoints headlessly to PNG |
 | `./Scripts/Screenshot-Tour.ps1 -Menu` | Render the menu and settings screens |
 | `./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'` | Exercise food, washing, sitting and work through player interaction |
+| `./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureSquareWashrooms'` | Use all four square washrooms from checked standing positions and capture their doorways |
 | `./Scripts/Fly-Soak.ps1 -Minutes 10` | Fly both settlements and record frame hitches over time |
 | `./Scripts/Preview.ps1 -Stages lighting` | Build + package + screenshot in one go |
 | `./Scripts/Open-Editor.ps1` | Open the project in the Unreal editor |

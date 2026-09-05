@@ -341,6 +341,96 @@ SERVICE_NAMES = {
 }
 
 
+SQUARE_PRIVY_RADIUS = 220.0
+SQUARE_PRIVY_APPROACH_RADIUS = 120.0
+SQUARE_PRIVY_FRONT_DISTANCES = (225.0, 350.0)
+SQUARE_PRIVY_MAX_RELIEF = 15.0
+SQUARE_PRIVY_FLOOR_CLEAR = 8.0
+
+
+def _square_privy_candidates(cx, cy, preferred_x, preferred_y):
+    """Nearby alternatives, tried outwards first without drawing more randoms."""
+    radial = math.atan2(preferred_y-cy, preferred_x-cx)
+    yield preferred_x, preferred_y
+    for distance in (400.0, 700.0, 1000.0, 1300.0):
+        for turn in (0.0, 45.0, -45.0, 90.0, -90.0, 135.0, -135.0, 180.0):
+            angle = radial+math.radians(turn)
+            yield preferred_x+math.cos(angle)*distance, preferred_y+math.sin(angle)*distance
+
+
+def _square_privy_site(placer, wx, wy, yaw):
+    """Return a ground-fitted origin and two clear front reservations, or None."""
+    if not placer.is_free(wx, wy, SQUARE_PRIVY_RADIUS):
+        return None
+    angle = math.radians(yaw)
+    cos_y, sin_y = math.cos(angle), math.sin(angle)
+    def world_xy(x, y):
+        return wx+x*cos_y-y*sin_y, wy+x*sin_y+y*cos_y
+    fronts = [world_xy(0.0, -distance) for distance in SQUARE_PRIVY_FRONT_DISTANCES]
+    if not all(placer.is_free(x, y, SQUARE_PRIVY_APPROACH_RADIUS) for x, y in fronts):
+        return None
+
+    # The roof encloses the smaller foundation; include its corners as well as
+    # the complete approach to the existing amenity anchor 225cm in front.
+    body = [placer.wd.height_uu(*world_xy(x, y))
+            for x in (-135.0, -67.5, 0.0, 67.5, 135.0)
+            for y in (-131.0, -65.5, 0.0, 65.5, 131.0)]
+    approach = [placer.wd.height_uu(*world_xy(x, y))
+                for x in (-120.0, -60.0, 0.0, 60.0, 120.0)
+                for y in (-110.0, -150.0, -225.0, -285.0, -350.0, -410.0, -470.0)]
+    heights = body+approach
+    if not all(math.isfinite(value) for value in heights):
+        return None
+    if max(heights)-min(heights) > SQUARE_PRIVY_MAX_RELIEF:
+        return None
+    # gen_town.privy puts its floor at local Z24. Keep it above the highest
+    # nearby body sample with at most a 23cm doorstep on the accepted plot.
+    origin_z = max(body)+SQUARE_PRIVY_FLOOR_CLEAR-24.0
+    return origin_z, fronts
+
+
+def _place_square_conveniences(placer, rng):
+    cx, cy = placer.wd.town["center"]
+    preferred = ((cx+1450.0, cy-1250.0), (cx-1500.0, cy+1350.0),
+                 (cx+1600.0, cy+1500.0), (cx-1350.0, cy-1500.0))
+    for index, (px, py) in enumerate(preferred):
+        # The old forced placement consumed one yaw per privy. Keep those four
+        # draws so the shoreline and farm conveniences retain their sequence.
+        rng.uniform(0.0, 360.0)
+        placed = False
+        for attempt, (wx, wy) in enumerate(_square_privy_candidates(cx, cy, px, py)):
+            # Prefer a door facing the square, then either diagonal if its
+            # entrance is occupied. Turning never overrides an overlap check.
+            facing = _face_yaw(wx-cx, wy-cy)
+            for turn in (0.0, 45.0, -45.0):
+                yaw = facing+turn
+                site = _square_privy_site(placer, wx, wy, yaw)
+                if site is None:
+                    continue
+                origin_z, fronts = site
+                actor = placer.place("SM_Privy_A", wx, wy, yaw, "Privy %d" % index,
+                                     radius=SQUARE_PRIVY_RADIUS,
+                                     z_offset=origin_z-placer.wd.height_uu(wx, wy))
+                if actor is None:
+                    ctx.fail("town: could not spawn required square privy %d" % index)
+                tag = unreal.Name("UEGT2.SquarePrivy.%d" % index)
+                tags = list(actor.get_editor_property("tags"))
+                if tag not in tags:
+                    tags.append(tag)
+                actor.set_editor_property("tags", tags)
+                for x, y in fronts:
+                    placer.reserve(x, y, SQUARE_PRIVY_APPROACH_RADIUS)
+                ctx.log("town: square privy %d at (%.1f, %.1f), yaw %.1f, candidate %d; clear entrance"
+                        % (index, wx, wy, yaw, attempt))
+                placed = True
+                break
+            if placed:
+                break
+        if not placed:
+            ctx.fail("town: no clear, level site for required square privy %d within 13m" % index)
+    return len(preferred)
+
+
 def _place_conveniences(placer, rng):
     """A washroom within reach of everywhere anyone in the town stands.
 
@@ -350,18 +440,7 @@ def _place_conveniences(placer, rng):
     high street, one on the quay, and one at every farm.
     """
     cx, cy = placer.wd.town["center"]
-    placed = 0
-
-    ring = [(cx + 1450.0, cy - 1250.0), (cx - 1500.0, cy + 1350.0),
-            (cx + 1600.0, cy + 1500.0), (cx - 1350.0, cy - 1500.0)]
-    for (wx, wy) in ring:
-        # check=False: these four are the ones that matter, because they are
-        # where the people are. A privy rejected for overlapping a bench is a
-        # need with nowhere to answer it.
-        if placer.place("SM_Privy_A", wx, wy, rng.uniform(0.0, 360.0),
-                        "Privy %d" % placed, radius=220.0, z_offset=-8.0,
-                        check=False):
-            placed += 1
+    placed = _place_square_conveniences(placer, rng)
 
     shore = _coast_y_at(placer.wd, cx)
     for offset in (-1800.0, 900.0):

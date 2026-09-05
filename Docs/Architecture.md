@@ -60,9 +60,17 @@ approaches and deck ends for the packaged walking check. This terrain-dependent
 mesh has a stable asset path outside the generic mesh catalog, so a `meshes`-only
 rebuild cannot replace it with an unfitted prop.
 
-Rebuild `town,gameplay` together after changing town placements. Gameplay keeps
-its existing interactive lamps and consumes coincident plain replacements from
-town; a gameplay-only rebuild preserves the lamps whose original props are gone.
+Rebuild `town,gameplay,npc` together after changing town placements so player
+amenities and the population's baked activity anchors follow the new props.
+Gameplay keeps its existing interactive lamps and consumes coincident plain
+replacements from town; a gameplay-only rebuild preserves the lamps whose
+original props are gone.
+
+The four square washrooms use bounded placement candidates with separate
+reservations for each footprint and its door approach. A missing clear, level
+site fails the content build. Gameplay omits optional pickups intersecting these
+reservations. The square-washroom capture resolves their cooked tags and uses
+each matching amenity from a validated player standing position.
 
 `showcase` is excluded from default builds and `-Stages all` on purpose. Request
 it explicitly with `-Stages showcase` when inspecting the catalog. Unknown

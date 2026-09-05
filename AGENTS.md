@@ -32,10 +32,12 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Screenshot-Tour.ps1 -Menu             # menu + settings -> PNG
 ./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureDialogue'   # the talk panel
 ./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'       # eat, wash, sit, work
+./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureSquareWashrooms' # all four square washrooms
 ./Scripts/Fly-Soak.ps1 -Minutes 10                                 # god mode, ten minutes, every hitch
 ./Scripts/Preview.ps1 -Stages lighting          # build + package + screenshot
 python Tools/Python/check_meshes.py             # every catalog mesh, no editor, a few seconds
 python Tools/Python/test_pipeline.py            # stage selection + geometry regressions, no editor
+python Tools/Python/test_privy_placement.py     # four clear square washrooms and their approaches
 ./Scripts/Tests/Test-Verification.ps1            # script failure handling, no engine
 ./Scripts/Tests/Test-ResolveEngine.ps1           # engine discovery, no engine launch
 python Tools/Terrain/generate_terrain.py        # re-roll terrain (+ PNG previews)
@@ -193,6 +195,12 @@ Do not undo these without understanding why they are there.
   calling stage usually ignores the result, so a stage can log success and place
   nothing. The npc stage now warns about empty anchor sets and unclaimed actor
   labels for exactly this reason.
+- **Required entrances need protection across content stages.** Town's four
+  square privies reserve their bodies and front approaches, but gameplay used
+  to scatter a carryable prop into one of those entrances afterwards. Pickup
+  placement now respects the tagged privy reservations. Keep the capsule-based
+  `UEGT2.Content.SquarePrivies` check: an earlier stage's clean placement does
+  not establish that the completed map is still clear.
 - **An NPC's mesh must not be its root component.** The walk cycle is a relative
   offset applied to the mesh every frame, and a relative move on the *root* is a
   world move: every NPC inside LOD range teleports to the world origin, which is

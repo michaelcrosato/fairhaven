@@ -11,6 +11,7 @@
 //   -UEGT2CaptureOnly=<name>    capture just one named viewpoint
 //   -UEGT2CaptureMenu           capture the menu screens instead of the world
 //   -UEGT2CaptureLife           walk up to one amenity of each kind and use it
+//   -UEGT2CaptureSquareWashrooms use and photograph all four square washrooms
 //   -UEGT2SmokeWalk             inject real input and verify the player moves
 //   -UEGT2SmokeFly              fly god mode for minutes, logging every hitch
 //   -UEGT2SmokeMinutes=<n>      how long the fly soak runs (default 6)
@@ -127,8 +128,10 @@ private:
 	int32 DialogueIndex = 0;
 	TWeakObjectPtr<class AUEGT2NPCActor> DialoguePartner;
 	bool bLifeMode = false;
+	bool bSquareWashrooms = false;
 	int32 LifeIndex = 0;
 	UPROPERTY(Transient) TArray<TObjectPtr<AUEGT2Amenity>> LifeStops;
+	TArray<FVector> LifeStands;
 	FVector WalkStart = FVector::ZeroVector;
 	float WalkElapsed = 0.0f;
 
