@@ -31,8 +31,9 @@ explains how the project fits together; this file is the working contract.
 ./Scripts/Fly-Soak.ps1 -Minutes 10                                 # god mode, ten minutes, every hitch
 ./Scripts/Preview.ps1 -Stages lighting          # build + package + screenshot
 python Tools/Python/check_meshes.py             # every catalog mesh, no editor, a few seconds
-python Tools/Python/test_pipeline.py            # stage selection + mesh validation, no editor
+python Tools/Python/test_pipeline.py            # stage selection + geometry regressions, no editor
 ./Scripts/Tests/Test-Verification.ps1            # script failure handling, no engine
+./Scripts/Tests/Test-ResolveEngine.ps1           # engine discovery, no engine launch
 python Tools/Terrain/generate_terrain.py        # re-roll terrain (+ PNG previews)
 python Tools/Audio/generate_audio.py            # re-generate sounds
 ```
@@ -44,8 +45,8 @@ python Tools/Audio/generate_audio.py            # re-generate sounds
    broke the game target.
 1b. **`python Tools/Python/check_meshes.py`.** Builds every mesh in the catalog
    with the `unreal` module stubbed out and checks bounds, vertex buffers,
-   triangle indices, finite attributes, degenerate triangles, doorway clearance
-   and interior fit. A few seconds, no
+   triangle indices, finite attributes, degenerate triangles, UV0 area, window
+   apertures, doorway clearance and interior fit. A few seconds, no
    editor. It will not tell you anything about materials, lighting or how a
    thing looks - only that the geometry is what you meant.
 2. **Look at a screenshot.** `./Scripts/Preview.ps1`. Several bugs here produced
@@ -97,6 +98,15 @@ Do not undo these without understanding why they are there.
   winding. Undoing this makes all two-sided foliage render pure black.
 - **Wind weight is in UV1.x**, not vertex alpha. Every `VertexColor` output pin
   is named `""`, so only the RGB pin is reachable by name.
+- **UV0 must give every face a nonzero area.** `meshkit._mesh_uvs` uses the
+  face's dominant plane. A single XY projection collapses vertical faces and
+  leaves MikkTSpace with degenerate tangent bases; changing UV0 must preserve
+  UV1 wind weights, normals and winding.
+- **A window's whole aperture must be clear.** Solid frame boxes covered the
+  translucent panes, and separate sill/lintel blocks filled stacked windows
+  back in. Use perimeter rails and `meshkit.wall`'s union of rectangular
+  openings. `check_meshes.py` traces through actual panes; `test_pipeline.py`
+  covers stacked, overlapping and clipped openings, winding and doors.
 - **Lightmap UV generation is off** (`ConfigureGeneratedMesh`) because it would
   overwrite UV1.
 - **Auto-exposure min/max are EV100 stops**, not multipliers, because
@@ -136,6 +146,11 @@ Do not undo these without understanding why they are there.
   applies, or distant samples silently keep distance 1e12.
 - **`is_street` includes the Newhaven grid.** Anything that means "town street"
   has to filter on `not is_city` too, or it will lay cottages down city avenues.
+- **Scatter actor class does not identify stage ownership.** Nature and town
+  fences both use `AUEGT2ScatterField`. Nature replaces only its opted-in fields
+  or legacy `Scatter ` labels; fences survive a nature rebuild and keep their
+  own draw distances. Foliage settings scale authored cull distances on opted-in
+  fields, never already scaled values.
 - **Fixed attempt counts do not survive a bigger map.** Scatter loops written as
   `range(900)` quarter in density when the extent doubles. Scale by area.
 - **An NPC ground trace starts at +90 cm, below knee height.** A market awning
@@ -185,6 +200,11 @@ Do not undo these without understanding why they are there.
   the point of the player having needs at all is that they are the same needs,
   and a second table drifts silently. `UEGT2.Economy.LivingWage` runs every
   trade through three closed-loop days and fails if the numbers stop adding up.
+- **Schedule slices do not determine elapsed life time.** The director records
+  each NPC's last charged world hour. Multiplying the latest slice interval by
+  six overcharged small populations and uneven frames. Registration, crowd
+  suppression, clock changes and frozen captures must preserve that accounting;
+  `UEGT2.NPC.Director.*` tests the real subsystem.
 - **An amenity is a place, not a prop.** `AUEGT2Amenity` is an invisible query
   volume standing on an anchor point, and it must stay that way. Converting the
   bench, privy or stall props into interactable actors changes their collision

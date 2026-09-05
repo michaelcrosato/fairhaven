@@ -173,10 +173,10 @@ Walk a shophouse street and go into three or four in a row. What to judge:
   downtown, lobbies in the towers and apartments. Does that read on foot?
 - The city hall on the civic square opens too.
 
-**Windows.** The material supports translucent panes, but town-house frames
-currently cover the openings with opaque geometry; two-storey houses also have
-wall geometry across their windows. Those blocked views are a known bug, not
-the intended style. Compare the city glazing from the street and from a room.
+**Windows.** Look through the panes from outside and inside a house, including
+both storeys. Check the barn, church and warehouse too. Frames should surround
+the opening and leave the view clear. Compare the town and city glazing, and
+judge how much daylight reaches the room alongside its lamps.
 
 **The town's day.** Escape → Dev Mode → World → Time of Day, and drag it.
 Look for fishers heading to the boats before dawn, a working town in the
@@ -213,6 +213,8 @@ the mountains.
 
 **Settings.** Change quality levels, resolution scale, FOV, volumes, and a key
 binding. Quit and relaunch: everything should persist.
+Try Foliage Draw Distance from Low to Ultra and back: vegetation should draw
+farther away at higher levels, while fences keep their own distance.
 
 ## Known limits in 0.1
 
@@ -237,10 +239,9 @@ These are known. Reporting them again costs you time.
   to be in, that reads worse than it used to. Walking them through the door and
   sitting them at their own table is the obvious next job.
 - **Room lighting is still being tuned.** Town interiors and city ground
-  floors have point lights at their ceiling lamps. Opaque frame and wall
-  geometry currently blocks the town-house windows, leaving rooms dependent on
-  their lamps even during daylight; repairing the apertures comes before
-  judging their final brightness.
+  floors have point lights at their ceiling lamps. Window openings are clear
+  in the geometry checks; assess the rooms in daylight and at night to judge
+  their brightness.
   Upper city floors currently have emissive lamp meshes without those point
   lights. Report floors that are too dark to navigate, especially at night.
 - **The kiosks, bus shelters and market stalls are not buildings** and have no

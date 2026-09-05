@@ -93,9 +93,10 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Build-Content.ps1 -Stages all` | Regenerate all content inside Unreal |
 | `./Scripts/Build-Content.ps1 -Stages nature` | Regenerate just one stage |
 | `./Scripts/Build-Content.ps1 -Stages npc` | Re-roll the population and the road graph |
-| `python Tools/Python/check_meshes.py` | Check every catalog mesh and interior fit without Unreal |
-| `python Tools/Python/test_pipeline.py` | Check stage selection and mesh validation without Unreal |
+| `python Tools/Python/check_meshes.py` | Check catalog geometry, UVs, window apertures and interior fit without Unreal |
+| `python Tools/Python/test_pipeline.py` | Check stage selection, wall openings, UVs and mesh validation without Unreal |
 | `./Scripts/Tests/Test-Verification.ps1` | Check build and test script failure handling without Unreal |
+| `./Scripts/Tests/Test-ResolveEngine.ps1` | Check engine discovery and association matching without Unreal |
 | `./Scripts/Test.ps1` | Run the automation tests |
 | `./Scripts/Package.ps1` | Package a playable build |
 | `./Scripts/Smoke-Packaged.ps1` | Check that real input moves the packaged player |
@@ -143,7 +144,7 @@ working in this repo.
 | | |
 |---|---|
 | Landscape | 4033 × 4033 verts, 4.03 km square, 7 paint layers |
-| Mesh catalog | 304 assets, 241,867 triangles total, including glass and interior meshes |
+| Mesh catalog | 304 assets, 246,967 triangles total, including glass and interior meshes |
 | Nature | 13 scatter rules for grass, crops, trees, undergrowth and rocks |
 | Town | Furnished houses, shops, church, lighthouse, windmill, docks and farms |
 | Newhaven | Towers, offices, apartments and shops with stacked interiors, civic plaza and container wharf |
@@ -156,3 +157,7 @@ Placement counts depend on the generated world. The content build reports them
 in `Saved/Logs/ContentBuild.log`; `meshbuild._catalog()` defines the catalog
 totals above. The optional `showcase` stage places a mesh inspection grid and
 is excluded from `-Stages all`.
+
+Town-house and outbuilding windows have perimeter frames around matching wall
+openings. The geometry checks cover both storeys and sample the centre and
+edges of each pane; room brightness still needs visual checks in the game.

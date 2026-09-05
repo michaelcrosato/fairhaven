@@ -102,27 +102,30 @@ UEGT2ContentTests         automation tests over the generated content
 
 **Shared materials, with glass separate from the shell.** Opaque props,
 building shells and characters use `M_Prop`, driven by vertex colour. Window
-panes use translucent `M_Glass`: a window that
-is an opaque painted panel reads as a blank canvas from inside a room, and it
-seals the building against daylight. Because a static mesh carries exactly one
-material, every glazed building is generated as *two* meshes from one call - the
+panes use translucent `M_Glass`. Each generated mesh uses one material, so
+every glazed building is generated as *two* meshes from one call - the
 shell and its panes - and `town.Placer._glaze` hangs the panes on the shell's
 transform automatically, so no call site has to remember. The panes cast no
-shadow, but opaque frame geometry currently blocks the town-house openings
-(see the interior note below). Emissive details, foliage, landscape
+shadow, and town windows have perimeter frames around open wall apertures.
+Emissive details, foliage, landscape
 and water each have their own master material. The whole palette lives in
 `Tools/Python/uegt2/palette.py`; all six materials are procedural and use no
 textures.
 
 **Meshes are explicit vertex buffers, not primitives.** `meshkit.py` builds
 flat-shaded faces with their own normals and colours, then hands the lot to
-GeometryScript in one call per asset. Two traps are baked into that file and
+GeometryScript in one call per asset. Three contracts are baked into that file and
 must not be undone:
 
 - *Winding.* Geometry is authored right-handed, and `_emit` swaps the indices
   because Unreal takes the opposite winding. Getting this wrong makes
   two-sided foliage render pure black, because Unreal flips the shading normal
   on what it thinks are back faces.
+- *UV0 follows each face's dominant plane.* `_mesh_uvs` projects onto YZ, ZX or
+  XY according to the face normal. Projecting every face onto XY collapsed
+  vertical faces to UV lines and produced degenerate tangent bases when
+  MikkTSpace rebuilt them. The projection preserves geometry, authored normals
+  and winding; no material samples textures from UV0.
 - *Wind weight lives in UV1.x*, not vertex alpha. Every `VertexColor` output pin
   in Unreal is named `""`, so only the float3 RGB pin is reachable by name and
   the alpha cannot be addressed from script.
@@ -153,7 +156,7 @@ cause of a bug:
   take up the slack downhill. Sitting it on the lowest corner put the hillside
   through the floor of 72 of 114 houses and buried 25 front doors.
 
-**Room lamps provide local light; house windows still need repair.** Town
+**Room lamps provide local light.** Town
 interiors and Newhaven's ground floors receive movable point lights at their ceiling lamps.
 The current setting is 34,000 lumens with increased indirect lighting, tuned
 for exposure shared with the outdoors. The sky controller adjusts the exposure
@@ -162,16 +165,20 @@ meshes, but no separately placed point lights; their night readability needs
 visual checks. Room point lights cast shadows to keep light from leaking through
 walls and stop rendering beyond 42 m.
 
-The packaged house captures expose two geometry bugs that a translucent
-material cannot fix. `gen_town._glaze` makes each frame as a solid rectangle
-covering the pane, rather than four rails around it. Also, `meshkit.wall`
-fills vertically stacked openings back in: each opening's sill or lintel spans
-the neighbouring storey's window. All six house archetypes have opaque frame
-blockers; the two-storey HouseB and HouseD also have wall blockers. The
-outbuilding helper `_windows_on_wall` likewise uses solid frames, and its pane
-positions need to be reconciled with the shell cutouts. The next geometry pass
-must check sightlines through complete window apertures before retuning light
-intensity. The existing mesh checks cover doorways, but not window transparency.
+**Window openings stay clear through the complete shell.** `gen_town._glaze`
+uses four perimeter rails on each wall face. `meshkit.wall` partitions the wall
+at opening edges and subtracts the union of the rectangular openings, so the
+sill or lintel for one storey cannot fill another storey's window. It clips
+openings to the wall and supports overlapping or repeated rectangles. Barn,
+church and warehouse panes use the same opening rows as their wall cutouts;
+the barn has matching windows on both side walls.
+
+The mesh checker traces through the centre and edges of every town pane,
+allowing for the small sill overlap. It catches both opaque frames and panes
+misaligned with their cutouts. The pipeline regressions cover stacked,
+overlapping, touching and clipped openings, both wall axes, winding and entry
+clearance. These checks establish open geometry; daylight and lamp brightness
+still require packaged screenshots and a visit to the rooms.
 
 **A tall building is one mesh per floor, placed once per storey.** A twenty-two
 storey interior built as a single mesh is 43,000 triangles and a 48 MB build,
@@ -232,6 +239,14 @@ places invisible interaction volumes for food, washing, rest and work. Props
 keep their static collision while `AUEGT2Amenity` handles interaction. The
 player's free bed and larder are currently use points beside their lodgings'
 doorway, rather than furniture animations inside the house.
+
+`UUEGT2NPCDirector` integrates elapsed tick time at the current world-hour rate
+and records when each inhabitant's ledger was last advanced. Schedule slices
+spread the work without multiplying time by a fixed slice count, so small
+populations and hitches do not change the rates. Registration starts a new
+interval; frozen captures, a disabled day/night cycle and time suppressed by
+crowd density do not accrue NPC needs or coin. Pausing routine decisions still
+allows the ledger to advance.
 
 **You can talk to anyone, and what they say is true.** `UEGT2Dialogue.h` is a
 set of pure functions over `FUEGT2DialogueState` - a snapshot of one
@@ -295,7 +310,7 @@ of `uegt2/water.py` for the trade-off.
 
 Target: 1920×1080, 60 fps on an RTX 3060-class GPU.
 
-- 304 unique meshes, 241,867 triangles total; the heaviest asset is 7,184
+- 304 unique meshes, 246,967 triangles total; the heaviest asset is 7,184
   triangles (`SM_Tower_D`, a thirty-one storey shell). No interior is bigger
   than about 4,400, because a tall building's floors are one mesh placed many
   times rather than one mesh containing them all.
@@ -303,7 +318,10 @@ Target: 1920×1080, 60 fps on an RTX 3060-class GPU.
   at 90 m, glass at 300 m, and room point lights at 42 m. Placement and population
   totals come from the current content build log, rather than a fixed budget.
 - Scatter uses hierarchical instanced components with per-rule cull distances:
-  grass uses 70–90 m; tree rules range from 600–800 m to 700–900 m.
+  grass uses 70–90 m; tree rules range from 600–800 m to 700–900 m. Foliage Draw
+  Distance scales these authored start/end distances by 0.5, 0.75, 1 or 1.5
+  for Low through Ultra. Reapplying settings always starts from the authored
+  distances, and zero remains unlimited.
 - Inhabitants are movable static mesh actors. Distance tiers, dormant movement
   and six schedule slices spread their runtime work. Small animals cast no
   shadows and cull at 90 m. These mechanisms do not establish a frame-rate
@@ -317,6 +335,12 @@ Target: 1920×1080, 60 fps on an RTX 3060-class GPU.
 
 Measure before raising instance counts, adding shadowed lights, or increasing
 Lumen quality.
+
+The nature stage marks its scatter fields with `use_foliage_draw_distance` and
+replaces only those fields on a partial rebuild. It also recognises the older
+`Scatter ` label prefix. Instanced fences share the actor class but belong to
+the town stage: rebuilding nature preserves them, and their draw distances do
+not follow the foliage setting.
 
 ## Extension rules
 
@@ -346,14 +370,18 @@ Run the offline checks before paying for an engine build:
 python Tools/Python/check_meshes.py
 python Tools/Python/test_pipeline.py
 ./Scripts/Tests/Test-Verification.ps1
+./Scripts/Tests/Test-ResolveEngine.ps1
 ```
 
 The mesh checker visits every catalog entry and checks buffers, triangle
-indices, finite attributes, degenerate triangles and selected doorway/interior
-clearances. It cannot establish material appearance, collision cooking or
-walkability in the game. The pipeline tests cover stage selection and mesh
-validation failures; the PowerShell tests simulate engine processes to check
-that stale reports, crashes, timeouts and partial captures cannot pass.
+indices, finite attributes, degenerate triangles, UV0 area, town window
+apertures and selected doorway/interior clearances. It cannot establish material
+appearance, collision cooking or walkability in the game. The pipeline tests
+cover stage selection, mesh validation failures, rectangular wall openings,
+vertical-face UV area and preserved UV1 wind weights. The PowerShell tests
+simulate engine processes to check that stale reports, crashes, timeouts and
+partial captures cannot pass. The engine resolver tests use isolated engine
+markers to check overrides, exact project associations and version validation.
 
 Build C++ with `./Scripts/Build.ps1 -Target Both -DisableAdaptiveUnity`, rebuild
 the affected content stages, and run `./Scripts/Test.ps1 -SkipBuild`. Package

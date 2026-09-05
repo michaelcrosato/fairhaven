@@ -45,48 +45,88 @@ Validation on Windows with Unreal Engine 5.8.2:
 
 Logs and screenshots from this pass are local artifacts under `Saved/Logs`
 (`Audit*`) and `Saved/Screenshots/Audit`. Engine warnings about tangent bases
-and nearly zero binormals still need review. Machine-specific performance is
-not a benchmark for the target GPU.
+and nearly zero binormals prompted the UV repair in the second pass.
+Machine-specific performance is not a benchmark for the target GPU.
 
-## Next passes
+## Second pass
 
-These leads have source evidence but still need focused implementation and
-verification. They are not waived by the first pass's passing tests.
+- Town window frames are perimeter rails. Walls subtract the union of openings
+  in both dimensions, so stacked windows remain open. Barn, church and warehouse
+  panes share their position definitions with the wall cutouts. Nine building
+  shells and three outbuilding glass assets change geometry; 292 catalog meshes
+  retain identical geometric buffers. The catalog now contains 246,967 triangles.
+- UV0 projects each flat face onto its dominant plane. The old XY projection
+  collapsed 150,601 catalog triangles to UV lines, causing tangent warnings.
+  UV1 still carries the original wind weights. Upload UV0 changes in 302 meshes.
+- The NPC director integrates simulation time and charges each inhabitant its
+  actual elapsed interval. Registry changes and crowd suppression preserve that
+  accounting. The player also charges full elapsed time; an obsolete quarter-hour
+  cap made its ledger diverge during hitches and at fast day lengths. Disabling
+  the day/night cycle stops the shared life rate. Unused private timing arguments
+  in the speech update functions are removed.
+- Companions respect weather, sleep and roosting decisions. Ineffective stuck
+  detection that could reroute or teleport an NPC after a hitch is removed.
+- Unlinked route nodes remain addressable by ID but cannot mask nearby roads
+  in spatial queries. New links invalidate the index; wander targets respect
+  their requested radius from the first node onward.
+- Nature layers opt into the foliage-distance setting and retain unscaled
+  baselines. Repeated changes cannot compound the distances. Nature rebuilding
+  preserves the town's separate fence field, and fences keep their own culling.
+- Resetting settings restores needs/almanac visibility and Celsius. Unpossession
+  removes the old pawn's delegates while preserving controller actions.
+- Audio authoring repairs one sound-class parent edge per editor change event
+  and saves every affected class. The loaded-asset test checks both directions
+  of the Master/child relationship.
+- Engine discovery matches the exact association, supports launcher manifests
+  and source-build GUIDs, verifies automatic release major/minor versions and
+  fails clearly on an invalid explicit override. Package/capture output paths
+  follow PowerShell's current location; editor launch quotes the project path.
+- Unused direct module dependencies are removed; GeometryScripting is restricted
+  to editor authoring. Final Editor and Game receipts exclude Water, Landmass,
+  ChaosCloth and Buoyancy. Niagara remains a transitive engine-tooling dependency.
 
-- The packaged house interior is dark even in daylight. `gen_town._glaze` and
-  `_windows_on_wall` use opaque boxes spanning the whole window opening for
-  frames, sealing the opening around the separate translucent pane. Separately,
-  `meshkit.wall` fills vertically stacked apertures back in; this also blocks
-  HouseB and HouseD. Outbuilding panes and wall cuts are not consistently
-  aligned. Replace the slabs with perimeter frames and partition wall openings
-  in both dimensions. Add clear-sightline regressions, rebuild meshes, cook and
-  inspect both interior and exterior views. The local reproducer is
-  `Saved/Audit/window_diagnostic.py`.
-- `UEGT2NPCDirector::RunScheduleSlice` charges each visited NPC six times the
-  latest slice interval. Small populations take fewer than six passes, and a
-  hitch charges different slices different elapsed time. Account for each
-  inhabitant's actual elapsed simulation time.
-- The foliage distance setting changes `foliage.LODDistanceScale`, which does
-  not scale the scatter components' authored end distances. Retain unscaled
-  layer distances and apply the setting without compounding repeated changes.
-- `SetToDefaults` omits the persisted needs/almanac visibility and Fahrenheit
-  settings. Test the real reset operation over every project setting.
-- `OnUnPossess` resets a binding flag but leaves the previous pawn's action
-  bindings on the controller. Test repeated possession and remove stale bindings.
-- Following overrides scheduled sleep, while the resolver suppresses urgent
-  needs during scheduled sleep. Verify an overnight companion can still answer
-  needs. The movement stuck-recovery branch also contains a reset that makes
-  its later timeout unreachable.
-- Check route orphan handling: `FinaliseNetwork` documents dropping unreachable
-  stubs, but still includes them in the spatial index.
-- Audit unused Water/Landmass/Niagara plugins and direct module dependencies.
-  Source and generated asset names show no current use, but removal still needs
-  both-target, content, cook and runtime verification.
-- Verify sound-class parent links survive a fresh audio build: authoring assigns
-  Master's children but saves only Master after the hierarchy change.
-- `Resolve-Engine.ps1` accepts unrelated HKCU build paths before trying the
-  expected version's conventional install path. Match the project association
-  explicitly, support the launcher's `LauncherInstalled.dat`, and test
-  GUID-associated source installations and version mismatches.
-- Review project-specific warnings from a full content build and the packaged
-  flight profile before changing rendering or population budgets.
+Validation of the final second-pass snapshot:
+
+Runs used Unreal Engine 5.8.2 and an RTX 4070 SUPER. Frame timings describe this
+machine; they do not establish the RTX 3060 target budget.
+
+- Both Editor and Game targets built with `-DisableAdaptiveUnity`; all 53 Unreal
+  automation tests passed.
+- A full content build completed in 577.6 seconds with zero tangent, binormal
+  or project Python warnings. Its 302 changed mesh assets and three repaired
+  sound classes are retained; unchanged assets were restored to avoid
+  serialization-only diffs. Water/audio authoring also passed after removing
+  the unused plugins, and the saved audio hierarchy passed the loaded-asset test.
+- Python passed 11 regression methods and 400 checks, including 567 clear
+  sightlines through 63 actual panes and UV areas across the full catalog.
+  Engine discovery passed 22 fixture cases under PowerShell 7 and Windows
+  PowerShell 5.1. The main script harness passed 35 simulated cases and six
+  native argument checks in both shells.
+- Packaging completed in 3 minutes 19 seconds with no logged warnings or errors.
+  The archive contains all 48 staged files and no obsolete build files; its
+  additional files are runtime settings and logs. The staged manifest excludes
+  Water, Landmass, ChaosCloth, Buoyancy and runtime GeometryScripting.
+- The packaged walk smoke moved 2,300 cm. All 33 world, six menu, two dialogue
+  and six amenity captures passed at 1920 by 1080. Every amenity was found and
+  used through the interaction probe; the needs and coin deltas matched the
+  activity. The dialogue shows live following state and the dismissal option.
+- Visual comparison with the first pass confirms open windows and daylight
+  in the house, upstairs room, cottage and church. The house furnishings are
+  visibly readable, and the street view retains its exterior frames and glazing.
+  Six additional city, water and nature views show no new missing faces or
+  shading regressions.
+- The ten-minute packaged flight soak completed 63 route legs with zero stalls.
+  The worst frame was 68.1 ms and the longest of nine garbage collections was
+  5.1 ms. The object count stayed stable after the initial collection, memory
+  returned to about 2.4 GB, and no hang, route cycle or runaway allocation was
+  reported.
+
+Second-pass logs are under `Saved/Logs/Audit2*`, with screenshots in
+`Saved/Screenshots/Audit2`.
+
+## Audit outcome
+
+No unresolved corrective findings remain from these two passes. Final
+independent runtime, content and script reviews found no additional concrete
+repair in the audited scope. Existing milestone feature limits remain documented
+in [Playtest-0.1.md](Playtest-0.1.md).
