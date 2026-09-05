@@ -19,6 +19,7 @@ enum class EUEGT2MenuPage : uint8
 	Root,
 	Settings,
 	DevMode,
+	SurveyJournal,
 };
 
 /** Dev mode tab. */
@@ -54,12 +55,16 @@ public:
 
 	/** Jump straight to the settings screen on a given tab. */
 	void OpenSettings(int32 TabIndex);
+	void OpenSurveyJournal();
+	bool IsSurveyJournalOpen() const { return Page == EUEGT2MenuPage::SurveyJournal; }
 
 	virtual bool SupportsKeyboardFocus() const override { return true; }
+	virtual FReply OnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
 	virtual FReply OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
 
 private:
 	TSharedRef<SWidget> BuildRoot();
+	TSharedRef<SWidget> BuildSurveyJournal();
 	TSharedRef<SWidget> BuildSettings();
 	TSharedRef<SWidget> BuildGraphicsTab();
 	TSharedRef<SWidget> BuildAudioTab();

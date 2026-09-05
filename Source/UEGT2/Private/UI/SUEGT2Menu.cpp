@@ -1,4 +1,5 @@
 #include "SUEGT2Menu.h"
+#include "SUEGT2SurveyJournal.h"
 
 #include "Dev/UEGT2DevModeSubsystem.h"
 #include "Diagnostics/UEGT2CaptureSubsystem.h"
@@ -249,6 +250,21 @@ void SUEGT2Menu::GoToPage(EUEGT2MenuPage InPage)
 	Rebuild();
 }
 
+void SUEGT2Menu::OpenSurveyJournal()
+{
+	GoToPage(EUEGT2MenuPage::SurveyJournal);
+}
+
+TSharedRef<SWidget> SUEGT2Menu::BuildSurveyJournal()
+{
+	TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	return SNew(SBox).WidthOverride(720.0f)
+	[
+		SNew(SUEGT2SurveyJournal).Controller(WeakPC)
+		.OnClose(FSimpleDelegate::CreateLambda([WeakPC]() { if (WeakPC.IsValid()) { WeakPC->CloseMenu(); } }))
+	];
+}
+
 void SUEGT2Menu::SelectTab(EUEGT2SettingsTab InTab)
 {
 	Tab = InTab;
@@ -272,6 +288,7 @@ void SUEGT2Menu::Rebuild()
 	ContentHost->SetContent(
 		Page == EUEGT2MenuPage::Root    ? BuildRoot() :
 		Page == EUEGT2MenuPage::DevMode ? BuildDevMode() :
+		Page == EUEGT2MenuPage::SurveyJournal ? BuildSurveyJournal() :
 		                                  BuildSettings());
 }
 
@@ -320,7 +337,7 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 
 	TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
 	const bool bProgress = WeakPC.IsValid() && WeakPC->IsProgressEnabled();
-	const bool bHasCheckpoint = bProgress && WeakPC->HasSavedProgress();
+	const bool bHasCheckpoint = bMain && bProgress && WeakPC->HasSavedProgress();
 
 	if (bMain)
 	{
@@ -340,6 +357,11 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 			AddButton(LOCTEXT("SaveProgress", "Save Progress"), [WeakPC]()
 				{ if (WeakPC.IsValid()) { WeakPC->SaveProgress(); } });
 		}
+		if (WeakPC.IsValid() && WeakPC->IsSurveyJournalEnabled())
+		{
+			AddButton(LOCTEXT("SurveyJournal", "Survey Journal"), [WeakPC]()
+				{ if (WeakPC.IsValid()) { WeakPC->ToggleSurveyJournal(); } });
+		}
 	}
 
 	AddButton(LOCTEXT("Settings", "Settings"), [this]() { GoToPage(EUEGT2MenuPage::Settings); });
@@ -352,7 +374,7 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 
 	AddButton(LOCTEXT("Quit", "Quit to Desktop"), [WeakPC]() { if (WeakPC.IsValid()) { WeakPC->QuitGame(); } });
 
-	return SNew(SBox).WidthOverride(430.0f)
+	TSharedRef<SWidget> Content = SNew(SBox).WidthOverride(430.0f)
 	[
 		SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
@@ -397,6 +419,18 @@ TSharedRef<SWidget> SUEGT2Menu::BuildRoot()
 			.AutoWrapText(true)
 		]
 	];
+	// Feature actions and a wrapped checkpoint error must remain reachable at
+	// 720p. Leave room for the panel padding and a small viewport margin.
+	return SNew(SBox)
+		.MaxDesiredHeight_Lambda([this]()
+		{
+			const float Height = GetCachedGeometry().GetLocalSize().Y;
+			return FOptionalSize(FMath::Max(240.0f, (Height > 0.0f ? Height : 720.0f) - 104.0f));
+		})
+		[
+			SNew(SScrollBox)
+			+ SScrollBox::Slot() [ Content ]
+		];
 }
 
 // ---------------------------------------------------------------------------
@@ -814,6 +848,27 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 
 	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
 	[ Label(LOCTEXT("CameraHeading", "CAMERA & HUD"), 12, Accent, "Bold") ];
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		SNew(SBox)
+		.IsEnabled_Lambda([WeakPC]() { return WeakPC.IsValid() && WeakPC->IsSurveyJournalAvailable(); })
+		[
+			Row(LOCTEXT("SurveyJournalSetting", "Survey Journal"), MakeToggle(
+				[S]() { return S->GetSurveyJournalEnabled(); },
+				[this, S](bool bValue) { S->SetSurveyJournalEnabled(bValue); ApplyAndSave(); }))
+		]
+	];
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 12)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([WeakPC]()
+		{
+			return WeakPC.IsValid() && WeakPC->IsSurveyJournalAvailable()
+				? LOCTEXT("SurveyJournalSettingHint", "Review surveyed places and track directions back to them. Turning this off keeps your discoveries.")
+				: LOCTEXT("SurveyJournalUnavailable", "The survey journal is disabled for this session.");
+		})
+		.Font(Font("Regular", 11)).ColorAndOpacity(FSlateColor(Muted)).AutoWrapText(true)
+	];
 
 	List->AddSlot().AutoHeight().Padding(0, 7)
 	[
@@ -1528,7 +1583,26 @@ FReply SUEGT2Menu::OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEven
 		return FReply::Handled();
 	}
 
-	if (KeyEvent.GetKey() == EKeys::Escape)
+	const FKey Key = KeyEvent.GetKey();
+	if (Page == EUEGT2MenuPage::SurveyJournal && (Key == EKeys::Escape
+		|| Key == UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Journal)
+		|| Key == UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Menu)
+		|| Key == EKeys::Gamepad_Special_Left || Key == EKeys::Gamepad_Special_Right))
+	{
+		// UIOnly routes the paused shortcut through Slate, not Enhanced Input.
+		if (AUEGT2PlayerController* PC = Controller.Get()) { PC->CloseMenu(); }
+		return FReply::Handled();
+	}
+	if (Page == EUEGT2MenuPage::Root && MenuState == EUEGT2MenuState::Pause
+		&& (Key == UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Journal) || Key == EKeys::Gamepad_Special_Left))
+	{
+		if (AUEGT2PlayerController* PC = Controller.Get(); PC && PC->IsSurveyJournalEnabled())
+		{
+			PC->ToggleSurveyJournal();
+			return FReply::Handled();
+		}
+	}
+	if (Key == EKeys::Escape || Key == EKeys::Gamepad_Special_Right)
 	{
 		if (Page == EUEGT2MenuPage::Settings || Page == EUEGT2MenuPage::DevMode)
 		{
@@ -1543,6 +1617,23 @@ FReply SUEGT2Menu::OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEven
 			}
 			return FReply::Handled();
 		}
+	}
+	return FReply::Unhandled();
+}
+
+FReply SUEGT2Menu::OnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent)
+{
+	if (PendingRebind.IsSet()) { return FReply::Unhandled(); }
+	// Enter/Space can be rebound to Journal. Its shortcut must take priority
+	// over Slate's Accept action on both Track and the pause root's buttons.
+	if (Page == EUEGT2MenuPage::SurveyJournal) { return OnKeyDown(Geometry, KeyEvent); }
+	const AUEGT2PlayerController* PC = Controller.Get();
+	const FKey Key = KeyEvent.GetKey();
+	if (Page == EUEGT2MenuPage::Root && MenuState == EUEGT2MenuState::Pause
+		&& PC && PC->IsSurveyJournalEnabled()
+		&& (Key == UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Journal) || Key == EKeys::Gamepad_Special_Left))
+	{
+		return OnKeyDown(Geometry, KeyEvent);
 	}
 	return FReply::Unhandled();
 }

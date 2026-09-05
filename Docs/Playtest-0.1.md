@@ -38,6 +38,7 @@ the old checkpoint until you explicitly save the new one. Settings → Gameplay
 | Interact | E | Left face button |
 | Menu / pause | Escape | Start |
 | Diagnostics overlay | F3 | — |
+| Survey Journal | J | Back / View |
 
 The keyboard bindings can be changed in **Settings → Controls**. Sprint can be
 made a toggle in the same place. Mouse look and gamepad mappings are fixed.
@@ -105,6 +106,13 @@ You start just off the town square, facing east toward the harbour.
 
 There are 11 survey landmarks. Each shows a count when you use it. Save Progress
 keeps these discoveries with the rest of your checkpoint.
+
+Press **J** or choose **Survey Journal** from Pause to review them. Surveyed
+places have a **Track** button. Close the journal and follow the HUD arrow,
+compass direction and distance to return; the distance is a straight line,
+so choose your own route around water and buildings. **Stop Tracking** removes
+the cue. You can turn the journal off separately in Settings → Gameplay, and
+use it without saving enabled. The selected target resets on a new visit.
 
 ## What to look at
 

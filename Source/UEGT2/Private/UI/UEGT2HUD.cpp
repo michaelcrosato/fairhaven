@@ -12,6 +12,7 @@
 #include "Player/UEGT2NeedsComponent.h"
 #include "Player/UEGT2PlayerController.h"
 #include "Settings/UEGT2GameUserSettings.h"
+#include "Survey/UEGT2SurveySubsystem.h"
 #include "World/UEGT2Almanac.h"
 #include "World/UEGT2Weather.h"
 #include "UEGT2LogChannels.h"
@@ -99,6 +100,54 @@ void AUEGT2HUD::DrawHUD()
 		DrawLife(Canvas->ClipY);
 	}
 	DrawDevStatus(Canvas->ClipX);
+	DrawSurveyTracking(PC);
+}
+
+void AUEGT2HUD::DrawSurveyTracking(AUEGT2PlayerController* PC)
+{
+	const UUEGT2SurveySubsystem* Survey = UUEGT2SurveySubsystem::Get(GetWorld());
+	if (!PC || PC->IsDialogueOpen() || !Survey) { return; }
+	FVector ViewLocation;
+	FRotator ViewRotation;
+	PC->GetPlayerViewPoint(ViewLocation, ViewRotation);
+	FUEGT2SurveyDirection Direction;
+	if (!Survey->GetTrackedDirection(ViewLocation, ViewRotation.Yaw, Direction)) { return; }
+
+	FNumberFormattingOptions Format;
+	Format.SetMaximumFractionalDigits(Direction.DistanceMetres >= 1000.0f ? 1 : 0);
+	const FText Distance = FText::Format(Direction.DistanceMetres >= 1000.0f
+		? NSLOCTEXT("UEGT2SurveyHUD", "Kilometres", "{0} km")
+		: NSLOCTEXT("UEGT2SurveyHUD", "Metres", "{0} m"),
+		FText::AsNumber(Direction.DistanceMetres >= 1000.0f ? Direction.DistanceMetres / 1000.0f : Direction.DistanceMetres, &Format));
+	const FText Detail = FText::Format(NSLOCTEXT("UEGT2SurveyHUD", "Direction", "{0} · {1} · straight line"),
+		Distance, Direction.CompassDirection);
+	const FKey Key = UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Journal);
+	const FText Hint = FText::Format(NSLOCTEXT("UEGT2SurveyHUD", "JournalKey", "[{0}] Survey Journal"), Key.GetDisplayName());
+	const float Width = 370.0f;
+	const float X = Canvas->ClipX - Width - 24.0f;
+	const float Y = Canvas->ClipY - 106.0f;
+	DrawRect(UEGT2Hud::Shade, X, Y, Width, 82.0f);
+	DrawText(Direction.Name.ToString(), UEGT2Hud::Ink, X + 58.0f, Y + 11.0f, GEngine->GetMediumFont());
+	DrawText(Detail.ToString(), UEGT2Hud::Accent, X + 58.0f, Y + 35.0f, GEngine->GetSmallFont());
+	DrawText(Hint.ToString(), UEGT2Hud::Muted, X + 58.0f, Y + 57.0f, GEngine->GetSmallFont());
+
+	const FVector2D Centre(X + 28.0f, Y + 38.0f);
+	if (Direction.bNearby)
+	{
+		DrawRect(UEGT2Hud::Accent, Centre.X - 4.0f, Centre.Y - 4.0f, 8.0f, 8.0f);
+		return;
+	}
+	// Up means ahead, right means turn right; the compass text is absolute north.
+	const float Radians = FMath::DegreesToRadians(Direction.RelativeBearingDegrees);
+	const FVector2D Forward(FMath::Sin(Radians), -FMath::Cos(Radians));
+	const FVector2D Side(-Forward.Y, Forward.X);
+	const FVector2D Tip = Centre + Forward * 16.0f;
+	const FVector2D Tail = Centre - Forward * 12.0f;
+	const FVector2D WingA = Tip - Forward * 9.0f + Side * 7.0f;
+	const FVector2D WingB = Tip - Forward * 9.0f - Side * 7.0f;
+	DrawLine(Tail.X, Tail.Y, Tip.X, Tip.Y, UEGT2Hud::Accent, 2.0f);
+	DrawLine(WingA.X, WingA.Y, Tip.X, Tip.Y, UEGT2Hud::Accent, 2.0f);
+	DrawLine(WingB.X, WingB.Y, Tip.X, Tip.Y, UEGT2Hud::Accent, 2.0f);
 }
 
 void AUEGT2HUD::DrawCrosshair(float CentreX, float CentreY, bool bHasFocus)

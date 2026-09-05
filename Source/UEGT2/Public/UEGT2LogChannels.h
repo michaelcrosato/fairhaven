@@ -28,3 +28,5 @@ UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Dev, Log, All);
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2NPC, Log, All);
 /** Explicit player checkpoints and their feature gate. */
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Progress, Log, All);
+/** Survey journal tracking and its feature gate. */
+UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Survey, Log, All);

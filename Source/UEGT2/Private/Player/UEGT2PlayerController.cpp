@@ -16,6 +16,7 @@
 #include "Player/UEGT2NeedsComponent.h"
 #include "Progress/UEGT2ProgressSubsystem.h"
 #include "Settings/UEGT2GameUserSettings.h"
+#include "Survey/UEGT2SurveySubsystem.h"
 #include "UEGT2LogChannels.h"
 #include "NPC/UEGT2NPCActor.h"
 #include "UI/SUEGT2Dialogue.h"
@@ -100,6 +101,7 @@ void AUEGT2PlayerController::SetupInputComponent()
 
 	Input->BindAction(InputConfig->MenuAction, ETriggerEvent::Started, this, &AUEGT2PlayerController::OnMenuAction);
 	Input->BindAction(InputConfig->DiagnosticsAction, ETriggerEvent::Started, this, &AUEGT2PlayerController::OnDiagnosticsAction);
+	Input->BindAction(InputConfig->JournalAction, ETriggerEvent::Started, this, &AUEGT2PlayerController::ToggleSurveyJournal);
 
 	// SetupInputComponent usually runs BEFORE the pawn is possessed, so the
 	// pawn's own actions are bound from whichever of the two happens second.
@@ -261,6 +263,10 @@ void AUEGT2PlayerController::AskDialogueTopic(int32 Topic)
 
 void AUEGT2PlayerController::ApplyMenuState(EUEGT2MenuState NewState)
 {
+	if (IsSurveyJournalOpen() && NewState != EUEGT2MenuState::Pause)
+	{
+		UE_LOG(LogUEGT2Survey, Log, TEXT("Survey journal closed."));
+	}
 	if (NewState != EUEGT2MenuState::None && DialoguePartner.IsValid())
 	{
 		CloseDialogue();
@@ -371,6 +377,35 @@ bool AUEGT2PlayerController::SaveProgress()
 {
 	UUEGT2ProgressSubsystem* Progress = UUEGT2ProgressSubsystem::Get(GetWorld());
 	return Progress && Progress->SaveProgress(this);
+}
+
+void AUEGT2PlayerController::ToggleSurveyJournal()
+{
+	if (IsSurveyJournalOpen()) { CloseMenu(); return; }
+	if (MenuState == EUEGT2MenuState::Main || !IsSurveyJournalEnabled()) { return; }
+	ShowPauseMenu();
+	if (MenuWidget.IsValid())
+	{
+		MenuWidget->OpenSurveyJournal();
+		UE_LOG(LogUEGT2Survey, Log, TEXT("Survey journal opened."));
+	}
+}
+
+bool AUEGT2PlayerController::IsSurveyJournalOpen() const
+{
+	return MenuState == EUEGT2MenuState::Pause && MenuWidget.IsValid() && MenuWidget->IsSurveyJournalOpen();
+}
+
+bool AUEGT2PlayerController::IsSurveyJournalEnabled() const
+{
+	const UUEGT2SurveySubsystem* Survey = UUEGT2SurveySubsystem::Get(GetWorld());
+	return Survey && Survey->IsEnabled();
+}
+
+bool AUEGT2PlayerController::IsSurveyJournalAvailable() const
+{
+	const UUEGT2SurveySubsystem* Survey = UUEGT2SurveySubsystem::Get(GetWorld());
+	return Survey && Survey->IsAvailable();
 }
 
 bool AUEGT2PlayerController::ContinueProgress()

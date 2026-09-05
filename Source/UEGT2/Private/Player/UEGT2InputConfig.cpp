@@ -37,6 +37,7 @@ const TArray<FUEGT2InputSlotDef>& UUEGT2InputConfig::GetSlotDefs()
 		Add(EUEGT2InputSlot::Interact,    TEXT("Interact"),    LOCTEXT("Interact", "Interact"),        EKeys::E, EKeys::Gamepad_FaceButton_Left, false);
 		Add(EUEGT2InputSlot::Menu,        TEXT("Menu"),        LOCTEXT("Menu", "Menu"),                EKeys::Escape, EKeys::Gamepad_Special_Right, false);
 		Add(EUEGT2InputSlot::Diagnostics, TEXT("Diagnostics"), LOCTEXT("Diagnostics", "Diagnostics Overlay"), EKeys::F3, FKey(), false);
+		Add(EUEGT2InputSlot::Journal,     TEXT("Journal"),     LOCTEXT("Journal", "Survey Journal"), EKeys::J, EKeys::Gamepad_Special_Left, false);
 		return Result;
 	}();
 	return Defs;
@@ -86,9 +87,11 @@ void UUEGT2InputConfig::Initialize()
 	InteractAction = MakeAction(TEXT("IA_Interact"), Boolean);
 	MenuAction = MakeAction(TEXT("IA_Menu"), Boolean);
 	DiagnosticsAction = MakeAction(TEXT("IA_Diagnostics"), Boolean);
+	JournalAction = MakeAction(TEXT("IA_Journal"), Boolean);
 
 	// The menu must still respond while the world is paused.
 	MenuAction->bTriggerWhenPaused = true;
+	JournalAction->bTriggerWhenPaused = true;
 }
 
 UInputMappingContext* UUEGT2InputConfig::BuildMappingContext()
@@ -174,6 +177,7 @@ UInputMappingContext* UUEGT2InputConfig::BuildMappingContext()
 		{ EUEGT2InputSlot::Interact,    &UUEGT2InputConfig::InteractAction },
 		{ EUEGT2InputSlot::Menu,        &UUEGT2InputConfig::MenuAction },
 		{ EUEGT2InputSlot::Diagnostics, &UUEGT2InputConfig::DiagnosticsAction },
+		{ EUEGT2InputSlot::Journal,     &UUEGT2InputConfig::JournalAction },
 	};
 
 	for (const FButtonMapping& Button : ButtonMappings)

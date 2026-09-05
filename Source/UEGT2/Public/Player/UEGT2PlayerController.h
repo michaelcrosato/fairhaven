@@ -51,6 +51,12 @@ public:
 	bool HasSavedProgress() const;
 	FText GetProgressStatus() const;
 
+	/** A paused journal; discoveries remain owned by the current world's landmarks. */
+	void ToggleSurveyJournal();
+	bool IsSurveyJournalOpen() const;
+	bool IsSurveyJournalEnabled() const;
+	bool IsSurveyJournalAvailable() const;
+
 	/** Drop back to the front end without leaving the level. */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Menu") void ReturnToMainMenu();
 

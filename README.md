@@ -30,6 +30,10 @@ or New Visit to start fresh. Saving is manual and can be turned off in Settings
 → Gameplay. [Docs/Features.md](Docs/Features.md) records each added feature,
 its maintainer switch and its verification.
 
+**Find your way back.** Press J for the Survey Journal, review the 11 landmarks,
+and track a surveyed place for a direction arrow and straight-line distance.
+The journal has its own switch in Settings → Gameplay.
+
 ![The farmland west of town](Docs/Images/farmland.png)
 
 | | |
@@ -107,6 +111,7 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Package.ps1` | Package a playable build |
 | `./Scripts/Smoke-Packaged.ps1` | Check that real input moves the packaged player |
 | `./Scripts/Smoke-Progress.ps1` | Check save, Continue, New Visit and disabled saving in isolated packaged runs |
+| `./Scripts/Smoke-Survey.ps1 -Capture` | Check rebound journal input, tracking and off switches; capture the journal and HUD |
 | `./Scripts/Screenshot-Tour.ps1` | Render the registered viewpoints headlessly to PNG |
 | `./Scripts/Screenshot-Tour.ps1 -Menu` | Render the menu and settings screens |
 | `./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'` | Exercise food, washing, sitting and work through player interaction |

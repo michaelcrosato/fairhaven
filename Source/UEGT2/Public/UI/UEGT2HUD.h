@@ -42,6 +42,8 @@ private:
 
 	/** Top-right banner listing whatever dev mode currently has switched on. */
 	void DrawDevStatus(float ScreenWidth);
+	/** Bottom-right: straight-line direction to the selected surveyed place. */
+	void DrawSurveyTracking(AUEGT2PlayerController* PC);
 
 	/**
 	 * Bottom-left: the player's trade, their purse, what they are doing and

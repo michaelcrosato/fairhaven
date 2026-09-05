@@ -35,6 +35,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	Settings->SetShowAlmanac(false);
 	Settings->SetShowNeeds(false);
 	Settings->SetSaveProgressEnabled(false);
+	Settings->SetSurveyJournalEnabled(false);
 	Settings->SetUseFahrenheit(true);
 	Settings->SetCrowdDensity(0.2f);
 	Settings->SetKeyOverride(TEXT("Jump"), EKeys::J);
@@ -60,6 +61,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("almanac"), Settings->GetShowAlmanac());
 	TestTrue(TEXT("needs"), Settings->GetShowNeeds());
 	TestTrue(TEXT("progress saving"), Settings->GetSaveProgressEnabled());
+	TestTrue(TEXT("survey journal"), Settings->GetSurveyJournalEnabled());
 	TestFalse(TEXT("Fahrenheit"), Settings->GetUseFahrenheit());
 	TestEqual(TEXT("crowd density"), Settings->GetCrowdDensity(), 1.0f);
 	TestFalse(TEXT("key override removed"), Settings->GetKeyOverride(TEXT("Jump")).IsValid());

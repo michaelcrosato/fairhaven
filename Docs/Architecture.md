@@ -67,7 +67,8 @@ AUEGT2GameMode
 │   └── UUEGT2NeedsComponent    player needs, purse and current activity
 ├── AUEGT2PlayerController     input, menu ownership, diagnostics toggle
 │   ├── SUEGT2Menu             front end, pause, settings (Slate, in code)
-│   └── SUEGT2Dialogue         conversation and follow controls
+│   ├── SUEGT2Dialogue         conversation and follow controls
+│   └── SUEGT2SurveyJournal    paused discovery roster and tracking controls
 ├── AUEGT2HUD                  prompts, needs, almanac, F3 overlay
 └── UUEGT2GameUserSettings     every persisted setting, one settings file
 
@@ -84,6 +85,7 @@ World actors:
   AUEGT2RouteNetwork           the baked walkable road graph
   UUEGT2NPCDirector            LOD tiers, schedule slices, the speech budget
   UUEGT2CaptureSubsystem       headless screenshot tours
+  UUEGT2SurveySubsystem        landmark roster and one weak direction target; no tick
 ```
 
 **The inhabitants** get their own document: [NPCs.md](NPCs.md). The organising
@@ -412,7 +414,7 @@ or performance. A screenshot or short test does not cover a sustained hitch.
   quality levels.
 - `LogUEGT2`, `LogUEGT2Player`, `LogUEGT2Interaction`, `LogUEGT2Settings`,
   `LogUEGT2UI`, `LogUEGT2World`, `LogUEGT2Diag`, `LogUEGT2Dev`, `LogUEGT2NPC`,
-  `LogUEGT2Progress` —
+  `LogUEGT2Progress`, `LogUEGT2Survey` —
   one channel per system.
 - **The population report.** Twelve seconds into any run, `LogUEGT2NPC` prints
   how many inhabitants exist, how many are outdoors, how many are walking, how
