@@ -216,6 +216,7 @@ bool UUEGT2ProgressSubsystem::IsAvailable() const
 		&& !UUEGT2CaptureSubsystem::IsWalkSmokeRequested()
 		&& !UUEGT2CaptureSubsystem::IsFlySoakRequested()
 		&& !FParse::Param(FCommandLine::Get(), TEXT("UEGT2RestSmoke"))
+		&& !FParse::Param(FCommandLine::Get(), TEXT("UEGT2HudSizeSmoke"))
 		&& ResolveSlot(Slot);
 }
 

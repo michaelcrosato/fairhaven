@@ -16,6 +16,7 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SSlider.h"
 #include "UI/UEGT2UIStyle.h"
+#include "UI/UEGT2HUD.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
@@ -996,6 +997,37 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 		.Font(Font("Regular", 11)).ColorAndOpacity(FSlateColor(Muted)).AutoWrapText(true)
 	];
 
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		SNew(SBox)
+		.IsEnabled_Lambda([]() { return GetDefault<AUEGT2HUD>()->bHudScalingEnabled; })
+		[
+			Row(LOCTEXT("HudSize", "HUD Size"), MakeChoice(
+				[S]() { return S->GetHudSizeLevel(); },
+				[this, S](int32 Index) { S->SetHudSizeLevel(Index); ApplyAndSave(); },
+				[]() { return 3; },
+				[](int32 Index) -> FText
+				{
+					switch (Index)
+					{
+					case 1: return LOCTEXT("HudLarge", "Large (125%)");
+					case 2: return LOCTEXT("HudLarger", "Larger (150%)");
+					default: return LOCTEXT("HudNormal", "Normal (100%)");
+					}
+				}))
+		]
+	];
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 12)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([]()
+		{
+			return GetDefault<AUEGT2HUD>()->bHudScalingEnabled
+				? LOCTEXT("HudSizeHint", "Enlarge in-game labels, needs, directions and speech. Larger sizes fit to the viewport. Normal restores the original size.")
+				: LOCTEXT("HudSizeUnavailable", "Larger HUD sizes are disabled for this session. Your size preference is kept.");
+		})
+		.Font(Font("Regular", 11)).ColorAndOpacity(FSlateColor(Muted)).AutoWrapText(true)
+	];
 	List->AddSlot().AutoHeight().Padding(0, 7)
 	[
 		Row(LOCTEXT("HeadBob", "Head Bob"), MakeSlider(

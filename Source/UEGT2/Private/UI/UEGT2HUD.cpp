@@ -35,6 +35,24 @@ namespace UEGT2Hud
 	const float BubbleMaxWidth = 300.0f;
 }
 
+/** Prepared once per draw, shared by placement and rendering. Never retained. */
+struct FUEGT2HUDLife
+{
+	FUEGT2NPCNeeds Needs;
+	TArray<FString> Purse, Activity;
+	float PurseH = 0.0f, ActivityH = 0.0f, RowH = 0.0f, BodyW = 0.0f;
+	FBox2D Bounds = FBox2D(ForceInit);
+};
+
+struct FUEGT2HUDSurvey
+{
+	TArray<FString> Name, Detail, Hint;
+	float NameH = 0.0f, DetailH = 0.0f, HintH = 0.0f;
+	float Bearing = 0.0f;
+	bool bNearby = false;
+	FBox2D Bounds = FBox2D(ForceInit);
+};
+
 AUEGT2HUD::AUEGT2HUD()
 {
 	PrimaryActorTick.bCanEverTick = false;
@@ -65,6 +83,23 @@ void AUEGT2HUD::DrawHUD()
 
 	AUEGT2Character* Explorer = PC ? Cast<AUEGT2Character>(PC->GetPawn()) : nullptr;
 	const UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get();
+	HudLayout = UEGT2HUDLayout::Resolve(FVector2D(Canvas->ClipX, Canvas->ClipY),
+		Settings ? Settings->GetHudScale() : 1.0f, bHudScalingEnabled);
+	if (LastLoggedScale != HudLayout.Scale || bLastLoggedGate != bHudScalingEnabled)
+	{
+		UE_LOG(LogUEGT2UI, Log, TEXT("HUD scale %.2fx; maintainer gate %s."), HudLayout.Scale,
+			bHudScalingEnabled ? TEXT("on") : TEXT("off"));
+		LastLoggedScale = HudLayout.Scale;
+		bLastLoggedGate = bHudScalingEnabled;
+	}
+	const FUEGT2HUDSurvey Survey = PrepareSurvey(PC);
+	const float SurveyWidth = Survey.Bounds.bIsValid ? Survey.Bounds.GetSize().X / HudLayout.Scale : 0.0f;
+	const FUEGT2HUDLife Life = (!Settings || Settings->GetShowNeeds())
+		? PrepareLife(Explorer, UEGT2HUDLayout::BottomLeftMaxWidth(HudLayout, SurveyWidth, Survey.Bounds.bIsValid))
+		: FUEGT2HUDLife();
+	TArray<FBox2D> PlayerPanels;
+	if (Life.Bounds.bIsValid) { PlayerPanels.Add(Life.Bounds); }
+	if (Survey.Bounds.bIsValid) { PlayerPanels.Add(Survey.Bounds); }
 
 	const float CentreX = Canvas->ClipX * 0.5f;
 	const float CentreY = Canvas->ClipY * 0.5f;
@@ -76,14 +111,17 @@ void AUEGT2HUD::DrawHUD()
 	{
 		DrawCrosshair(CentreX, CentreY, bHasFocus);
 	}
+	FBox2D Prompt(ForceInit);
 	if (!Settings || Settings->GetShowInteractPrompts())
 	{
-		DrawPrompt(CentreX, CentreY);
+		Prompt = DrawPrompt(CentreX / HudLayout.Scale, CentreY / HudLayout.Scale);
 	}
-	DrawMessage(CentreX, Canvas->ClipY);
+	const FBox2D Message = DrawMessage(PlayerPanels);
+	if (Prompt.bIsValid) { PlayerPanels.Add(Prompt); }
+	if (Message.bIsValid) { PlayerPanels.Add(Message); }
 	if (!Settings || Settings->GetShowSpeechBubbles())
 	{
-		DrawSpeechBubbles();
+		DrawSpeechBubbles(PlayerPanels);
 	}
 
 	if (PC && PC->IsDiagnosticsVisible())
@@ -93,25 +131,26 @@ void AUEGT2HUD::DrawHUD()
 
 	if (!Settings || Settings->GetShowAlmanac())
 	{
-		DrawAlmanac(Canvas->ClipX);
+		DrawAlmanac(Canvas->ClipX / HudLayout.Scale);
 	}
 	if (!Settings || Settings->GetShowNeeds())
 	{
-		DrawLife(Canvas->ClipY);
+		DrawLife(Life);
 	}
 	DrawDevStatus(Canvas->ClipX);
-	DrawSurveyTracking(PC);
+	DrawSurveyTracking(Survey);
 }
 
-void AUEGT2HUD::DrawSurveyTracking(AUEGT2PlayerController* PC)
+FUEGT2HUDSurvey AUEGT2HUD::PrepareSurvey(AUEGT2PlayerController* PC)
 {
+	FUEGT2HUDSurvey Result;
 	const UUEGT2SurveySubsystem* Survey = UUEGT2SurveySubsystem::Get(GetWorld());
-	if (!PC || PC->IsDialogueOpen() || !Survey) { return; }
+	if (!PC || PC->IsDialogueOpen() || !Survey) { return Result; }
 	FVector ViewLocation;
 	FRotator ViewRotation;
 	PC->GetPlayerViewPoint(ViewLocation, ViewRotation);
 	FUEGT2SurveyDirection Direction;
-	if (!Survey->GetTrackedDirection(ViewLocation, ViewRotation.Yaw, Direction)) { return; }
+	if (!Survey->GetTrackedDirection(ViewLocation, ViewRotation.Yaw, Direction)) { return Result; }
 
 	FNumberFormattingOptions Format;
 	Format.SetMaximumFractionalDigits(Direction.DistanceMetres >= 1000.0f ? 1 : 0);
@@ -124,30 +163,50 @@ void AUEGT2HUD::DrawSurveyTracking(AUEGT2PlayerController* PC)
 	const FKey Key = UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Journal);
 	const FText Hint = FText::Format(NSLOCTEXT("UEGT2SurveyHUD", "JournalKey", "[{0}] Survey Journal"), Key.GetDisplayName());
 	const float Width = 370.0f;
-	const float X = Canvas->ClipX - Width - 24.0f;
-	const float Y = Canvas->ClipY - 106.0f;
-	DrawRect(UEGT2Hud::Shade, X, Y, Width, 82.0f);
-	DrawText(Direction.Name.ToString(), UEGT2Hud::Ink, X + 58.0f, Y + 11.0f, GEngine->GetMediumFont());
-	DrawText(Detail.ToString(), UEGT2Hud::Accent, X + 58.0f, Y + 35.0f, GEngine->GetSmallFont());
-	DrawText(Hint.ToString(), UEGT2Hud::Muted, X + 58.0f, Y + 57.0f, GEngine->GetSmallFont());
+	float Measured = 0.0f;
+	LayoutText(Direction.Name.ToString(), GEngine->GetMediumFont(), Width - 70.0f, Result.Name, Measured, Result.NameH, 2);
+	LayoutText(Detail.ToString(), GEngine->GetSmallFont(), Width - 70.0f, Result.Detail, Measured, Result.DetailH, 2);
+	LayoutText(Hint.ToString(), GEngine->GetSmallFont(), Width - 70.0f, Result.Hint, Measured, Result.HintH, 2);
+	const float Height = HudLayout.bEnhanced
+		? 22.0f + Result.NameH * Result.Name.Num() + Result.DetailH * Result.Detail.Num() + Result.HintH * Result.Hint.Num() + 8.0f
+		: 82.0f;
+	Result.Bounds = UEGT2HUDLayout::AnchorPanel(HudLayout, FVector2D(Width, Height), EUEGT2HUDAnchor::BottomRight, FVector2D(24.0, 24.0));
+	Result.Bearing = Direction.RelativeBearingDegrees;
+	Result.bNearby = Direction.bNearby;
+	return Result;
+}
+
+void AUEGT2HUD::DrawSurveyTracking(const FUEGT2HUDSurvey& Survey)
+{
+	if (!Survey.Bounds.bIsValid) { return; }
+	const FVector2D Origin = HudLayout.ToLogical(Survey.Bounds.Min);
+	const FVector2D Size = HudLayout.ToLogical(Survey.Bounds.GetSize());
+	const float X = Origin.X, Y = Origin.Y;
+	DrawHudRect(UEGT2Hud::Shade, X, Y, Size.X, Size.Y);
+	float Cursor = Y + 11.0f;
+	for (const FString& Line : Survey.Name) { DrawHudText(Line, UEGT2Hud::Ink, X + 58.0f, Cursor, GEngine->GetMediumFont()); Cursor += Survey.NameH; }
+	Cursor = HudLayout.bEnhanced ? Cursor + 4.0f : Y + 35.0f;
+	for (const FString& Line : Survey.Detail) { DrawHudText(Line, UEGT2Hud::Accent, X + 58.0f, Cursor, GEngine->GetSmallFont()); Cursor += Survey.DetailH; }
+	Cursor = HudLayout.bEnhanced ? Cursor + 4.0f : Y + 57.0f;
+	for (const FString& Line : Survey.Hint) { DrawHudText(Line, UEGT2Hud::Muted, X + 58.0f, Cursor, GEngine->GetSmallFont()); Cursor += Survey.HintH; }
 
 	const FVector2D Centre(X + 28.0f, Y + 38.0f);
-	if (Direction.bNearby)
+	if (Survey.bNearby)
 	{
-		DrawRect(UEGT2Hud::Accent, Centre.X - 4.0f, Centre.Y - 4.0f, 8.0f, 8.0f);
+		DrawHudRect(UEGT2Hud::Accent, Centre.X - 4.0f, Centre.Y - 4.0f, 8.0f, 8.0f);
 		return;
 	}
 	// Up means ahead, right means turn right; the compass text is absolute north.
-	const float Radians = FMath::DegreesToRadians(Direction.RelativeBearingDegrees);
+	const float Radians = FMath::DegreesToRadians(Survey.Bearing);
 	const FVector2D Forward(FMath::Sin(Radians), -FMath::Cos(Radians));
 	const FVector2D Side(-Forward.Y, Forward.X);
 	const FVector2D Tip = Centre + Forward * 16.0f;
 	const FVector2D Tail = Centre - Forward * 12.0f;
 	const FVector2D WingA = Tip - Forward * 9.0f + Side * 7.0f;
 	const FVector2D WingB = Tip - Forward * 9.0f - Side * 7.0f;
-	DrawLine(Tail.X, Tail.Y, Tip.X, Tip.Y, UEGT2Hud::Accent, 2.0f);
-	DrawLine(WingA.X, WingA.Y, Tip.X, Tip.Y, UEGT2Hud::Accent, 2.0f);
-	DrawLine(WingB.X, WingB.Y, Tip.X, Tip.Y, UEGT2Hud::Accent, 2.0f);
+	DrawHudLine(Tail.X, Tail.Y, Tip.X, Tip.Y, UEGT2Hud::Accent, 2.0f);
+	DrawHudLine(WingA.X, WingA.Y, Tip.X, Tip.Y, UEGT2Hud::Accent, 2.0f);
+	DrawHudLine(WingB.X, WingB.Y, Tip.X, Tip.Y, UEGT2Hud::Accent, 2.0f);
 }
 
 void AUEGT2HUD::DrawCrosshair(float CentreX, float CentreY, bool bHasFocus)
@@ -163,18 +222,18 @@ void AUEGT2HUD::DrawCrosshair(float CentreX, float CentreY, bool bHasFocus)
 	DrawLine(CentreX, CentreY + Gap, CentreX, CentreY + Gap + Length, Colour, Thickness);
 }
 
-void AUEGT2HUD::DrawPrompt(float CentreX, float CentreY)
+FBox2D AUEGT2HUD::DrawPrompt(float CentreX, float CentreY)
 {
 	AUEGT2PlayerController* PC = Cast<AUEGT2PlayerController>(PlayerOwner);
 	AUEGT2Character* Explorer = PC ? Cast<AUEGT2Character>(PC->GetPawn()) : nullptr;
 	if (!Explorer || !Explorer->GetInteraction())
 	{
-		return;
+		return FBox2D(ForceInit);
 	}
 	const FText Prompt = Explorer->GetInteraction()->GetFocusedPrompt();
 	if (Prompt.IsEmpty())
 	{
-		return;
+		return FBox2D(ForceInit);
 	}
 
 	const FKey Key = UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Interact);
@@ -184,34 +243,43 @@ void AUEGT2HUD::DrawPrompt(float CentreX, float CentreY)
 
 	UFont* Font = GEngine->GetMediumFont();
 	float Width = 0.0f, Height = 0.0f;
-	GetTextSize(Text, Width, Height, Font, 1.0f);
+	TArray<FString> Lines;
+	LayoutText(Text, Font, (Canvas->ClipX - 32.0f) / HudLayout.Scale - 24.0f, Lines, Width, Height, 3);
 
 	const float X = CentreX - Width * 0.5f;
 	const float Y = CentreY + 62.0f;
 
-	DrawRect(UEGT2Hud::Shade, X - 12.0f, Y - 6.0f, Width + 24.0f, Height + 12.0f);
-	DrawText(Text, UEGT2Hud::Ink, X, Y, Font, 1.0f, false);
+	DrawHudRect(UEGT2Hud::Shade, X - 12.0f, Y - 6.0f, Width + 24.0f, Height * Lines.Num() + 12.0f);
+	for (int32 Row = 0; Row < Lines.Num(); ++Row) { DrawHudText(Lines[Row], UEGT2Hud::Ink, X, Y + Row * Height, Font); }
+	return FBox2D(HudLayout.ToScreen(FVector2D(X - 12.0f, Y - 6.0f)),
+		HudLayout.ToScreen(FVector2D(X + Width + 12.0f, Y + Height * Lines.Num() + 6.0f)));
 }
 
-void AUEGT2HUD::DrawMessage(float CentreX, float ScreenHeight)
+FBox2D AUEGT2HUD::DrawMessage(const TArray<FBox2D>& BottomPanels)
 {
 	if (CurrentMessage.IsEmpty() || !GetWorld() || GetWorld()->GetTimeSeconds() > MessageExpiry)
 	{
-		return;
+		return FBox2D(ForceInit);
 	}
 	const FString Text = CurrentMessage.ToString();
 	UFont* Font = GEngine->GetMediumFont();
 	float Width = 0.0f, Height = 0.0f;
-	GetTextSize(Text, Width, Height, Font, 1.0f);
+	TArray<FString> Lines;
+	LayoutText(Text, Font, (Canvas->ClipX - 32.0f) / HudLayout.Scale - 28.0f, Lines, Width, Height, 3);
 
 	const float Remaining = MessageExpiry - GetWorld()->GetTimeSeconds();
 	const float Alpha = FMath::Clamp(Remaining, 0.0f, 1.0f);
-	const float X = CentreX - Width * 0.5f;
-	const float Y = ScreenHeight - 140.0f;
+	const FBox2D Bounds = UEGT2HUDLayout::PlaceMessage(HudLayout, FVector2D(Width + 28.0f, Height * Lines.Num() + 14.0f), BottomPanels);
+	const FVector2D Origin = HudLayout.ToLogical(Bounds.Min);
+	const float X = Origin.X + 14.0f, Y = Origin.Y + 7.0f;
 
-	DrawRect(FLinearColor(UEGT2Hud::Shade.R, UEGT2Hud::Shade.G, UEGT2Hud::Shade.B, UEGT2Hud::Shade.A * Alpha),
-		X - 14.0f, Y - 7.0f, Width + 28.0f, Height + 14.0f);
-	DrawText(Text, FLinearColor(UEGT2Hud::Ink.R, UEGT2Hud::Ink.G, UEGT2Hud::Ink.B, Alpha), X, Y, Font, 1.0f, false);
+	DrawHudRect(FLinearColor(UEGT2Hud::Shade.R, UEGT2Hud::Shade.G, UEGT2Hud::Shade.B, UEGT2Hud::Shade.A * Alpha),
+		X - 14.0f, Y - 7.0f, Width + 28.0f, Height * Lines.Num() + 14.0f);
+	for (int32 Row = 0; Row < Lines.Num(); ++Row)
+	{
+		DrawHudText(Lines[Row], FLinearColor(UEGT2Hud::Ink.R, UEGT2Hud::Ink.G, UEGT2Hud::Ink.B, Alpha), X, Y + Row * Height, Font);
+	}
+	return Bounds;
 }
 
 void AUEGT2HUD::DrawAlmanac(float ScreenWidth)
@@ -253,33 +321,33 @@ void AUEGT2HUD::DrawAlmanac(float ScreenWidth)
 	float ClockW = 0.0f, ClockH = 0.0f;
 	float DateW = 0.0f, DateH = 0.0f;
 	float CondW = 0.0f, CondH = 0.0f;
-	GetTextSize(Clock, ClockW, ClockH, Big, 1.0f);
-	GetTextSize(DateLine, DateW, DateH, Small, 1.0f);
-	GetTextSize(Conditions, CondW, CondH, Small, 1.0f);
+	MeasureHudText(Clock, ClockW, ClockH, Big, 1.0f);
+	MeasureHudText(DateLine, DateW, DateH, Small, 1.0f);
+	MeasureHudText(Conditions, CondW, CondH, Small, 1.0f);
 
 	const float PadX = 14.0f;
 	const float PadY = 10.0f;
 	const float Gap = 4.0f;
 	const float BoxW = FMath::Max3(ClockW, DateW, CondW) + PadX * 2.0f;
 	const float BoxH = ClockH + DateH + CondH + Gap * 2.0f + PadY * 2.0f;
-	const float X = 24.0f;
-	const float Y = 20.0f;
+	const float X = 24.0f / HudLayout.Scale;
+	const float Y = 20.0f / HudLayout.Scale;
 
 	DrawRoundedRect(UEGT2Hud::Shade, X, Y, BoxW, BoxH, 7.0f);
 
 	float Cursor = Y + PadY;
-	DrawText(Clock, UEGT2Hud::Ink, X + PadX, Cursor, Big, 1.0f, false);
+	DrawHudText(Clock, UEGT2Hud::Ink, X + PadX, Cursor, Big, 1.0f, false);
 	Cursor += ClockH + Gap;
-	DrawText(DateLine, UEGT2Hud::Muted, X + PadX, Cursor, Small, 1.0f, false);
+	DrawHudText(DateLine, UEGT2Hud::Muted, X + PadX, Cursor, Small, 1.0f, false);
 	Cursor += DateH + Gap;
-	DrawText(Conditions, UEGT2Hud::Accent, X + PadX, Cursor, Small, 1.0f, false);
+	DrawHudText(Conditions, UEGT2Hud::Accent, X + PadX, Cursor, Small, 1.0f, false);
 }
 
 float AUEGT2HUD::DrawNeedBar(const FString& Label, float Value, float X, float Y, float Width)
 {
 	UFont* Font = GEngine->GetSmallFont();
 	float LabelW = 0.0f, LabelH = 0.0f;
-	GetTextSize(Label, LabelW, LabelH, Font, 1.0f);
+	MeasureHudText(Label, LabelW, LabelH, Font, 1.0f);
 
 	// Warm through to alarming, at the same thresholds the needs model uses to
 	// decide an NPC should stop what they are doing about it.
@@ -293,63 +361,61 @@ float AUEGT2HUD::DrawNeedBar(const FString& Label, float Value, float X, float Y
 	const float TrackH = 6.0f;
 	const float TrackY = Y + FMath::Max(0.0f, (LabelH - TrackH) * 0.5f);
 
-	DrawText(Label, UEGT2Hud::Muted, X, Y, Font, 1.0f, false);
-	DrawRect(FLinearColor(1.0f, 1.0f, 1.0f, 0.16f), TrackX, TrackY, TrackW, TrackH);
-	DrawRect(Fill, TrackX, TrackY, TrackW * Clamped, TrackH);
+	DrawHudText(Label, UEGT2Hud::Muted, X, Y, Font, 1.0f, false);
+	DrawHudRect(FLinearColor(1.0f, 1.0f, 1.0f, 0.16f), TrackX, TrackY, TrackW, TrackH);
+	DrawHudRect(Fill, TrackX, TrackY, TrackW * Clamped, TrackH);
 	return LabelH;
 }
 
-void AUEGT2HUD::DrawLife(float ScreenHeight)
+FUEGT2HUDLife AUEGT2HUD::PrepareLife(AUEGT2Character* Explorer, float MaxWidth)
 {
-	const AUEGT2PlayerController* PC = Cast<AUEGT2PlayerController>(PlayerOwner);
-	const AUEGT2Character* Explorer = PC ? Cast<AUEGT2Character>(PC->GetPawn()) : nullptr;
+	FUEGT2HUDLife Result;
 	const UUEGT2NeedsComponent* Life = Explorer ? Explorer->GetLife() : nullptr;
-	if (!Life)
-	{
-		return;
-	}
-
-	const FUEGT2NPCNeeds& Needs = Life->GetNeeds();
+	if (!Life) { return Result; }
+	Result.Needs = Life->GetNeeds();
 	const FString Purse = FString::Printf(TEXT("%s    %d coins"),
 		*GetRoleDisplayName(Life->GetTrade()).ToString(), Life->GetCoins());
 	const FString Doing = Life->GetActivityText().ToString();
+	float PurseW = 0.0f, DoingW = 0.0f, SampleW = 0.0f;
+	const float ContentWidth = FMath::Max(86.0f, FMath::Min(400.0f, MaxWidth - 28.0f));
+	LayoutText(Purse, GEngine->GetMediumFont(), ContentWidth, Result.Purse, PurseW, Result.PurseH, 2);
+	LayoutText(Doing, GEngine->GetSmallFont(), ContentWidth, Result.Activity, DoingW, Result.ActivityH, 2);
+	MeasureHudText(TEXT("Ag"), SampleW, Result.RowH, GEngine->GetSmallFont());
+	Result.BodyW = FMath::Max3(PurseW, DoingW, 186.0f);
+	if (HudLayout.bEnhanced) { Result.BodyW = FMath::Min(Result.BodyW, ContentWidth); }
+	const float BoxH = Result.PurseH * Result.Purse.Num() + Result.ActivityH * Result.Activity.Num()
+		+ Result.RowH * 4.0f + 5.0f * 5.0f + 10.0f * 2.0f;
+	Result.Bounds = UEGT2HUDLayout::AnchorPanel(HudLayout, FVector2D(Result.BodyW + 28.0f, BoxH),
+		EUEGT2HUDAnchor::BottomLeft, FVector2D(24.0, 26.0));
+	return Result;
+}
 
-	UFont* Big = GEngine->GetMediumFont();
-	UFont* Small = GEngine->GetSmallFont();
-
-	float PurseW = 0.0f, PurseH = 0.0f;
-	float DoingW = 0.0f, DoingH = 0.0f;
-	GetTextSize(Purse, PurseW, PurseH, Big, 1.0f);
-	GetTextSize(Doing, DoingW, DoingH, Small, 1.0f);
-
-	const float PadX = 14.0f;
-	const float PadY = 10.0f;
-	const float Gap = 5.0f;
-	const float BarWidth = 186.0f;
-	const float BodyW = FMath::Max3(PurseW, DoingW, BarWidth);
-	const float BoxW = BodyW + PadX * 2.0f;
-	// Four bars at small-font height, plus the two text rows above them.
-	float SampleW = 0.0f, RowH = 0.0f;
-	GetTextSize(TEXT("Ag"), SampleW, RowH, Small, 1.0f);
-	const float BoxH = PurseH + DoingH + RowH * 4.0f + Gap * 5.0f + PadY * 2.0f;
-
-	const float X = 24.0f;
-	const float Y = ScreenHeight - BoxH - 26.0f;
-
-	DrawRoundedRect(UEGT2Hud::Shade, X, Y, BoxW, BoxH, 7.0f);
-
+void AUEGT2HUD::DrawLife(const FUEGT2HUDLife& Life)
+{
+	if (!Life.Bounds.bIsValid) { return; }
+	const FVector2D Origin = HudLayout.ToLogical(Life.Bounds.Min);
+	const FVector2D Size = HudLayout.ToLogical(Life.Bounds.GetSize());
+	const float X = Origin.X, Y = Origin.Y;
+	const float PadX = 14.0f, PadY = 10.0f, Gap = 5.0f;
+	DrawRoundedRect(UEGT2Hud::Shade, X, Y, Size.X, Size.Y, 7.0f);
 	float Cursor = Y + PadY;
-	DrawText(Purse, UEGT2Hud::Ink, X + PadX, Cursor, Big, 1.0f, false);
-	Cursor += PurseH + Gap;
-	DrawText(Doing, UEGT2Hud::Muted, X + PadX, Cursor, Small, 1.0f, false);
-	Cursor += DoingH + Gap;
-
-	// Same order as FUEGT2NPCNeeds::Worst tests them: the one that interrupts
-	// a plan first is read first.
-	Cursor += DrawNeedBar(TEXT("Relief"), Needs.Relief, X + PadX, Cursor, BodyW) + Gap;
-	Cursor += DrawNeedBar(TEXT("Fed"), Needs.Fed, X + PadX, Cursor, BodyW) + Gap;
-	Cursor += DrawNeedBar(TEXT("Rested"), Needs.Energy, X + PadX, Cursor, BodyW) + Gap;
-	DrawNeedBar(TEXT("Company"), Needs.Company, X + PadX, Cursor, BodyW);
+	for (const FString& Line : Life.Purse)
+	{
+		DrawHudText(Line, UEGT2Hud::Ink, X + PadX, Cursor, GEngine->GetMediumFont());
+		Cursor += Life.PurseH;
+	}
+	Cursor += Gap;
+	for (const FString& Line : Life.Activity)
+	{
+		DrawHudText(Line, UEGT2Hud::Muted, X + PadX, Cursor, GEngine->GetSmallFont());
+		Cursor += Life.ActivityH;
+	}
+	Cursor += Gap;
+	// Keep the same order as the shared needs ledger and the existing HUD.
+	Cursor += DrawNeedBar(TEXT("Relief"), Life.Needs.Relief, X + PadX, Cursor, Life.BodyW) + Gap;
+	Cursor += DrawNeedBar(TEXT("Fed"), Life.Needs.Fed, X + PadX, Cursor, Life.BodyW) + Gap;
+	Cursor += DrawNeedBar(TEXT("Rested"), Life.Needs.Energy, X + PadX, Cursor, Life.BodyW) + Gap;
+	DrawNeedBar(TEXT("Company"), Life.Needs.Company, X + PadX, Cursor, Life.BodyW);
 }
 
 void AUEGT2HUD::DrawDevStatus(float ScreenWidth)
@@ -463,6 +529,68 @@ void AUEGT2HUD::DrawDiagnostics(AUEGT2Character* Explorer)
 // ---------------------------------------------------------------------------
 // Speech bubbles
 // ---------------------------------------------------------------------------
+void AUEGT2HUD::MeasureHudText(const FString& Text, float& W, float& H, UFont* Font, float Scale) const
+{
+	GetTextSize(Text, W, H, Font, Scale * HudLayout.Scale);
+	W /= HudLayout.Scale;
+	H /= HudLayout.Scale;
+}
+
+void AUEGT2HUD::DrawHudText(const FString& Text, FLinearColor Colour, float X, float Y, UFont* Font,
+	float Scale, bool bScalePosition)
+{
+	if (bScalePosition) { X *= Scale; Y *= Scale; }
+	DrawText(Text, Colour, X * HudLayout.Scale, Y * HudLayout.Scale, Font, Scale * HudLayout.Scale, false);
+}
+
+void AUEGT2HUD::DrawHudRect(FLinearColor Colour, float X, float Y, float W, float H)
+{
+	DrawRect(Colour, X * HudLayout.Scale, Y * HudLayout.Scale, W * HudLayout.Scale, H * HudLayout.Scale);
+}
+
+void AUEGT2HUD::DrawHudLine(float X1, float Y1, float X2, float Y2, FLinearColor Colour, float Thickness)
+{
+	DrawLine(X1 * HudLayout.Scale, Y1 * HudLayout.Scale, X2 * HudLayout.Scale, Y2 * HudLayout.Scale, Colour, Thickness * HudLayout.Scale);
+}
+
+void AUEGT2HUD::LayoutText(const FString& Text, UFont* Font, float MaxWidth, TArray<FString>& Lines,
+	float& Width, float& LineHeight, int32 MaxLines) const
+{
+	if (!HudLayout.bEnhanced)
+	{
+		Lines = { Text };
+		MeasureHudText(Text, Width, LineHeight, Font);
+		return;
+	}
+	WrapText(Text, Font, 1.0f, FMath::Max(1.0f, MaxWidth), Lines, Width);
+	float SampleW = 0.0f;
+	MeasureHudText(TEXT("Ag"), SampleW, LineHeight, Font);
+	if (Lines.Num() > MaxLines)
+	{
+		Lines.SetNum(MaxLines);
+		Lines.Last() += TEXT("...");
+	}
+	Width = 0.0f;
+	for (FString& Line : Lines)
+	{
+		float W = 0.0f, H = 0.0f;
+		MeasureHudText(Line, W, H, Font);
+		if (W > MaxWidth)
+		{
+			// Long key labels and names may contain no spaces. Keep a bounded,
+			// legible prefix rather than letting one token defeat wrapping.
+			FString Prefix = Line;
+			do
+			{
+				Prefix.LeftChopInline(1);
+				Line = Prefix + TEXT("...");
+				MeasureHudText(Line, W, H, Font);
+			} while (W > MaxWidth && !Prefix.IsEmpty());
+		}
+		Width = FMath::Max(Width, W);
+	}
+}
+
 void AUEGT2HUD::WrapText(const FString& Text, UFont* Font, float Scale, float MaxWidth,
 	TArray<FString>& OutLines, float& OutWidth) const
 {
@@ -481,7 +609,7 @@ void AUEGT2HUD::WrapText(const FString& Text, UFont* Font, float Scale, float Ma
 	{
 		const FString Candidate = Line.IsEmpty() ? Word : Line + TEXT(" ") + Word;
 		float Width = 0.0f, Height = 0.0f;
-		const_cast<AUEGT2HUD*>(this)->GetTextSize(Candidate, Width, Height, Font, Scale);
+		MeasureHudText(Candidate, Width, Height, Font, Scale);
 		if (Width > MaxWidth && !Line.IsEmpty())
 		{
 			OutLines.Add(Line);
@@ -500,7 +628,7 @@ void AUEGT2HUD::WrapText(const FString& Text, UFont* Font, float Scale, float Ma
 	for (const FString& Row : OutLines)
 	{
 		float Width = 0.0f, Height = 0.0f;
-		const_cast<AUEGT2HUD*>(this)->GetTextSize(Row, Width, Height, Font, Scale);
+		MeasureHudText(Row, Width, Height, Font, Scale);
 		OutWidth = FMath::Max(OutWidth, Width);
 	}
 }
@@ -513,12 +641,12 @@ void AUEGT2HUD::DrawRoundedRect(const FLinearColor& Colour, float X, float Y, fl
 	// this size: a body, plus a wider band and a taller band that between them
 	// knock the corners off.
 	const float C = FMath::Clamp(Corner, 0.0f, FMath::Min(W, H) * 0.5f);
-	DrawRect(Colour, X + C, Y, W - C * 2.0f, H);
-	DrawRect(Colour, X, Y + C, W, H - C * 2.0f);
-	DrawRect(Colour, X + C * 0.4f, Y + C * 0.4f, W - C * 0.8f, H - C * 0.8f);
+	DrawHudRect(Colour, X + C, Y, W - C * 2.0f, H);
+	DrawHudRect(Colour, X, Y + C, W, H - C * 2.0f);
+	DrawHudRect(Colour, X + C * 0.4f, Y + C * 0.4f, W - C * 0.8f, H - C * 0.8f);
 }
 
-void AUEGT2HUD::DrawSpeechBubbles()
+void AUEGT2HUD::DrawSpeechBubbles(const TArray<FBox2D>& PlayerPanels)
 {
 	const UUEGT2NPCDirector* Director = UUEGT2NPCDirector::Get(GetWorld());
 	if (!Director || !PlayerOwner || !Canvas)
@@ -536,6 +664,7 @@ void AUEGT2HUD::DrawSpeechBubbles()
 	// Farthest first, so a near bubble that has to move ends up above the far
 	// one rather than the other way round.
 	TArray<FBox2D> Placed;
+	if (HudLayout.bEnhanced) { Placed = PlayerPanels; }
 	Placed.Reserve(Bubbles.Num());
 	for (const FUEGT2SpeechBubble& Bubble : Bubbles)
 	{
@@ -565,7 +694,8 @@ void AUEGT2HUD::DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& 
 {
 	// bClampToZeroPlane must be off: with it on, a speaker behind the camera
 	// projects onto the screen edge and their bubble hovers over nothing.
-	const FVector Screen = Project(Bubble.WorldLocation, false);
+	const FVector PhysicalScreen = Project(Bubble.WorldLocation, false);
+	const FVector Screen(PhysicalScreen.X / HudLayout.Scale, PhysicalScreen.Y / HudLayout.Scale, PhysicalScreen.Z);
 	if (Screen.Z <= 0.0f)
 	{
 		return;
@@ -600,21 +730,26 @@ void AUEGT2HUD::DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& 
 
 	TArray<FString> Lines;
 	float TextWidth = 0.0f;
-	WrapText(BodyText, BodyFont, 1.0f, UEGT2Hud::BubbleMaxWidth, Lines, TextWidth);
+	float LineHeight = 0.0f;
+	const float MaxTextWidth = FMath::Min(UEGT2Hud::BubbleMaxWidth, (Canvas->ClipX - 16.0f) / HudLayout.Scale - 22.0f);
+	if (HudLayout.bEnhanced) { LayoutText(BodyText, BodyFont, MaxTextWidth, Lines, TextWidth, LineHeight, 5); }
+	else { WrapText(BodyText, BodyFont, 1.0f, UEGT2Hud::BubbleMaxWidth, Lines, TextWidth); }
 	if (Lines.Num() == 0)
 	{
 		return;
 	}
 
-	const FString Speaker = Bubble.Speaker.ToString();
+	FString Speaker = Bubble.Speaker.ToString();
 	float NameWidth = 0.0f, NameHeight = 0.0f;
 	if (!Speaker.IsEmpty())
 	{
-		GetTextSize(Speaker, NameWidth, NameHeight, NameFont, 1.0f);
+		TArray<FString> Names;
+		LayoutText(Speaker, NameFont, MaxTextWidth, Names, NameWidth, NameHeight, 1);
+		Speaker = Names.IsEmpty() ? FString() : Names[0];
 	}
 
-	float SampleWidth = 0.0f, LineHeight = 0.0f;
-	GetTextSize(TEXT("Ag"), SampleWidth, LineHeight, BodyFont, 1.0f);
+	float SampleWidth = 0.0f;
+	MeasureHudText(TEXT("Ag"), SampleWidth, LineHeight, BodyFont, 1.0f);
 
 	const float PadX = 11.0f;
 	const float PadY = 8.0f;
@@ -625,38 +760,51 @@ void AUEGT2HUD::DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& 
 	const float TailHeight = 9.0f;
 	float BoxX = Screen.X - BoxWidth * 0.5f;
 	float BoxY = Screen.Y - BoxHeight - TailHeight;
-
-	// Keep the whole bubble on screen; the tail still points at the speaker.
-	const float Margin = 8.0f;
-	BoxX = FMath::Clamp(BoxX, Margin, FMath::Max(Margin, Canvas->ClipX - BoxWidth - Margin));
-	BoxY = FMath::Max(BoxY, Margin);
-
-	// Push up out of anything already drawn. Bounded: after a few tries the
-	// screen is simply too crowded, and one more unreadable overlap helps
-	// nobody, so the bubble is dropped instead.
-	for (int32 Attempt = 0; Attempt < 8; ++Attempt)
+	if (HudLayout.bEnhanced)
 	{
-		bool bClear = true;
-		for (const FBox2D& Taken : Placed)
+		FBox2D Bounds(ForceInit);
+		if (!UEGT2HUDLayout::PlaceBubble(HudLayout, FVector2D(PhysicalScreen.X, PhysicalScreen.Y),
+			FVector2D(BoxWidth, BoxHeight + TailHeight), Placed, Bounds)) { return; }
+		const FVector2D Origin = HudLayout.ToLogical(Bounds.Min);
+		BoxX = Origin.X;
+		BoxY = Origin.Y;
+		Placed.Add(Bounds);
+	}
+	else
+	{
+
+		// Keep the whole bubble on screen; the tail still points at the speaker.
+		const float Margin = 8.0f;
+		BoxX = FMath::Clamp(BoxX, Margin, FMath::Max(Margin, Canvas->ClipX - BoxWidth - Margin));
+		BoxY = FMath::Max(BoxY, Margin);
+
+		// Push up out of anything already drawn. Bounded: after a few tries the
+		// screen is simply too crowded, and one more unreadable overlap helps
+		// nobody, so the bubble is dropped instead.
+		for (int32 Attempt = 0; Attempt < 8; ++Attempt)
 		{
-			if (BoxX < Taken.Max.X && BoxX + BoxWidth > Taken.Min.X
-				&& BoxY < Taken.Max.Y && BoxY + BoxHeight > Taken.Min.Y)
+			bool bClear = true;
+			for (const FBox2D& Taken : Placed)
 			{
-				BoxY = Taken.Min.Y - BoxHeight - 6.0f;
-				bClear = false;
+				if (BoxX < Taken.Max.X && BoxX + BoxWidth > Taken.Min.X
+					&& BoxY < Taken.Max.Y && BoxY + BoxHeight > Taken.Min.Y)
+				{
+					BoxY = Taken.Min.Y - BoxHeight - 6.0f;
+					bClear = false;
+					break;
+				}
+			}
+			if (bClear)
+			{
 				break;
 			}
 		}
-		if (bClear)
+		if (BoxY < Margin)
 		{
-			break;
+			return;
 		}
+		Placed.Emplace(FVector2D(BoxX, BoxY), FVector2D(BoxX + BoxWidth, BoxY + BoxHeight + TailHeight));
 	}
-	if (BoxY < Margin)
-	{
-		return;
-	}
-	Placed.Emplace(FVector2D(BoxX, BoxY), FVector2D(BoxX + BoxWidth, BoxY + BoxHeight + TailHeight));
 
 	auto WithAlpha = [Alpha](const FLinearColor& Colour, float Scale)
 	{
@@ -677,7 +825,7 @@ void AUEGT2HUD::DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& 
 	for (int32 Row = 0; Row < 7; ++Row)
 	{
 		const float RowWidth = 14.0f * (1.0f - Row / 7.0f);
-		DrawRect(WithAlpha(Body, 1.0f), TailX - RowWidth * 0.5f,
+		DrawHudRect(WithAlpha(Body, 1.0f), TailX - RowWidth * 0.5f,
 			BoxY + BoxHeight + Row * (TailHeight / 7.0f), RowWidth, TailHeight / 7.0f + 0.6f);
 	}
 
@@ -688,7 +836,7 @@ void AUEGT2HUD::DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& 
 			FMath::Min(Bubble.Tint.R * 1.9f + 0.3f, 1.0f),
 			FMath::Min(Bubble.Tint.G * 1.9f + 0.3f, 1.0f),
 			FMath::Min(Bubble.Tint.B * 1.9f + 0.3f, 1.0f), 1.0f);
-		DrawText(Speaker, WithAlpha(NameColour, 0.95f), BoxX + PadX, Y, NameFont, 1.0f, false);
+		DrawHudText(Speaker, WithAlpha(NameColour, 0.95f), BoxX + PadX, Y, NameFont, 1.0f, false);
 		Y += HeaderHeight;
 	}
 
@@ -697,7 +845,7 @@ void AUEGT2HUD::DrawOneBubble(const FUEGT2SpeechBubble& Bubble, TArray<FBox2D>& 
 	const FLinearColor TextColour = Bubble.bAnimal ? UEGT2Hud::Muted : UEGT2Hud::Ink;
 	for (const FString& Line : Lines)
 	{
-		DrawText(Line, WithAlpha(TextColour, 1.0f), BoxX + PadX, Y, BodyFont, 1.0f, false);
+		DrawHudText(Line, WithAlpha(TextColour, 1.0f), BoxX + PadX, Y, BodyFont, 1.0f, false);
 		Y += LineHeight;
 	}
 }

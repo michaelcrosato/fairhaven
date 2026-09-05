@@ -107,6 +107,11 @@ You start just off the town square, facing east toward the harbour.
 There are 11 survey landmarks. Each shows a count when you use it. Save Progress
 keeps these discoveries with the rest of your checkpoint.
 
+Try **Settings → Gameplay → HUD Size** at 125% and 150%, then return to Normal.
+Labels, needs bars, directions and speech should grow together and fit the
+screen. The aiming reticle and menus keep their size. Check the larger choices
+at both 1920×1080 and 1280×720 with a tracked place and an interaction prompt.
+
 Press **J** or choose **Survey Journal** from Pause to review them. Surveyed
 places have a **Track** button. Close the journal and follow the HUD arrow,
 compass direction and distance to return; the distance is a straight line,

@@ -8,6 +8,7 @@
 #include "Misc/ScopeExit.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "Sound/SoundClass.h"
+#include "UObject/UnrealType.h"
 #include "World/UEGT2ScatterField.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2SettingsDefaultsTest,
@@ -28,6 +29,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	Settings->SetMouseSensitivity(2.0f);
 	Settings->SetInvertLookY(true);
 	Settings->SetHeadBobScale(0.0f);
+	Settings->SetHudSizeLevel(2);
 	Settings->SetToggleSprint(true);
 	Settings->SetShowCrosshair(false);
 	Settings->SetShowInteractPrompts(false);
@@ -56,6 +58,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("mouse sensitivity"), Settings->GetMouseSensitivity(), 1.0f);
 	TestFalse(TEXT("inverted look"), Settings->GetInvertLookY());
 	TestEqual(TEXT("head bob"), Settings->GetHeadBobScale(), 1.0f);
+	TestEqual(TEXT("normal HUD size"), Settings->GetHudSizeLevel(), 0);
 	TestFalse(TEXT("toggle sprint"), Settings->GetToggleSprint());
 	TestTrue(TEXT("crosshair"), Settings->GetShowCrosshair());
 	TestTrue(TEXT("interaction prompts"), Settings->GetShowInteractPrompts());
@@ -75,6 +78,36 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 		TestEqual(UUEGT2GameUserSettings::GetAudioBusDisplayName(Bus).ToString(),
 			Settings->GetAudioVolume(Bus), Bus == EUEGT2AudioBus::Music ? 0.6f : 1.0f);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2HudSizeSettingsTest,
+	"UEGT2.Settings.HudSize",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2HudSizeSettingsTest::RunTest(const FString& Parameters)
+{
+	UUEGT2GameUserSettings* Settings = NewObject<UUEGT2GameUserSettings>();
+	Settings->SetToDefaults();
+	TestEqual(TEXT("normal scale by default"), Settings->GetHudScale(), 1.0f);
+	Settings->SetHudSizeLevel(1);
+	TestEqual(TEXT("large scale"), Settings->GetHudScale(), 1.25f);
+	Settings->SetHudSizeLevel(2);
+	TestEqual(TEXT("larger scale"), Settings->GetHudScale(), 1.5f);
+	Settings->SetHudSizeLevel(MIN_int32);
+	TestEqual(TEXT("low setting clamps"), Settings->GetHudSizeLevel(), 0);
+	Settings->SetHudSizeLevel(MAX_int32);
+	TestEqual(TEXT("high setting clamps"), Settings->GetHudSizeLevel(), 2);
+	// Config loading bypasses setters. Exercise that path without writing the
+	// active settings file or exposing the backing property to production code.
+	FIntProperty* Property = FindFProperty<FIntProperty>(Settings->GetClass(), TEXT("HudSizeLevel"));
+	if (!TestNotNull(TEXT("persisted HUD level"), Property)) { return false; }
+	Property->SetPropertyValue_InContainer(Settings, MIN_int32);
+	TestEqual(TEXT("low edited config is safe"), Settings->GetHudScale(), 1.0f);
+	Property->SetPropertyValue_InContainer(Settings, MAX_int32);
+	TestEqual(TEXT("high edited config is safe"), Settings->GetHudScale(), 1.5f);
+	Settings->SetToDefaults();
+	TestEqual(TEXT("reset clears retained size"), Settings->GetHudSizeLevel(), 0);
 	return true;
 }
 

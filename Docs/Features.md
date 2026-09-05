@@ -313,3 +313,69 @@ ordinary walk smoke moves the player 23.02 m through real input.
 Local evidence uses `Saved/Logs/Autosave*`. Screenshots are under
 `Saved/Screenshots/AutosaveSmoke/f85cc1da1be54df183bc66f5418b8a4c/` (1080p) and
 `Saved/Screenshots/AutosaveSmoke/753120f89a4046d7b81e266ecd9476fa/` (720p).
+
+## F005 — HUD size
+
+Status: implemented and verified on `feature/hud-size`, 2026-09-05.
+
+**What it adds.** Larger in-game labels, needs bars, directions, messages and
+speech bubbles. Text, padding and panel geometry scale together while panels
+remain anchored to the viewport. Larger choices fit the available space and
+wrap long text. The aiming reticle, dev diagnostics and Slate menus retain their
+existing size.
+
+**Player switch.** Settings → Gameplay → HUD Size. Normal (100%) is the default;
+Large (125%) and Larger (150%) opt in. Selecting Normal restores the original
+layout. `HudSizeLevel=0`, `1` or `2` in
+`[/Script/UEGT2.UEGT2GameUserSettings]` stores the choice. Recommended Defaults
+returns to Normal.
+
+**Maintainer switch.** In `Config/DefaultGame.ini`:
+
+```ini
+[/Script/UEGT2.UEGT2HUD]
+bHudScalingEnabled=False
+```
+
+Off restores the original size and disables the settings row while retaining
+the player's choice. Set it back to `True` to allow larger sizes. This feature
+does not change checkpoints, world content, input bindings or needs arithmetic.
+
+**Implementation.** The Canvas HUD uses a shared scale and viewport layout
+helper. Text measurements and drawing use matching font scales. World-projected
+speech positions remain in physical screen coordinates; panel offsets, bars,
+arrows and bubble tails scale around their anchors. Normal and hard-off use the
+baseline geometry; viewport fitting applies to the larger choices.
+
+**Research.** Epic's [HUD API](https://dev.epicgames.com/documentation/en-us/unreal-engine/API/Runtime/Engine/AHUD)
+exposes explicit text scale and position-scaling controls. Its
+[DPI guide](https://dev.epicgames.com/documentation/en-us/unreal-engine/dpi-scaling-in-unreal-engine)
+describes automatic UI scaling from viewport dimensions. The installed engine
+routes Fairhaven's Slate menus through that DPI system, while Canvas text uses
+its explicit draw scale. The HUD control therefore leaves menu DPI unchanged.
+
+**Verification.** Both Development targets compile with adaptive unity disabled.
+All 90 automation tests pass, including four HUD layout tests and one settings
+test. They cover baseline geometry, scaled text measurement, bottom panel and
+message clearance, crowded speech bubbles, invalid layout inputs, config
+clamping and recommended defaults. The final package completed in 2m29s.
+
+The packaged HUD smoke passes at 1920×1080 and 1280×720. Each run captures
+Normal, Large, Larger and hard-off in the same paused scene with real interaction
+prompts, speech, needs, survey tracking and messages. It checks the exact camera,
+player and speaker positions, world time, calendar, needs and 137.625 coins
+throughout. Hard-off restores 100% while retaining the 150% preference. A fifth
+image verifies the actual HUD Size settings row and its visible geometry. All ten
+images were inspected: the larger HUD remains readable and fits at both sizes,
+and Normal and hard-off preserve the baseline layout. No checkpoint is written.
+
+The wrapper's eleven success/failure cases pass under PowerShell 7 and 5.1.
+The packaged survey regression passes its rebound-key, Slate navigation, tracking
+and both off-switch checks; its settings screenshot still shows Survey Journal.
+All three autosave regression phases pass. The ordinary walk smoke moves the
+player 23.03 m through real input. Existing engine and ground-fixture warnings
+remain documented in [Audit.md](Audit.md).
+
+Local evidence uses `Saved/Logs/HudSize*`. Screenshots are under
+`Saved/Screenshots/HudSizeSmoke/36b97824f6664c30b6502d1629fa7ea0/` (1080p) and
+`Saved/Screenshots/HudSizeSmoke/c4d983822e804c66bd3d476a2e7db59b/` (720p).

@@ -82,6 +82,11 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") float GetHeadBobScale() const { return HeadBobScale; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetHeadBobScale(float Value);
 
+	/** Canvas HUD size: Normal, Large, Larger. Clamped on read for edited config. */
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") int32 GetHudSizeLevel() const { return FMath::Clamp(HudSizeLevel, 0, 2); }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetHudSizeLevel(int32 Value);
+	float GetHudScale() const;
+
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetToggleSprint() const { return bToggleSprint; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetToggleSprint(bool bValue);
 
@@ -166,6 +171,7 @@ private:
 	UPROPERTY(Config) float MouseSensitivity = 1.0f;
 	UPROPERTY(Config) bool bInvertLookY = false;
 	UPROPERTY(Config) float HeadBobScale = 1.0f;
+	UPROPERTY(Config) int32 HudSizeLevel = 0;
 	UPROPERTY(Config) bool bToggleSprint = false;
 	UPROPERTY(Config) bool bShowCrosshair = true;
 	UPROPERTY(Config) bool bShowInteractPrompts = true;

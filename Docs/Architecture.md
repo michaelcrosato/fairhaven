@@ -129,6 +129,13 @@ loading. Main-menu availability is cached; widget attributes never start disk
 work or rebuild the page on completion. Off gates prevent further submissions,
 but an already submitted disk write can finish.
 
+**HUD size is separate from menu DPI.** `AUEGT2HUD` scales Canvas text and its
+matching panel geometry from one player preference. `UEGT2HUDLayout` resolves
+physical viewport anchors and fitting; projected speech anchors stay in screen
+pixels. Normal and the independent HUD config gate retain the original layout.
+Slate keeps its existing DPI curve, and the crosshair and dev diagnostics retain
+their original size. No content assets or per-frame settings writes are needed.
+
 **Shared materials, with glass separate from the shell.** Opaque props,
 building shells and characters use `M_Prop`, driven by vertex colour. Window
 panes use translucent `M_Glass`. Each generated mesh uses one material, so

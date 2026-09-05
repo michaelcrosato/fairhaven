@@ -336,7 +336,7 @@ bool FUEGT2ProgressDisabledTest::RunTest(const FString& Parameters)
 	CheckOff();
 	Sim.Progress->bFeatureEnabled = true;
 	for (const TCHAR* Switch : { TEXT("-UEGT2Capture=TownSquare"), TEXT("-UEGT2CaptureLife"),
-		TEXT("-UEGT2SmokeWalk"), TEXT("-UEGT2SmokeFly") })
+		TEXT("-UEGT2SmokeWalk"), TEXT("-UEGT2SmokeFly"), TEXT("-UEGT2HudSizeSmoke") })
 	{
 		Sim.SetCommandLine(Switch);
 		CheckOff();

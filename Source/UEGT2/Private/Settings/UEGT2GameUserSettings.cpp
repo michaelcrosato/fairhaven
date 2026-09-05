@@ -56,6 +56,7 @@ void UUEGT2GameUserSettings::SetToDefaults()
 	MouseSensitivity = 1.0f;
 	bInvertLookY = false;
 	HeadBobScale = 1.0f;
+	HudSizeLevel = 0;
 	bToggleSprint = false;
 	bShowCrosshair = true;
 	bShowInteractPrompts = true;
@@ -85,14 +86,14 @@ void UUEGT2GameUserSettings::ApplyNonResolutionSettings()
 	ApplyAudioSettings();
 
 	UE_LOG(LogUEGT2Settings, Log,
-		TEXT("Settings applied: fov=%.0f resScale=%.0f%% quality(view=%d shadow=%d gi=%d refl=%d pp=%d tex=%d fx=%d foliage=%d) master=%.2f progress=%s journal=%s sleepUntil=%s autosave=%s"),
+		TEXT("Settings applied: fov=%.0f resScale=%.0f%% quality(view=%d shadow=%d gi=%d refl=%d pp=%d tex=%d fx=%d foliage=%d) master=%.2f progress=%s journal=%s sleepUntil=%s autosave=%s hud=%.0f%%"),
 		FieldOfView, ResolutionScalePercent,
 		GetViewDistanceQuality(), GetShadowQuality(), GetGlobalIlluminationQuality(),
 		GetReflectionQuality(), GetPostProcessingQuality(), GetTextureQuality(),
 		GetVisualEffectQuality(), GetFoliageQuality(),
 		GetAudioVolume(EUEGT2AudioBus::Master), bSaveProgressEnabled ? TEXT("on") : TEXT("off"),
 		bSurveyJournalEnabled ? TEXT("on") : TEXT("off"), bSleepUntilEnabled ? TEXT("on") : TEXT("off"),
-		bAutosaveEnabled ? TEXT("on") : TEXT("off"));
+		bAutosaveEnabled ? TEXT("on") : TEXT("off"), GetHudScale() * 100.0f);
 
 	OnSettingsApplied.Broadcast();
 }
@@ -175,6 +176,14 @@ FText UUEGT2GameUserSettings::GetAudioBusDisplayName(EUEGT2AudioBus Bus)
 void UUEGT2GameUserSettings::SetMouseSensitivity(float Value) { MouseSensitivity = FMath::Clamp(Value, 0.1f, 4.0f); }
 void UUEGT2GameUserSettings::SetInvertLookY(bool bValue) { bInvertLookY = bValue; }
 void UUEGT2GameUserSettings::SetHeadBobScale(float Value) { HeadBobScale = FMath::Clamp(Value, 0.0f, 2.0f); }
+void UUEGT2GameUserSettings::SetHudSizeLevel(int32 Value) { HudSizeLevel = FMath::Clamp(Value, 0, 2); }
+
+float UUEGT2GameUserSettings::GetHudScale() const
+{
+	static const float Scales[] = { 1.0f, 1.25f, 1.5f };
+	return Scales[GetHudSizeLevel()];
+}
+
 void UUEGT2GameUserSettings::SetToggleSprint(bool bValue) { bToggleSprint = bValue; }
 void UUEGT2GameUserSettings::SetShowCrosshair(bool bValue) { bShowCrosshair = bValue; }
 void UUEGT2GameUserSettings::SetShowInteractPrompts(bool bValue) { bShowInteractPrompts = bValue; }
