@@ -59,6 +59,9 @@ void UUEGT2GameUserSettings::SetToDefaults()
 	bShowCrosshair = true;
 	bShowInteractPrompts = true;
 	bShowSpeechBubbles = true;
+	bShowAlmanac = true;
+	bShowNeeds = true;
+	bUseFahrenheit = false;
 	CrowdDensity = 1.0f;
 	KeyOverrides.Empty();
 }
@@ -93,11 +96,6 @@ void UUEGT2GameUserSettings::ApplyConsoleVariables() const
 	SetCVar(TEXT("r.BloomQuality"), bBloom ? 5.0f : 0.0f);
 	SetCVar(TEXT("r.ScreenPercentage"), FMath::Clamp(ResolutionScalePercent, 50.0f, 100.0f));
 
-	// Foliage draw distance: scales the culling multiplier used by scatter fields.
-	static const float FoliageScales[] = { 0.5f, 0.75f, 1.0f, 1.5f };
-	const int32 Index = FMath::Clamp(FoliageDrawDistanceLevel, 0, UE_ARRAY_COUNT(FoliageScales) - 1);
-	SetCVar(TEXT("foliage.LODDistanceScale"), FoliageScales[Index]);
-
 	// Brightness rides on the post-process exposure bias.
 	SetCVar(TEXT("r.EyeAdaptation.ExposureOffset"), FMath::Loge(FMath::Max(Brightness, 0.1f)) / FMath::Loge(2.0f));
 }
@@ -125,6 +123,12 @@ void UUEGT2GameUserSettings::SetBloomEnabled(bool bValue) { bBloom = bValue; }
 void UUEGT2GameUserSettings::SetResolutionScalePercent(float Value) { ResolutionScalePercent = FMath::Clamp(Value, 50.0f, 100.0f); }
 void UUEGT2GameUserSettings::SetBrightness(float Value) { Brightness = FMath::Clamp(Value, 0.5f, 2.0f); }
 void UUEGT2GameUserSettings::SetFoliageDrawDistanceLevel(int32 Value) { FoliageDrawDistanceLevel = FMath::Clamp(Value, 0, 3); }
+
+float UUEGT2GameUserSettings::GetFoliageDrawDistanceScale() const
+{
+	static const float Scales[] = { 0.5f, 0.75f, 1.0f, 1.5f };
+	return Scales[FMath::Clamp(FoliageDrawDistanceLevel, 0, UE_ARRAY_COUNT(Scales) - 1)];
+}
 
 // ---- Audio -----------------------------------------------------------------
 float UUEGT2GameUserSettings::GetAudioVolume(EUEGT2AudioBus Bus) const

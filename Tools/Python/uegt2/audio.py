@@ -63,8 +63,22 @@ def _create_sound_classes():
     if master is not None:
         children = [created[n] for n in SOUND_CLASSES
                     if n != "SC_Master" and n in created]
-        ctx.set_prop(master, "child_classes", children)
-        ctx.save_asset("%s/%s" % (ctx.P_AUDIO, "SC_Master"))
+        if (list(master.get_editor_property("child_classes")) != children or
+                any(child.get_editor_property("parent_class") != master for child in children)):
+            # Unreal's ChildClasses edit handler repairs only the first new
+            # child per event. Assigning all four at once leaves three parent
+            # links empty, including after a save/reload. Rebuild one edge at
+            # a time so it also repairs assets from an older content build.
+            master.set_editor_property("child_classes", [])
+            for index in range(len(children)):
+                master.set_editor_property("child_classes", children[:index + 1])
+            for child in children:
+                if child.get_editor_property("parent_class") != master:
+                    ctx.fail("audio: %s has no Master parent" % child.get_name())
+            for name in SOUND_CLASSES:
+                if name in created:
+                    if not ctx.save_asset("%s/%s" % (ctx.P_AUDIO, name)):
+                        ctx.fail("audio: could not save %s hierarchy" % name)
 
     ctx.log("audio: %d sound classes" % len(created))
     return created

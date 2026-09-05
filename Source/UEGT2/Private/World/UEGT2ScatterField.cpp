@@ -2,6 +2,7 @@
 
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Settings/UEGT2GameUserSettings.h"
 #include "UEGT2LogChannels.h"
 
 AUEGT2ScatterField::AUEGT2ScatterField()
@@ -9,6 +10,47 @@ AUEGT2ScatterField::AUEGT2ScatterField()
 	PrimaryActorTick.bCanEverTick = false;
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RootComponent->SetMobility(EComponentMobility::Static);
+}
+
+void AUEGT2ScatterField::BeginPlay()
+{
+	Super::BeginPlay();
+	for (UHierarchicalInstancedStaticMeshComponent* Layer : ScatterLayers)
+	{
+		if (Layer)
+		{
+			AuthoredCullDistances.Add(Layer,
+				FIntPoint(Layer->InstanceStartCullDistance, Layer->InstanceEndCullDistance));
+		}
+	}
+	UUEGT2GameUserSettings::OnSettingsApplied.AddUObject(this, &AUEGT2ScatterField::RefreshFromSettings);
+	RefreshFromSettings();
+}
+
+void AUEGT2ScatterField::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	UUEGT2GameUserSettings::OnSettingsApplied.RemoveAll(this);
+	Super::EndPlay(EndPlayReason);
+}
+
+void AUEGT2ScatterField::RefreshFromSettings()
+{
+	const UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get();
+	const float Scale = bUseFoliageDrawDistance && Settings ? Settings->GetFoliageDrawDistanceScale() : 1.0f;
+	for (const auto& Entry : AuthoredCullDistances)
+	{
+		if (UHierarchicalInstancedStaticMeshComponent* Layer = Entry.Key.Get())
+		{
+			// LODDistanceScale does not multiply HISM's explicit end distance.
+			// Preserve zero (unlimited) and avoid rebuilding unchanged render state.
+			const int32 Start = FMath::RoundToInt(Entry.Value.X * Scale);
+			const int32 End = FMath::RoundToInt(Entry.Value.Y * Scale);
+			if (Start != Layer->InstanceStartCullDistance || End != Layer->InstanceEndCullDistance)
+			{
+				Layer->SetCullDistances(Start, End);
+			}
+		}
+	}
 }
 
 UHierarchicalInstancedStaticMeshComponent* AUEGT2ScatterField::AddLayer(UStaticMesh* Mesh, FName LayerName,
@@ -50,6 +92,12 @@ UHierarchicalInstancedStaticMeshComponent* AUEGT2ScatterField::AddLayer(UStaticM
 	AddInstanceComponent(Component);
 
 	ScatterLayers.Add(Component);
+	if (HasActorBegunPlay())
+	{
+		AuthoredCullDistances.Add(Component,
+			FIntPoint(Component->InstanceStartCullDistance, Component->InstanceEndCullDistance));
+		RefreshFromSettings();
+	}
 	return Component;
 }
 

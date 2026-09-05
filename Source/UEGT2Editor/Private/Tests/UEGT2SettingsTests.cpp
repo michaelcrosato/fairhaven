@@ -2,9 +2,73 @@
 
 #if WITH_AUTOMATION_TESTS
 
+#include "Components/HierarchicalInstancedStaticMeshComponent.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/World.h"
 #include "Misc/ScopeExit.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "Sound/SoundClass.h"
+#include "World/UEGT2ScatterField.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2SettingsDefaultsTest,
+	"UEGT2.Settings.RestoreDefaults",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
+{
+	// Use a separate settings object so a reset test cannot alter the editor's
+	// active settings or persist changes to the player's file.
+	UUEGT2GameUserSettings* Settings = NewObject<UUEGT2GameUserSettings>();
+	Settings->SetFieldOfView(110.0f);
+	Settings->SetMotionBlurEnabled(true);
+	Settings->SetBloomEnabled(false);
+	Settings->SetResolutionScalePercent(70.0f);
+	Settings->SetBrightness(1.5f);
+	Settings->SetFoliageDrawDistanceLevel(0);
+	Settings->SetMouseSensitivity(2.0f);
+	Settings->SetInvertLookY(true);
+	Settings->SetHeadBobScale(0.0f);
+	Settings->SetToggleSprint(true);
+	Settings->SetShowCrosshair(false);
+	Settings->SetShowInteractPrompts(false);
+	Settings->SetShowSpeechBubbles(false);
+	Settings->SetShowAlmanac(false);
+	Settings->SetShowNeeds(false);
+	Settings->SetUseFahrenheit(true);
+	Settings->SetCrowdDensity(0.2f);
+	Settings->SetKeyOverride(TEXT("Jump"), EKeys::J);
+	for (int32 Index = 0; Index < (int32)EUEGT2AudioBus::Count; ++Index)
+	{
+		Settings->SetAudioVolume((EUEGT2AudioBus)Index, 0.1f);
+	}
+
+	Settings->SetToDefaults();
+	TestEqual(TEXT("field of view"), Settings->GetFieldOfView(), 90.0f);
+	TestFalse(TEXT("motion blur"), Settings->GetMotionBlurEnabled());
+	TestTrue(TEXT("bloom"), Settings->GetBloomEnabled());
+	TestEqual(TEXT("resolution scale"), Settings->GetResolutionScalePercent(), 100.0f);
+	TestEqual(TEXT("brightness"), Settings->GetBrightness(), 1.0f);
+	TestEqual(TEXT("foliage distance"), Settings->GetFoliageDrawDistanceLevel(), 2);
+	TestEqual(TEXT("mouse sensitivity"), Settings->GetMouseSensitivity(), 1.0f);
+	TestFalse(TEXT("inverted look"), Settings->GetInvertLookY());
+	TestEqual(TEXT("head bob"), Settings->GetHeadBobScale(), 1.0f);
+	TestFalse(TEXT("toggle sprint"), Settings->GetToggleSprint());
+	TestTrue(TEXT("crosshair"), Settings->GetShowCrosshair());
+	TestTrue(TEXT("interaction prompts"), Settings->GetShowInteractPrompts());
+	TestTrue(TEXT("speech bubbles"), Settings->GetShowSpeechBubbles());
+	TestTrue(TEXT("almanac"), Settings->GetShowAlmanac());
+	TestTrue(TEXT("needs"), Settings->GetShowNeeds());
+	TestFalse(TEXT("Fahrenheit"), Settings->GetUseFahrenheit());
+	TestEqual(TEXT("crowd density"), Settings->GetCrowdDensity(), 1.0f);
+	TestFalse(TEXT("key override removed"), Settings->GetKeyOverride(TEXT("Jump")).IsValid());
+	for (int32 Index = 0; Index < (int32)EUEGT2AudioBus::Count; ++Index)
+	{
+		const EUEGT2AudioBus Bus = (EUEGT2AudioBus)Index;
+		TestEqual(UUEGT2GameUserSettings::GetAudioBusDisplayName(Bus).ToString(),
+			Settings->GetAudioVolume(Bus), Bus == EUEGT2AudioBus::Music ? 0.6f : 1.0f);
+	}
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2AudioSettingsTest,
 	"UEGT2.Settings.AudioVolumes",
@@ -54,6 +118,8 @@ bool FUEGT2AudioSettingsTest::RunTest(const FString& Parameters)
 		// own property must contain only their bus volume.
 		TestTrue(FString::Printf(TEXT("%s is below Master"), Paths[Index]),
 			Classes[0]->ChildClasses.Contains(Classes[Index]));
+		TestTrue(FString::Printf(TEXT("%s retains its Master parent after loading"), Paths[Index]),
+			Classes[Index]->ParentClass == Classes[0]);
 		TestEqual(FString::Printf(TEXT("%s receives only its own slider"), Paths[Index]),
 			Classes[Index]->Properties.Volume, BusVolumes[Index]);
 	}
@@ -68,6 +134,56 @@ bool FUEGT2AudioSettingsTest::RunTest(const FString& Parameters)
 		TestEqual(FString::Printf(TEXT("master mute preserves %s's bus gain"), Paths[Index]),
 			Classes[Index]->Properties.Volume, BusVolumes[Index]);
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FUEGT2FoliageDistanceTest,
+	"UEGT2.Settings.FoliageDrawDistance",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FUEGT2FoliageDistanceTest::RunTest(const FString& Parameters)
+{
+	UUEGT2GameUserSettings* Settings = UUEGT2GameUserSettings::Get();
+	UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube"));
+	if (!TestNotNull(TEXT("settings"), Settings) || !TestNotNull(TEXT("test mesh"), Mesh)) { return false; }
+	const int32 PreviousLevel = Settings->GetFoliageDrawDistanceLevel();
+	UWorld* World = UWorld::CreateWorld(EWorldType::EditorPreview, false);
+	if (!TestNotNull(TEXT("test world"), World)) { return false; }
+	ON_SCOPE_EXIT
+	{
+		World->DestroyWorld(false);
+		Settings->SetFoliageDrawDistanceLevel(PreviousLevel);
+		Settings->ApplyNonResolutionSettings();
+	};
+	AUEGT2ScatterField* Nature = World->SpawnActor<AUEGT2ScatterField>();
+	AUEGT2ScatterField* Fences = World->SpawnActor<AUEGT2ScatterField>();
+	if (!TestNotNull(TEXT("nature"), Nature) || !TestNotNull(TEXT("fences"), Fences)) { return false; }
+	Nature->bUseFoliageDrawDistance = true;
+	UHierarchicalInstancedStaticMeshComponent* Grass = Nature->AddLayer(Mesh, TEXT("Grass"), 7000, 9000);
+	UHierarchicalInstancedStaticMeshComponent* Unlimited = Nature->AddLayer(Mesh, TEXT("Unlimited"), 0, 0);
+	UHierarchicalInstancedStaticMeshComponent* Fence = Fences->AddLayer(Mesh, TEXT("Fence"), 12000, 16000);
+	if (!TestNotNull(TEXT("grass layer"), Grass) || !TestNotNull(TEXT("unlimited layer"), Unlimited)
+		|| !TestNotNull(TEXT("fence layer"), Fence)) { return false; }
+	Settings->SetFoliageDrawDistanceLevel(0);
+	Nature->DispatchBeginPlay();
+	Fences->DispatchBeginPlay();
+	TestEqual(TEXT("startup applies the selected fade distance"), Grass->InstanceStartCullDistance, 3500);
+	TestEqual(TEXT("startup applies the selected end distance"), Grass->InstanceEndCullDistance, 4500);
+	const int32 Levels[] = { 0, 3, 3, 1, 2, 0, 2 };
+	const int32 ExpectedEnds[] = { 4500, 13500, 13500, 6750, 9000, 4500, 9000 };
+	for (int32 Index = 0; Index < UE_ARRAY_COUNT(Levels); ++Index)
+	{
+		Settings->SetFoliageDrawDistanceLevel(Levels[Index]);
+		Settings->ApplyNonResolutionSettings();
+		TestEqual(TEXT("repeated settings always scale authored distances"), Grass->InstanceEndCullDistance, ExpectedEnds[Index]);
+		TestEqual(TEXT("unlimited layers stay unlimited"), Unlimited->InstanceEndCullDistance, 0);
+		TestEqual(TEXT("fences do not follow foliage distance"), Fence->InstanceEndCullDistance, 16000);
+	}
+	Settings->SetFoliageDrawDistanceLevel(0);
+	Settings->ApplyNonResolutionSettings();
+	UHierarchicalInstancedStaticMeshComponent* Later = Nature->AddLayer(Mesh, TEXT("Later"), 10000, 20000);
+	if (!TestNotNull(TEXT("runtime layer"), Later)) { return false; }
+	TestEqual(TEXT("runtime additions use the current setting"), Later->InstanceEndCullDistance, 10000);
 	return true;
 }
 

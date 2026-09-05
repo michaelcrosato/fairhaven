@@ -19,6 +19,11 @@ class UEGT2_API AUEGT2ScatterField : public AActor
 
 public:
 	AUEGT2ScatterField();
+	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
+	/** Nature opts in; instanced fences keep their own draw distances. */
+	UPROPERTY(EditAnywhere, Category = "UEGT2|Scatter") bool bUseFoliageDrawDistance = false;
 
 	/**
 	 * Create one instanced layer. Call from the content build, then push
@@ -40,5 +45,8 @@ public:
 	int32 GetLayerCount() const { return ScatterLayers.Num(); }
 
 private:
+	void RefreshFromSettings();
+	// Runtime copies of the map's authored distances; never scale a scaled value.
+	TMap<TWeakObjectPtr<UHierarchicalInstancedStaticMeshComponent>, FIntPoint> AuthoredCullDistances;
 	UPROPERTY() TArray<TObjectPtr<UHierarchicalInstancedStaticMeshComponent>> ScatterLayers;
 };

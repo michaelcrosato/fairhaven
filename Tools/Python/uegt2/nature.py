@@ -300,7 +300,11 @@ def build(world, world_data, meshes=None):
         ctx.fail("UEGT2ScatterField class not found; build the editor target first")
     removed = 0
     for actor in actor_subsystem.get_all_level_actors():
-        if actor.get_class() == scatter_class or actor.get_actor_label().startswith("Scatter "):
+        # Fences share the scatter class. Only replace fields owned by nature;
+        # the label recognises maps generated before the explicit opt-in flag.
+        if actor.get_class() == scatter_class and (
+                actor.get_editor_property("use_foliage_draw_distance") or
+                actor.get_actor_label().startswith("Scatter ")):
             actor_subsystem.destroy_actor(actor)
             removed += 1
     if removed:
@@ -322,6 +326,7 @@ def build(world, world_data, meshes=None):
         field = actor_subsystem.spawn_actor_from_class(
             scatter_class, unreal.Vector(0, 0, 0), unreal.Rotator(0, 0, 0))
         field.set_actor_label("Scatter %s" % species.name)
+        field.set_editor_property("use_foliage_draw_distance", True)
 
         for mesh_name, transforms in per_mesh.items():
             if not transforms:

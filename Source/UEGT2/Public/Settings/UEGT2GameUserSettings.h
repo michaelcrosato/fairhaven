@@ -60,6 +60,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Graphics") int32 GetFoliageDrawDistanceLevel() const { return FoliageDrawDistanceLevel; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Graphics") void SetFoliageDrawDistanceLevel(int32 Value);
+	/** Multiplier for authored nature-layer fade and cull distances. */
+	float GetFoliageDrawDistanceScale() const;
 
 	// ---- Audio ------------------------------------------------------------
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Audio")

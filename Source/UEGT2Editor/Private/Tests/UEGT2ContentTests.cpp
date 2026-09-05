@@ -32,6 +32,7 @@ namespace UEGT2Tests
 		TEXT("/Game/Fairhaven/Materials/M_Prop"),
 		TEXT("/Game/Fairhaven/Materials/M_PropEmissive"),
 		TEXT("/Game/Fairhaven/Materials/M_Foliage"),
+		TEXT("/Game/Fairhaven/Materials/M_Glass"),
 		TEXT("/Game/Fairhaven/Materials/M_Landscape"),
 		TEXT("/Game/Fairhaven/Materials/M_WaterStylised"),
 	};
@@ -134,13 +135,23 @@ bool FUEGT2WorldTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("at least one player start"), PlayerStarts >= 1);
 
 	int32 ScatterFields = 0;
+	int32 NatureFields = 0;
+	int32 FenceInstances = 0;
 	int32 Instances = 0;
 	for (TActorIterator<AUEGT2ScatterField> It(World); It; ++It)
 	{
 		++ScatterFields;
 		Instances += It->GetTotalInstanceCount();
+		if (It->bUseFoliageDrawDistance) { ++NatureFields; }
+		if (It->GetActorLabel() == TEXT("Town Fences"))
+		{
+			FenceInstances += It->GetTotalInstanceCount();
+			TestFalse(TEXT("fences keep independent cull distances"), It->bUseFoliageDrawDistance);
+		}
 	}
 	TestTrue(TEXT("scatter fields exist"), ScatterFields >= 5);
+	TestTrue(TEXT("nature fields persist their foliage-distance opt-in"), NatureFields >= 5);
+	TestTrue(TEXT("nature rebuilding preserves the town's fence instances"), FenceInstances > 0);
 	TestTrue(FString::Printf(TEXT("scatter has plenty of instances (got %d)"), Instances),
 		Instances > 50000);
 
