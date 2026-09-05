@@ -14,7 +14,7 @@ What it catches, all of which have cost real time in this project:
 - a generator that raises, or produces no triangles at all
 - degenerate (zero area) triangles, which render nothing and can upset collision
 - vertex, normal and colour buffers falling out of step
-- triangle indices pointing past the end of the vertex buffer
+- invalid triangle indices and non-finite vertex attributes
 - geometry that has silently escaped its own bounding box, which is how a wall
   with a doorway in it goes wrong
 - meshes that have grown past their triangle budget
@@ -94,12 +94,20 @@ class Report(object):
                             % (len(mesh.vertices), len(mesh.normals), len(mesh.colors)))
 
         limit = len(mesh.vertices)
-        if any(max(t) >= limit for t in mesh.triangles):
-            problems.append("a triangle indexes past the end of the vertex buffer")
+        valid_triangles = [t for t in mesh.triangles
+                           if len(t) == 3 and all(isinstance(i, int) and 0 <= i < limit for i in t)]
+        if len(valid_triangles) != tris:
+            problems.append("a triangle has invalid vertex indices")
 
-        degenerate = sum(1 for t in mesh.triangles if _is_degenerate(mesh, t))
+        # Report bad indices without dereferencing them and aborting the catalog.
+        degenerate = sum(1 for t in valid_triangles if _is_degenerate(mesh, t))
         if degenerate:
             problems.append("%d degenerate triangles" % degenerate)
+
+        for label, buffer in (("vertex", mesh.vertices), ("normal", mesh.normals),
+                              ("colour", mesh.colors)):
+            if any(not math.isfinite(value) for item in buffer for value in item):
+                problems.append("non-finite values in the %s buffer" % label)
 
         if expect_within and mesh.vertices:
             extents = _half_extents(mesh)
@@ -333,13 +341,15 @@ def main():
     sys.path.insert(0, os.path.join(_repo_root(), "Tools", "Python"))
 
     from uegt2.meshkit import MeshBuilder
-    from uegt2 import gen_city as city
-    from uegt2 import gen_fauna as fauna
     from uegt2 import gen_interior as interior
-    from uegt2 import gen_nature as nature
     from uegt2 import gen_town as town
+    from uegt2 import meshbuild
 
     report = Report()
+
+    print("mesh catalog")
+    for name, _folder, factory, _material, _collision in meshbuild._catalog():
+        report.build(name, factory)
 
     print("meshkit primitives")
     # A wall with a door and two windows is the shape every hollowed building
@@ -400,27 +410,6 @@ def main():
         built = town.house(seed, w, d, storeys, porch=porch)
         report.mesh(label, built)
         check_doorway(report, label + " doorway", built, w, d, storeys)
-    report.build("barn", lambda: town.barn(241))
-    report.build("church", lambda: town.church(251))
-    report.build("market stall", lambda: town.market_stall(277))
-    report.build("villager", lambda: town.person(401, "plain"))
-    report.build("child", lambda: town.person(509, "child", 0.62))
-
-    print("\nnewhaven")
-    report.build("tower", lambda: city.tower(431, 1800.0, 1600.0, 20))
-    report.build("office", lambda: city.office_block(449, 2100.0, 1700.0, 9))
-    report.build("apartment", lambda: city.apartment(461, 1700.0, 1500.0, 6))
-    report.build("shophouse", lambda: city.shophouse(479, 1050.0, 1250.0, 3))
-    report.build("city hall", lambda: city.city_hall(499))
-
-    print("\nnature and fauna")
-    report.build("oak", lambda: nature.broadleaf_tree(11, 1050.0))
-    report.build("pine", lambda: nature.conifer_tree(53, 1520.0))
-    report.build("grass", lambda: nature.grass_clump(127, 42.0))
-    report.build("dog", lambda: fauna.dog(601))
-    report.build("cow", lambda: fauna.cow(659))
-    report.build("seagull", lambda: fauna.seagull(701))
-
     print("\n%d meshes, %d triangles, %d failures"
           % (report.checked, report.triangles, report.failures))
     if report.failures:

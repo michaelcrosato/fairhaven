@@ -19,7 +19,6 @@ P_MATERIAL = ROOT + "/Materials"
 P_MESH = ROOT + "/Meshes"
 P_LANDSCAPE = ROOT + "/Landscape"
 P_AUDIO = ROOT + "/Audio"
-P_DATA = ROOT + "/Data"
 
 MAP_NAME = "L_Fairhaven"
 MAP_PATH = MAPS + "/" + MAP_NAME

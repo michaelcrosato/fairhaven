@@ -88,33 +88,9 @@ def ridged(height: int, width: int, cells: float, seed: int, octaves: int = 5,
     return (total / max(norm, 1e-6)).astype(np.float32)
 
 
-def warped_fbm(height: int, width: int, cells: float, seed: int, warp_strength: float,
-               octaves: int = 5) -> np.ndarray:
-    """FBM whose sample position is displaced by another FBM.
-
-    Domain warping removes the grid-aligned look that plain fbm has and is the
-    cheapest way to make large landmasses read as organic.
-    """
-    base = fbm(height, width, cells, seed, octaves=octaves)
-    warp = fbm(height, width, cells * 0.5, seed + 104729, octaves=3)
-    # Cheap approximate warp: blend the base with a shifted copy of itself.
-    shift = np.clip(warp * warp_strength, -1.0, 1.0)
-    rolled = np.roll(base, int(max(1, height * 0.01)), axis=0)
-    return (base * (1.0 - 0.35 * np.abs(shift)) + rolled * (0.35 * np.abs(shift))).astype(np.float32)
-
-
 def smoothstep(edge0: float, edge1: float, values: np.ndarray) -> np.ndarray:
     """Hermite smoothstep, clamped. Returns float32 in [0, 1]."""
     if abs(edge1 - edge0) < 1e-9:
         return (values >= edge1).astype(np.float32)
     t = np.clip((values - edge0) / (edge1 - edge0), 0.0, 1.0).astype(np.float32)
     return t * t * (3.0 - 2.0 * t)
-
-
-def remap(values: np.ndarray, lo: float, hi: float) -> np.ndarray:
-    """Rescale an array to [lo, hi] based on its own min/max."""
-    vmin = float(values.min())
-    vmax = float(values.max())
-    if vmax - vmin < 1e-9:
-        return np.full_like(values, lo, dtype=np.float32)
-    return (lo + (values - vmin) * (hi - lo) / (vmax - vmin)).astype(np.float32)

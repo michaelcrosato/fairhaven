@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import math
 import os
-import struct
 import wave
 
 import numpy as np
@@ -31,17 +30,6 @@ def log(message):
 def noise(length, seed):
     rng = np.random.default_rng(seed)
     return rng.uniform(-1.0, 1.0, size=length).astype(np.float32)
-
-
-def lowpass(signal, cutoff_hz):
-    """One-pole low pass; cheap and enough for shaping noise."""
-    alpha = math.exp(-2.0 * math.pi * cutoff_hz / RATE)
-    out = np.empty_like(signal)
-    state = 0.0
-    for i in range(signal.shape[0]):
-        state = alpha * state + (1.0 - alpha) * signal[i]
-        out[i] = state
-    return out
 
 
 def lowpass_fast(signal, cutoff_hz):

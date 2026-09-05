@@ -51,16 +51,16 @@ SUCCESS_MARKER = "UEGT2_CONTENT_BUILD_SUCCEEDED"
 
 
 def _requested_stages(argv):
-    if not argv:
-        return list(ALL_STAGES)
-    raw = ",".join(argv).lower()
-    if "all" in raw:
-        # showcase is a development aid, never part of a full build.
-        return [stage for stage in ALL_STAGES if stage != "showcase"]
+    raw = ",".join(argv).lower() if argv else "all"
     wanted = set(part.strip() for part in raw.split(",") if part.strip())
-    unknown = wanted - set(ALL_STAGES)
+    unknown = wanted - set(ALL_STAGES) - {"all"}
     if unknown:
         ctx.fail("unknown stage(s): %s" % ", ".join(sorted(unknown)))
+    if not wanted:
+        ctx.fail("no content stages requested")
+    if "all" in wanted:
+        # Showcase is a development aid; include it only when explicitly named.
+        wanted.update(stage for stage in ALL_STAGES if stage != "showcase")
     return [stage for stage in ALL_STAGES if stage in wanted]
 
 
@@ -128,10 +128,9 @@ def main(argv):
             ctx.fail("material %s missing; run the 'materials' stage first" % path)
         return asset
 
-    meshes = {}
     if "meshes" in stages:
         from uegt2 import meshbuild
-        meshes = meshbuild.build_all(
+        meshbuild.build_all(
             material("prop", materials_mod.M_PROP),
             material("emissive", materials_mod.M_PROP_EMISSIVE),
             material("foliage", materials_mod.M_FOLIAGE),
