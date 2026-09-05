@@ -9,6 +9,7 @@ no input is bound", which is what a missing DefaultInputComponentClass causes.
 #>
 [CmdletBinding()]
 param(
+    [ValidateRange(1, 1440)]
     [int] $TimeoutMinutes = 10,
     [double] $Delay = 12.0
 )
@@ -18,27 +19,33 @@ Set-StrictMode -Version Latest
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $candidates = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'LocalBuilds') -Recurse -File `
-    -Filter 'UEGT2.exe' -ErrorAction SilentlyContinue)
+    -Filter 'UEGT2.exe' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
 $exe = $candidates | Where-Object { $_.FullName -like '*\Binaries\Win64\UEGT2.exe' } | Select-Object -First 1
 if (-not $exe) { throw 'No packaged build found. Run ./Scripts/Package.ps1 first.' }
 
 $logDir = Join-Path $projectRoot 'Saved\Logs'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $log = Join-Path $logDir 'SmokePackaged.log'
+if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
 
 $arguments = @(
     '-RenderOffscreen', '-Windowed', '-ForceRes', '-ResX=1280', '-ResY=720',
     '-unattended', '-nosplash', '-nopause', '-nosound',
     '-UEGT2SmokeWalk', "-UEGT2CaptureDelay=$Delay",
-    "-abslog=$log"
+    "-abslog=`"$log`""
 )
 
 Write-Host "Running packaged smoke: $($exe.FullName)"
 $process = Start-Process -FilePath $exe.FullName -ArgumentList $arguments -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $logDir 'SmokePackaged.stdout.log')
+# Retain the handle so Windows PowerShell can read ExitCode after redirection.
+$null = $process.Handle
 if (-not $process.WaitForExit($TimeoutMinutes * 60 * 1000)) {
     Stop-Process -Id $process.Id -Force
     throw "Packaged smoke did not finish within $TimeoutMinutes minutes. Inspect $log."
+}
+if ($process.ExitCode -ne 0) {
+    throw "Packaged smoke failed with exit code $($process.ExitCode). Inspect $log."
 }
 
 if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {

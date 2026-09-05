@@ -17,6 +17,7 @@ param(
     [string] $Configuration = 'Development',
     [string] $OutputDirectory,
     [string] $EngineRoot,
+    [ValidateRange(1, 1440)]
     [int] $TimeoutMinutes = 120
 )
 
@@ -36,10 +37,11 @@ $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
 $logDir = Join-Path $projectRoot 'Saved\Logs'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $log = Join-Path $logDir 'Package.log'
+if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
 
 $uatArgs = @(
     'BuildCookRun',
-    "-project=$projectFile",
+    "-project=`"$projectFile`"",
     '-noP4', '-utf8output', '-nocompileeditor',
     '-platform=Win64',
     "-clientconfig=$Configuration",
@@ -48,31 +50,48 @@ $uatArgs = @(
     # standalone. We always want self-contained pak files.
     '-build', '-cook', '-stage', '-pak', '-iostore', '-nozenstore',
     '-package', '-archive', '-compressed',
-    "-archivedirectory=$OutputDirectory"
+    # A final backslash escapes the closing quote in the native argv parser.
+    # Forward slashes preserve trailing separators, including drive/UNC roots.
+    "-archivedirectory=`"$($OutputDirectory.Replace('\', '/'))`""
 )
 
 Write-Host "Packaging Fairhaven Win64 $Configuration -> $OutputDirectory"
 $started = Get-Date
-& $uat @uatArgs *>&1 | Tee-Object -FilePath $log | Select-String -Pattern 'ERROR|WARNING: .*failed|Took |BUILD SUCCESSFUL|BUILD FAILED|Cook: ' |
-    Select-Object -Last 0 | Out-Null
-if ($LASTEXITCODE -ne 0) {
+# A batch file needs cmd.exe. /S /C removes the outer pair of quotes; the
+# inner pair preserves an engine path with spaces. Merge stderr inside cmd
+# so the log keeps the ordering of the cook's diagnostics.
+$commandLine = '/d /s /c ""' + $uat + '" ' + ($uatArgs -join ' ') + ' 2>&1"'
+$process = Start-Process -FilePath $env:ComSpec -ArgumentList $commandLine -PassThru -WindowStyle Hidden `
+    -RedirectStandardOutput $log
+# Retain the handle so Windows PowerShell can read ExitCode after redirection.
+$null = $process.Handle
+if (-not $process.WaitForExit($TimeoutMinutes * 60 * 1000)) {
+    # UAT owns dotnet, UBT and cook children. Killing only cmd leaves those
+    # running and writing into the next build. Restrict termination to this PID.
+    if (-not $process.HasExited) {
+        & taskkill.exe /PID $process.Id /T /F | Out-Null
+    }
+    throw "Packaging exceeded $TimeoutMinutes minutes. Inspect $log."
+}
+if ($process.ExitCode -ne 0) {
     Write-Host '--- last 40 log lines ---' -ForegroundColor Red
     Get-Content -LiteralPath $log -Tail 40 | ForEach-Object { Write-Host $_ }
-    throw "Packaging failed with exit code $LASTEXITCODE. Log: $log"
+    throw "Packaging failed with exit code $($process.ExitCode). Log: $log"
 }
 $elapsed = (Get-Date) - $started
+$text = Get-Content -LiteralPath $log -Raw
+if ($text -notmatch 'BUILD SUCCESSFUL') {
+    throw "Packaging did not report success. Inspect $log."
+}
 
 # The cook is where material shaders are actually compiled, so this is the only
 # place a broken material shows up. A failed compile silently swaps in the
 # default material, which renders black in game.
-$materialFailures = @(Select-String -LiteralPath $log -Pattern 'Failed to compile Material' |
-    Where-Object { $_.Line -notmatch 'LogInit: Display:' })
+$materialFailures = @(Select-String -LiteralPath $log -Pattern 'Failed to compile Material|doesn''t have a valid ShaderMap')
 if ($materialFailures.Count -gt 0) {
     Write-Host '--- material compile failures during cook ---' -ForegroundColor Red
     foreach ($failure in ($materialFailures | Select-Object -First 6)) {
         Write-Host $failure.Line
-        $detail = (Get-Content -LiteralPath $log)[$failure.LineNumber]
-        if ($detail) { Write-Host "   $detail" }
     }
     throw "Cook produced materials that do not compile. Log: $log"
 }

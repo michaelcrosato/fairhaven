@@ -16,6 +16,7 @@ param(
     [string[]] $Stages = @('all'),
     [string] $EngineRoot,
     [switch] $Rendering,
+    [ValidateRange(1, 1440)]
     [int] $TimeoutMinutes = 90
 )
 
@@ -41,11 +42,11 @@ foreach ($old in @($log, $stdout)) {
 
 $stageArg = ($Stages -join ',')
 $arguments = @(
-    $projectFile,
+    "`"$projectFile`"",
     '-run=pythonscript',
     "-script=`"$script $stageArg`"",
     '-unattended', '-nopause', '-nosplash', '-nop4',
-    "-abslog=$log"
+    "-abslog=`"$log`""
 )
 if (-not $Rendering) { $arguments += '-NullRHI' }
 
@@ -54,11 +55,16 @@ $started = Get-Date
 $process = Start-Process -FilePath $editorCmd -ArgumentList $arguments -PassThru `
     -RedirectStandardOutput $stdout -RedirectStandardError (Join-Path $logDir 'ContentBuild.stderr.log') `
     -WindowStyle Hidden
+# Retain the handle so Windows PowerShell can read ExitCode after redirection.
+$null = $process.Handle
 if (-not $process.WaitForExit($TimeoutMinutes * 60 * 1000)) {
     Stop-Process -Id $process.Id -Force
     throw "Content build exceeded $TimeoutMinutes minutes. Inspect $log."
 }
 $elapsed = (Get-Date) - $started
+if ($process.ExitCode -ne 0) {
+    throw "Content build editor failed with exit code $($process.ExitCode). Inspect $log."
+}
 
 if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
     throw "Content build produced no log at $log."

@@ -32,6 +32,7 @@ param(
     [int] $ResX = 1920,
     [int] $ResY = 1080,
     [switch] $Collide,
+    [ValidateRange(1, 1440)]
     [int] $TimeoutMinutes = 30
 )
 
@@ -41,7 +42,7 @@ Set-StrictMode -Version Latest
 $projectRoot = Split-Path -Parent $PSScriptRoot
 
 $candidates = @(Get-ChildItem -LiteralPath (Join-Path $projectRoot 'LocalBuilds') -Recurse -File `
-    -Filter 'UEGT2.exe' -ErrorAction SilentlyContinue)
+    -Filter 'UEGT2.exe' -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending)
 $exe = $candidates | Where-Object { $_.FullName -like '*\Binaries\Win64\UEGT2.exe' } | Select-Object -First 1
 if (-not $exe) { throw 'No packaged build found. Run ./Scripts/Package.ps1 first.' }
 
@@ -55,15 +56,19 @@ $arguments = @(
     '-unattended', '-nosplash', '-nopause',
     '-UEGT2SmokeFly', "-UEGT2SmokeMinutes=$Minutes", "-UEGT2SmokeSpeed=$Speed",
     "-UEGT2SmokeAltitude=$Altitude", '-UEGT2CaptureDelay=8',
-    "-abslog=$log"
+    "-abslog=`"$log`""
 )
 if ($Collide) { $arguments += '-UEGT2SmokeCollide' }
 
 Write-Host "Flying $Minutes minutes at ${Speed}x: $($exe.FullName)"
 $process = Start-Process -FilePath $exe.FullName -ArgumentList $arguments -PassThru -WindowStyle Hidden
+$null = $process.Handle
 if (-not $process.WaitForExit($TimeoutMinutes * 60 * 1000)) {
     Stop-Process -Id $process.Id -Force
     throw "Fly soak did not finish within $TimeoutMinutes minutes. Inspect $log."
+}
+if ($process.ExitCode -ne 0) {
+    throw "Fly soak failed with exit code $($process.ExitCode). Inspect $log."
 }
 
 if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {

@@ -21,9 +21,9 @@ param(
     [int] $ResY = 1080,
     [double] $Delay = 7.0,
     [double] $Hold = 1.8,
+    [ValidateRange(1, 1440)]
     [int] $TimeoutMinutes = 20,
     [switch] $Menu,
-    [string] $EngineRoot,
     # Passed straight through to the game. -UEGT2Time=<hours> and
     # -UEGT2Weather=<name> render a specific sky; both freeze the day/night
     # cycle so the shot stays reproducible.
@@ -34,8 +34,6 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
-$projectFile = Join-Path $projectRoot 'UEGT2.uproject'
-$engine = & (Join-Path $PSScriptRoot 'Resolve-Engine.ps1') -EngineRoot $EngineRoot
 
 # Use the packaged build. An uncooked game binary cannot start, because the
 # global shader library only exists after a cook.
@@ -52,13 +50,17 @@ $gameExe = $packaged.FullName
 Write-Host "Using packaged build: $gameExe"
 
 if (-not $OutputDirectory) {
-    $OutputDirectory = Join-Path $projectRoot 'Saved\Screenshots\Tour'
+    $folder = if ($Menu) { 'Menu' } else { 'Tour' }
+    $OutputDirectory = Join-Path $projectRoot "Saved\Screenshots\$folder"
 }
 $OutputDirectory = [IO.Path]::GetFullPath($OutputDirectory)
-if (Test-Path -LiteralPath $OutputDirectory) {
-    Remove-Item -LiteralPath $OutputDirectory -Recurse -Force
-}
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
+# A caller may choose a directory containing other work. Clear only the files
+# named by our capture subsystem, and count the same set after this run.
+$captureFilePattern = '^(?:\d{2,}|menu_\d{2,}|talk_\d{2,}|life_\d{2,})_.+\.png$'
+Get-ChildItem -LiteralPath $OutputDirectory -Filter '*.png' -File |
+    Where-Object { $_.Name -match $captureFilePattern } |
+    ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force }
 
 $logDir = Join-Path $projectRoot 'Saved\Logs'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
@@ -76,10 +78,10 @@ $arguments = @(
     "-ResX=$ResX",
     "-ResY=$ResY",
     '-unattended', '-nosplash', '-nopause', '-nosound',
-    "-UEGT2Capture=$($OutputDirectory.Replace('\','/'))",
+    "-UEGT2Capture=`"$($OutputDirectory.Replace('\','/'))`"",
     "-UEGT2CaptureDelay=$Delay",
     "-UEGT2CaptureHold=$Hold",
-    "-abslog=$log"
+    "-abslog=`"$log`""
 )
 if ($Only) { $arguments += "-UEGT2CaptureOnly=$Only" }
 if ($Menu) { $arguments += '-UEGT2CaptureMenu' }
@@ -89,20 +91,41 @@ Write-Host "Capturing tour at ${ResX}x${ResY} -> $OutputDirectory"
 $process = Start-Process -FilePath $gameExe -ArgumentList $arguments -PassThru -WindowStyle Hidden `
     -RedirectStandardOutput (Join-Path $logDir 'ScreenshotTour.stdout.log') `
     -RedirectStandardError (Join-Path $logDir 'ScreenshotTour.stderr.log')
+# Retain the handle so Windows PowerShell can read ExitCode after redirection.
+$null = $process.Handle
 if (-not $process.WaitForExit($TimeoutMinutes * 60 * 1000)) {
     Stop-Process -Id $process.Id -Force
     throw "Screenshot tour exceeded $TimeoutMinutes minutes. Inspect $log."
 }
-
-if (Test-Path -LiteralPath $log) {
-    Select-String -LiteralPath $log -Pattern 'LogUEGT2Diag|LogUEGT2:|Error:' |
-        Select-Object -Last 30 |
-        ForEach-Object { Write-Host ("  " + ($_.Line -replace '^\[[^\]]+\]\[\s*\d+\]', '')) }
+if ($process.ExitCode -ne 0) {
+    throw "Screenshot tour failed with exit code $($process.ExitCode). Inspect $log."
 }
 
-$shots = @(Get-ChildItem -LiteralPath $OutputDirectory -Filter '*.png' -File -ErrorAction SilentlyContinue)
-if ($shots.Count -eq 0) {
-    throw "No screenshots were produced. Inspect $log."
+if (-not (Test-Path -LiteralPath $log -PathType Leaf)) {
+    throw "Screenshot tour produced no log at $log."
+}
+Select-String -LiteralPath $log -Pattern 'LogUEGT2Diag|LogUEGT2:|Error:' |
+    Select-Object -Last 30 |
+    ForEach-Object { Write-Host ("  " + ($_.Line -replace '^\[[^\]]+\]\[\s*\d+\]', '')) }
+$text = Get-Content -LiteralPath $log -Raw
+if ($text -notmatch 'UEGT2_CAPTURE_TOUR_COMPLETE' -or
+    $text -match 'LogUEGT2Diag: Error:|Critical error|Assertion failed|Amenity capture \d+:.*(?:NOT FOUND BY THE PROBE|NOT USED)|Amenity capture: no .+ anywhere') {
+    throw "Screenshot tour failed or did not complete. Inspect $log."
+}
+
+# FinishTour is also used on early exits, so the marker alone is insufficient.
+# The mode-specific plans give the expected output count (dialogue has opening
+# and answered states); a missed screenshot callback must fail validation too.
+$expected = 0
+if ($text -match 'Amenity capture: (\d+) stops') { $expected = [int] $Matches[1] }
+elseif ($text -match 'Dialogue capture: talking to') { $expected = 2 }
+elseif ($text -match 'Menu capture: (\d+) screens') { $expected = [int] $Matches[1] }
+elseif ($text -match 'Capture tour requested: (\d+) viewpoints') { $expected = [int] $Matches[1] }
+
+$shots = @(Get-ChildItem -LiteralPath $OutputDirectory -Filter '*.png' -File |
+    Where-Object { $_.Name -match $captureFilePattern })
+if ($expected -lt 1 -or $shots.Count -ne $expected -or @($shots | Where-Object { $_.Length -eq 0 }).Count -gt 0) {
+    throw "Screenshot tour produced $($shots.Count) screenshots; expected $expected complete images. Inspect $log."
 }
 Write-Host "Captured $($shots.Count) screenshots in $OutputDirectory"
 $shots | ForEach-Object { Write-Host ("  {0}  ({1:N0} KB)" -f $_.Name, ($_.Length / 1KB)) }

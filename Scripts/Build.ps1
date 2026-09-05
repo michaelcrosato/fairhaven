@@ -9,7 +9,8 @@ param(
     [ValidateSet('Editor', 'Game', 'Both')]
     [string] $Target = 'Editor',
     [string] $EngineRoot,
-    [switch] $Clean
+    [switch] $Clean,
+    [switch] $DisableAdaptiveUnity
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,6 +29,7 @@ $targetNames = switch ($Target) {
 
 foreach ($targetName in $targetNames) {
 $arguments = @($targetName, 'Win64', $Configuration, $projectFile, '-WaitMutex', '-NoHotReloadFromIDE')
+if ($DisableAdaptiveUnity) { $arguments += '-DisableAdaptiveUnity' }
 
 if ($Clean) {
     Write-Host "Cleaning $targetName Win64 $Configuration"
