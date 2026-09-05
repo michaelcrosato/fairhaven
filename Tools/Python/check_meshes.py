@@ -18,6 +18,8 @@ What it catches, all of which have cost real time in this project:
 - geometry that has silently escaped its own bounding box, which is how a wall
   with a doorway in it goes wrong
 - meshes that have grown past their triangle budget
+- opaque shell or frame geometry blocking town window apertures
+- UV0 triangles collapsed to a line, which break generated tangent bases
 
 It does NOT catch anything about materials, collision cooking, winding or how a
 thing looks. Those need the editor and a screenshot; see AGENTS.md.
@@ -109,6 +111,14 @@ class Report(object):
             if any(not math.isfinite(value) for item in buffer for value in item):
                 problems.append("non-finite values in the %s buffer" % label)
 
+        if not problems:
+            from uegt2.meshkit import _mesh_uvs
+
+            uv0, _uv1 = _mesh_uvs(mesh)
+            collapsed = sum(_uv_area(uv0, t) < 1e-12 for t in mesh.triangles)
+            if collapsed:
+                problems.append("%d collapsed UV0 triangles" % collapsed)
+
         if expect_within and mesh.vertices:
             extents = _half_extents(mesh)
             for axis, got, allowed in zip("xyz", extents, expect_within):
@@ -146,6 +156,103 @@ def _is_degenerate(mesh, triangle):
 
 def _half_extents(mesh):
     return tuple(max(abs(v[i]) for v in mesh.vertices) for i in range(3))
+
+
+def _uv_area(uvs, triangle):
+    a, b, c = (uvs[i] for i in triangle)
+    return abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]))
+
+
+def _ray_hits(mesh, start, end):
+    """Whether a segment intersects a triangle, from either winding direction."""
+    from uegt2.meshkit import cross, dot, sub
+
+    direction = sub(end, start)
+    for triangle in mesh.triangles:
+        a, b, c = (mesh.vertices[i] for i in triangle)
+        edge1, edge2 = sub(b, a), sub(c, a)
+        p = cross(direction, edge2)
+        determinant = dot(edge1, p)
+        if abs(determinant) < 1e-9:
+            continue
+        offset = sub(start, a)
+        u = dot(offset, p) / determinant
+        if not 0.0 <= u <= 1.0:
+            continue
+        q = cross(offset, edge1)
+        v = dot(direction, q) / determinant
+        if v < 0.0 or u + v > 1.0:
+            continue
+        distance = dot(edge2, q) / determinant
+        if 0.0 <= distance <= 1.0:
+            return True
+    return False
+
+
+def _connected_bounds(mesh):
+    """Bounds of separate panes, joining flat-shaded faces by vertex position."""
+    parent = {}
+
+    def root(vertex):
+        parent.setdefault(vertex, vertex)
+        while parent[vertex] != vertex:
+            parent[vertex] = parent[parent[vertex]]
+            vertex = parent[vertex]
+        return vertex
+
+    for triangle in mesh.triangles:
+        a, b, c = (mesh.vertices[i] for i in triangle)
+        parent[root(b)] = root(a)
+        parent[root(c)] = root(a)
+    groups = {}
+    for vertex in parent:
+        groups.setdefault(root(vertex), []).append(vertex)
+    return [(tuple(min(v[i] for v in vertices) for i in range(3)),
+             tuple(max(v[i] for v in vertices) for i in range(3)))
+            for vertices in groups.values()]
+
+
+def check_window_apertures(report):
+    """Actual glass bounds must look through the opaque shell, near every edge.
+
+    A translucent pane cannot fix a frame or sill that seals the whole hole.
+    Deriving the sample area from the glass also catches outbuilding panes
+    placed somewhere different from the openings their walls were given.
+    """
+    from uegt2 import meshbuild
+
+    factories = {name: factory for name, _folder, factory, _material, _collision
+                 in meshbuild._catalog()}
+    print("\ntown window apertures")
+    for name, folder, _factory in meshbuild.GLAZED:
+        if folder != meshbuild.P_TOWN:
+            continue
+        shell = factories[name]()
+        glass = factories["SM_Glass_" + name[3:]]()
+        panes = _connected_bounds(glass)
+        report.checked += 1
+        blocked = 0
+        for low, high in panes:
+            normal = 0 if high[0] - low[0] < high[1] - low[1] else 1
+            along = 1 - normal
+            # Stay just inside the opening: the sill deliberately overlaps its
+            # bottom by 1 cm, while the 9 cm frame rails sit outside its edges.
+            for across in (0.03, 0.5, 0.97):
+                for up in (0.03, 0.5, 0.97):
+                    start = list(low)
+                    start[normal] -= 50.0
+                    start[along] += (high[along] - low[along]) * across
+                    start[2] += (high[2] - low[2]) * up
+                    end = list(start)
+                    end[normal] = high[normal] + 50.0
+                    blocked += _ray_hits(shell, start, end)
+        if not panes:
+            report.fail(name, "no glass panes to check")
+        elif blocked:
+            report.fail(name, "%d of %d window sightlines hit opaque shell geometry"
+                        % (blocked, len(panes) * 9))
+        else:
+            print("  ok    %-30s %d panes, centre and edges clear" % (name, len(panes)))
 
 
 def _blocking(mesh, box):
@@ -351,6 +458,8 @@ def main():
     for name, _folder, factory, _material, _collision in meshbuild._catalog():
         report.build(name, factory)
 
+    check_window_apertures(report)
+
     print("meshkit primitives")
     # A wall with a door and two windows is the shape every hollowed building
     # depends on, so it is checked against its own bounds explicitly.
@@ -410,7 +519,7 @@ def main():
         built = town.house(seed, w, d, storeys, porch=porch)
         report.mesh(label, built)
         check_doorway(report, label + " doorway", built, w, d, storeys)
-    print("\n%d meshes, %d triangles, %d failures"
+    print("\n%d checks, %d triangles, %d failures"
           % (report.checked, report.triangles, report.failures))
     if report.failures:
         print("FAILED")

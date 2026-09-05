@@ -187,11 +187,12 @@ class MeshBuilder(object):
         ``base_centre`` is the middle of the wall at its foot. ``axis`` is 'x'
         for a wall running along X (its two faces look up and down Y) or 'y' for
         one running along Y. ``openings`` is an iterable of
-        ``(offset_along, width, sill_z, opening_height)``; they must not overlap.
+        ``(offset_along, width, sill_z, opening_height)``. Openings are clipped
+        to the wall; overlapping rectangles are treated as one opening.
 
-        A wall of n openings costs n+1 upright strips plus up to 2n sill and
-        lintel blocks - so a cottage front with a door and two windows is seven
-        boxes, 84 triangles, against the 12 of the solid box it replaces.
+        With n horizontally separate openings this costs n+1 upright strips
+        plus up to 2n sill and lintel blocks. A cottage front with a door and two
+        windows is seven boxes, 84 triangles, against the 12 of the solid box it replaces.
         """
         cx, cy, cz = base_centre
         half = length * 0.5
@@ -208,15 +209,27 @@ class MeshBuilder(object):
                       else (cx, cy + mid, cz + (z0 + z1) * 0.5))
             self.box(centre, size, colour)
 
-        cursor = -half
-        for (offset, width, sill, opening_h) in sorted(openings, key=lambda o: o[0]):
-            left = offset - width * 0.5
-            right = offset + width * 0.5
-            slab(cursor, left, 0.0, height)            # the pier beside it
-            slab(left, right, 0.0, sill)               # under the sill
-            slab(left, right, sill + opening_h, height)  # over the lintel
-            cursor = right
-        slab(cursor, half, 0.0, height)
+        holes = []
+        edges = {-half, half}
+        for offset, width, sill, opening_h in openings:
+            left, right = max(-half, offset - width * 0.5), min(half, offset + width * 0.5)
+            bottom, top = max(0.0, sill), min(height, sill + opening_h)
+            if left < right and bottom < top:
+                holes.append((left, right, bottom, top))
+                edges.update((left, right))
+
+        # Work one horizontal strip at a time and subtract the union of its
+        # vertical openings. Emitting a sill and lintel independently for each
+        # window fills the other window back in when two storeys share an X.
+        ordered = sorted(edges)
+        for left, right in zip(ordered, ordered[1:]):
+            intervals = sorted((bottom, top) for x0, x1, bottom, top in holes
+                               if x0 < right and x1 > left)
+            cursor = 0.0
+            for bottom, top in intervals:
+                slab(left, right, cursor, bottom)
+                cursor = max(cursor, top)
+            slab(left, right, cursor, height)
 
     def prism(self, center, size, colour, wind=0.0, yaw=0.0):
         """Gable roof: a triangular prism ridged along local X."""
@@ -386,6 +399,19 @@ def _rgba(colour, wind):
 # ---------------------------------------------------------------------------
 # Asset emission
 # ---------------------------------------------------------------------------
+def _mesh_uvs(builder):
+    """UV0 gives every flat face a tangent basis; UV1 preserves its wind weight."""
+    uv0 = []
+    for vertex, normal in zip(builder.vertices, builder.normals):
+        # XY projection collapses vertical faces to a line, leaving MikkTSpace
+        # with no usable bitangent. Each flat-shaded face has its own vertices,
+        # so it can use the plane most aligned with its normal without seams
+        # affecting its neighbours. No material samples textures from UV0.
+        axis = max(range(3), key=lambda i: abs(normal[i]))
+        uv0.append((vertex[(axis + 1) % 3] * 0.01, vertex[(axis + 2) % 3] * 0.01))
+    return uv0, [(colour[3], 0.0) for colour in builder.colors]
+
+
 def build_dynamic_mesh(builder):
     """Convert a MeshBuilder into a UDynamicMesh."""
     mesh = unreal.new_object(unreal.DynamicMesh)
@@ -396,13 +422,10 @@ def build_dynamic_mesh(builder):
                                 [unreal.LinearColor(c[0], c[1], c[2], c[3]) for c in builder.colors])
     buffers.set_editor_property("triangles",
                                 [unreal.IntVector(t[0], t[1], t[2]) for t in builder.triangles])
-    # UV0 exists only to keep the static mesh build happy; the materials are
-    # colour-driven and never sample a texture.
-    buffers.set_editor_property("uv0", [unreal.Vector2D(v[0] * 0.01, v[1] * 0.01)
-                                        for v in builder.vertices])
+    uv0, uv1 = _mesh_uvs(builder)
+    buffers.set_editor_property("uv0", [unreal.Vector2D(u, v) for u, v in uv0])
     # UV1.x carries the wind weight, which is how the foliage material reaches it.
-    buffers.set_editor_property("uv1", [unreal.Vector2D(c[3], 0.0)
-                                        for c in builder.colors])
+    buffers.set_editor_property("uv1", [unreal.Vector2D(u, v) for u, v in uv1])
 
     unreal.GeometryScript_MeshEdits.append_buffers_to_mesh(mesh, buffers)
     return mesh
