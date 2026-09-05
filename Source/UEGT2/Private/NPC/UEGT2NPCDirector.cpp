@@ -12,6 +12,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "NPC/UEGT2NPCActor.h"
+#include "NPC/UEGT2NPCRoutines.h"
 #include "NPC/UEGT2NPCSpeech.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "UEGT2LogChannels.h"
@@ -139,6 +140,178 @@ bool UUEGT2NPCDirector::RestoreCalendar(int32 InDayIndex, float InHour, EUEGT2We
 	if (bSnapped) { SnapEveryone(); }
 	// Before the first director tick, leave the normal all-BeginPlay snap pending.
 	LodCountdown = ScheduleCountdown = 0.0f;
+	return true;
+}
+
+bool UUEGT2NPCDirector::CalculateRestPreview(int32 Day, float InHour, int32 Wake,
+	FUEGT2RestPreview& Out)
+{
+	if (Day < 0 || Day > 1000000 || !FMath::IsFinite(InHour) || InHour < 0.0f
+		|| InHour >= 24.0f || Wake < 0 || Wake > 23)
+	{
+		return false;
+	}
+	const bool bTomorrow = static_cast<float>(Wake) <= InHour;
+	if (bTomorrow && Day == 1000000) { return false; }
+	FUEGT2RestPreview Preview;
+	Preview.StartDayIndex = Day;
+	Preview.StartHour = InHour;
+	Preview.WakeDayIndex = Day + (bTomorrow ? 1 : 0);
+	Preview.WakeHour = Wake;
+	Preview.DurationHours = static_cast<float>(Wake) - InHour + (bTomorrow ? 24.0f : 0.0f);
+	Out = Preview;
+	return true;
+}
+
+bool UUEGT2NPCDirector::BuildRestCandidate(AUEGT2NPCActor* NPC,
+	const FUEGT2RestPreview& Preview, FUEGT2NPCContext& Out) const
+{
+	if (!IsValid(NPC) || NPC->IsActorBeingDestroyed() || NPC->GetWorld() != GetWorld()
+		|| !NPC->HasActorBegunPlay() || NPC->GetActorLocation().ContainsNaN()
+		|| NPC->SpawnLocation.ContainsNaN() || NPC->AnchorCentre.ContainsNaN()
+		|| !FMath::IsFinite(NPC->WanderRadius)
+		|| static_cast<uint8>(NPC->GetActivity()) >= static_cast<uint8>(EUEGT2Activity::Count))
+	{
+		return false;
+	}
+	for (const FUEGT2NPCAnchorPoint& Anchor : NPC->Anchors)
+	{
+		if (Anchor.Location.ContainsNaN()
+			|| static_cast<uint8>(Anchor.Type) >= static_cast<uint8>(EUEGT2Anchor::Count))
+		{
+			return false;
+		}
+	}
+	const double* LastHours = LastNeedsHours.Find(NPC);
+	if (!LastHours || !FMath::IsFinite(*LastHours) || *LastHours > SimulatedHours) { return false; }
+	const float PendingHours = static_cast<float>(SimulatedHours - *LastHours);
+	if (!FMath::IsFinite(PendingHours) || PendingHours < 0.0f) { return false; }
+	FUEGT2NPCContext Candidate;
+	Candidate.Hour = Preview.StartHour;
+	Candidate.DayIndex = Preview.StartDayIndex;
+	Candidate.Weather = Sky->GetWeather();
+	Candidate.Personality = NPC->GetPersonality();
+	Candidate.Needs = NPC->GetNeeds();
+	Candidate.Purse = NPC->GetPurse();
+	Candidate.Seed = NPC->GetSeed();
+	Candidate.bExposed = !NPC->IsIndoors();
+	if (!UEGT2AdvanceScheduledLife(NPC->GetNPCRole(), NPC->GetSpecies(), 0.0f, Candidate))
+	{
+		return false;
+	}
+	// Live slices owe time at their existing activity. Settle that on the copy
+	// before resolving the first skipped minute, never on a partly committed town.
+	if (!NPC->IsSuppressed())
+	{
+		if (NPC->IsAnimal()) { Candidate.Needs.Advance(PendingHours, NPC->GetActivity()); }
+		else
+		{
+			UEGT2AdvanceLife(PendingHours, NPC->GetActivity(), NPC->GetNPCRole(),
+				Candidate.Needs, Candidate.Purse);
+		}
+	}
+	if (!UEGT2AdvanceScheduledLife(NPC->GetNPCRole(), NPC->GetSpecies(), 0.0f, Candidate))
+	{
+		return false;
+	}
+	Out = Candidate;
+	return true;
+}
+
+bool UUEGT2NPCDirector::CanAdvanceForRest(int32 Wake, FUEGT2RestPreview& Out, FText& Reason) const
+{
+	if (!GetWorld() || !bSnapped || Population.IsEmpty() || !IsValid(Sky)
+		|| Sky->IsActorBeingDestroyed() || Sky->GetWorld() != GetWorld())
+	{
+		Reason = LOCTEXT("RestUnready", "The town is still getting ready.");
+		return false;
+	}
+	if (bFrozen || bSchedulesPaused || !Sky->IsDayNightCycleEnabled()
+		|| !FMath::IsFinite(Sky->GetDayLengthMinutes())
+		|| !FMath::IsFinite(GetWorldHoursPerSecond()) || GetWorldHoursPerSecond() <= 0.0f)
+	{
+		Reason = LOCTEXT("RestFrozen", "Let the clock and town routines run before sleeping until an hour.");
+		return false;
+	}
+	FUEGT2RestPreview Preview;
+	const float SkyHour = Sky->GetTimeOfDay();
+	if (DayIndex < 0 || DayIndex > 1000000)
+	{
+		Reason = LOCTEXT("RestInvalidDay", "That day is outside the town calendar.");
+		return false;
+	}
+	// The sky can tick across midnight immediately before the menu pauses the
+	// world, leaving the director's last tick one day behind. Preview and commit
+	// both read this same correction; neither preview mutates the cached calendar.
+	const int32 CurrentDay = DayIndex + (SkyHour + 12.0f < Hour ? 1 : 0);
+	if (!FMath::IsFinite(Hour) || !FMath::IsFinite(SimulatedHours)
+		|| SimulatedHours < 0.0
+		|| static_cast<uint8>(Sky->GetWeather()) >= static_cast<uint8>(EUEGT2Weather::Count)
+		|| !CalculateRestPreview(CurrentDay, SkyHour, Wake, Preview))
+	{
+		Reason = LOCTEXT("RestInvalidTime", "That wake-up time is outside the town calendar.");
+		return false;
+	}
+	Out = Preview;
+	Reason = FText::GetEmpty();
+	return true;
+}
+
+bool UUEGT2NPCDirector::AdvanceForRest(int32 Wake, FUEGT2RestPreview& Out, FText& Reason)
+{
+	FUEGT2RestPreview Preview;
+	if (!CanAdvanceForRest(Wake, Preview, Reason)) { return false; }
+	TArray<FUEGT2NPCContext> Candidates;
+	Candidates.Reserve(Population.Num());
+	for (AUEGT2NPCActor* NPC : Population)
+	{
+		FUEGT2NPCContext Candidate;
+		if (!BuildRestCandidate(NPC, Preview, Candidate)
+			|| (!NPC->IsSuppressed() && !UEGT2AdvanceScheduledLife(NPC->GetNPCRole(),
+				NPC->GetSpecies(), Preview.DurationHours, Candidate)))
+		{
+			Reason = LOCTEXT("RestSimulationFailed", "The town could not finish that rest. Nothing has changed.");
+			return false;
+		}
+		Candidate.DayIndex = Preview.WakeDayIndex;
+		Candidate.Hour = static_cast<float>(Preview.WakeHour);
+		Candidates.Add(Candidate);
+	}
+
+	// All fallible model work is complete. No actor, calendar or elapsed-time
+	// baseline was touched while another inhabitant could still reject the rest.
+	SimulatedHours += Preview.DurationHours;
+	DayIndex = Preview.WakeDayIndex;
+	Hour = PreviousHour = static_cast<float>(Preview.WakeHour);
+	Weather = PreviousWeather = Sky->GetWeather();
+	Sky->SetTimeOfDay(Hour);
+	Conversations.Reset();
+	for (int32 Index = 0; Index < Population.Num(); ++Index)
+	{
+		AUEGT2NPCActor* NPC = Population[Index];
+		LastNeedsHours.FindChecked(NPC) = SimulatedHours;
+		if (!NPC->IsSuppressed()) { NPC->CommitRestState(Candidates[Index]); }
+		else
+		{
+			// Hidden inhabitants keep their life and placement, but a stale
+			// companion or speech handle must not survive the skipped day.
+			NPC->FollowTarget.Reset();
+			NPC->SpokenLine = FText::GetEmpty();
+			NPC->BubbleStartTime = NPC->LastSpokeTime = -1000.0f;
+			NPC->BubbleTypingSeconds = NPC->BubbleHoldSeconds = 0.0f;
+		}
+	}
+	UpdateLODs();
+	SliceCursor = 0;
+	LodCountdown = LodPeriod;
+	ScheduleCountdown = SchedulePeriod;
+	SpeechCountdown = SpeechPeriod;
+	LastSpeechTime = GetWorld()->GetTimeSeconds();
+	Out = Preview;
+	Reason = FText::GetEmpty();
+	UE_LOG(LogUEGT2NPC, Log, TEXT("Town rested %.4f h: day %d %.4f h -> day %d %02d:00; %d inhabitants."),
+		Preview.DurationHours, Preview.StartDayIndex, Preview.StartHour,
+		Preview.WakeDayIndex, Preview.WakeHour, Population.Num());
 	return true;
 }
 

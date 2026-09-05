@@ -2,7 +2,10 @@
 
 #include "Components/BoxComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "GameFramework/Pawn.h"
 #include "Player/UEGT2NeedsComponent.h"
+#include "Player/UEGT2PlayerController.h"
+#include "Rest/UEGT2RestSubsystem.h"
 #include "UEGT2LogChannels.h"
 
 #define LOCTEXT_NAMESPACE "UEGT2Amenity"
@@ -171,7 +174,12 @@ FText AUEGT2Amenity::GetInteractionPrompt(const AActor* Interactor) const
 		break;
 	case EUEGT2AmenityKind::Washroom: Verb = LOCTEXT("UseWash", "Use the washroom"); break;
 	case EUEGT2AmenityKind::Seat:     Verb = LOCTEXT("SitDown", "Sit down"); break;
-	case EUEGT2AmenityKind::Bed:      Verb = LOCTEXT("SleepHere", "Sleep"); break;
+	case EUEGT2AmenityKind::Bed:
+	{
+		const UUEGT2RestSubsystem* Rest = UUEGT2RestSubsystem::Get(GetWorld());
+		Verb = Rest && Rest->IsEnabled() ? LOCTEXT("SleepUntil", "Sleep until...") : LOCTEXT("SleepHere", "Sleep");
+		break;
+	}
 	case EUEGT2AmenityKind::Larder:   Verb = LOCTEXT("EatIn", "Eat at home"); break;
 	case EUEGT2AmenityKind::Work:
 		Verb = Named.IsEmpty() ? LOCTEXT("WorkHere", "Put in a shift")
@@ -202,6 +210,16 @@ void AUEGT2Amenity::OnInteract(AActor* Interactor)
 		// camera or a future companion may well probe one.
 		UE_LOG(LogUEGT2Interaction, Verbose, TEXT("%s used %s with no needs component."),
 			Interactor ? *Interactor->GetName() : TEXT("nobody"), *GetName());
+		return;
+	}
+	UUEGT2RestSubsystem* Rest = UUEGT2RestSubsystem::Get(GetWorld());
+	if (Kind == EUEGT2AmenityKind::Bed && !Life->IsUsing(this) && Rest && Rest->IsEnabled())
+	{
+		const APawn* Pawn = Cast<APawn>(Interactor);
+		AUEGT2PlayerController* PC = Pawn ? Cast<AUEGT2PlayerController>(Pawn->GetController()) : nullptr;
+		FText Reason;
+		if (!Rest->CanSleepAt(PC, this, Reason)) { ShowHudMessage(Interactor, Reason); }
+		else if (!PC->OpenRestPanel(this)) { ShowHudMessage(Interactor, LOCTEXT("CannotPause", "The sleep panel could not be opened.")); }
 		return;
 	}
 	Life->BeginActivity(GetActivity(), this, VenueName, JobRole, UseRange);

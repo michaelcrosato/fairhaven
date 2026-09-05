@@ -515,6 +515,11 @@ FVector AUEGT2NPCActor::ResolveDestinationFor(const FUEGT2ActivityDecision& InDe
 
 void AUEGT2NPCActor::EvaluateSchedule(const FUEGT2NPCContext& Context, bool bForceRepath)
 {
+	EvaluateScheduleInternal(Context, bForceRepath, false);
+}
+
+void AUEGT2NPCActor::EvaluateScheduleInternal(const FUEGT2NPCContext& Context, bool bForceRepath, bool bSnap)
+{
 	FUEGT2NPCContext Local = Context;
 	Local.Personality = Personality;
 	Local.Needs = Needs;
@@ -572,7 +577,7 @@ void AUEGT2NPCActor::EvaluateSchedule(const FUEGT2NPCContext& Context, bool bFor
 			Destination = Home;
 			bArrived = true;
 		}
-		else if (LOD == EUEGT2NPCLOD::Dormant)
+		else if (bSnap || LOD == EUEGT2NPCLOD::Dormant)
 		{
 			// Nobody is within four hundred metres of this one. Walking it
 			// there would cost an A* search and a tick budget to animate a
@@ -602,15 +607,15 @@ bool AUEGT2NPCActor::ConsumeActivityChanged()
 
 void AUEGT2NPCActor::SnapToSchedule(const FUEGT2NPCContext& Context)
 {
-	EvaluateSchedule(Context, true);
-	if (!bIndoors)
+	// The direct placement branch keeps the same ground probe without building
+	// an A* route that this function would immediately throw away.
+	EvaluateScheduleInternal(Context, true, true);
+	if (IsFollowing())
 	{
-		// Settle onto the ground, rather than merely working out where it is.
-		// A frozen capture never ticks, so this is the only chance these actors
-		// get to stand on anything.
-		const FVector Target = Destination;
-		GroundZ = GroundZAt(Target);
-		SetActorLocation(FVector(Target.X, Target.Y, GroundZ));
+		// Following returns before the ordinary placement branch. Preserve the
+		// established snap behavior for callers that retain a companion.
+		GroundZ = GroundZAt(Destination);
+		SetActorLocation(FVector(Destination.X, Destination.Y, GroundZ));
 	}
 	PathPoints.Reset();
 	PathIndex = 0;
@@ -619,6 +624,21 @@ void AUEGT2NPCActor::SnapToSchedule(const FUEGT2NPCContext& Context)
 	// Face somewhere plausible rather than all facing north.
 	CurrentYaw = UEGT2HashUnit((uint32)Seed, 0xF00Du) * 360.0f;
 	SetActorRotation(FRotator(0.0f, CurrentYaw, 0.0f));
+}
+
+void AUEGT2NPCActor::CommitRestState(const FUEGT2NPCContext& Context)
+{
+	Needs = Context.Needs;
+	Purse = Context.Purse;
+	ApplyIndoors(!Context.bExposed);
+	FollowTarget.Reset();
+	FollowRepathCountdown = 0.0f;
+	SpokenLine = FText::GetEmpty();
+	BubbleStartTime = LastSpokeTime = -1000.0f;
+	BubbleTypingSeconds = BubbleHoldSeconds = 0.0f;
+	FocusCountdown = DriftCountdown = GroundTraceCountdown = 0.0f;
+	SnapToSchedule(Context);
+	ConsumeActivityChanged();
 }
 
 void AUEGT2NPCActor::AdvanceNeeds(float WorldHours)

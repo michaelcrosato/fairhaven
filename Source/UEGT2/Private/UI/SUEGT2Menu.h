@@ -20,6 +20,7 @@ enum class EUEGT2MenuPage : uint8
 	Settings,
 	DevMode,
 	SurveyJournal,
+	Rest,
 };
 
 /** Dev mode tab. */
@@ -57,6 +58,9 @@ public:
 	void OpenSettings(int32 TabIndex);
 	void OpenSurveyJournal();
 	bool IsSurveyJournalOpen() const { return Page == EUEGT2MenuPage::SurveyJournal; }
+	/** Attach the page and return its preferred initial focus target. */
+	TSharedPtr<SWidget> OpenRestPanel(AUEGT2Amenity* Bed);
+	bool IsRestPanelOpen() const { return Page == EUEGT2MenuPage::Rest; }
 
 	virtual bool SupportsKeyboardFocus() const override { return true; }
 	virtual FReply OnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEvent) override;
@@ -65,6 +69,7 @@ public:
 private:
 	TSharedRef<SWidget> BuildRoot();
 	TSharedRef<SWidget> BuildSurveyJournal();
+	TSharedRef<SWidget> BuildRestPanel();
 	TSharedRef<SWidget> BuildSettings();
 	TSharedRef<SWidget> BuildGraphicsTab();
 	TSharedRef<SWidget> BuildAudioTab();
@@ -85,6 +90,8 @@ private:
 	void ApplyAndSave(bool bResolutionToo = false);
 
 	TWeakObjectPtr<AUEGT2PlayerController> Controller;
+	TWeakObjectPtr<AUEGT2Amenity> RestBed;
+	TWeakPtr<SWidget> RestInitialFocus;
 	EUEGT2MenuState MenuState = EUEGT2MenuState::Main;
 	EUEGT2MenuPage Page = EUEGT2MenuPage::Root;
 	EUEGT2SettingsTab Tab = EUEGT2SettingsTab::Graphics;

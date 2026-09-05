@@ -34,6 +34,10 @@ its maintainer switch and its verification.
 and track a surveyed place for a direction arrow and straight-line distance.
 The journal has its own switch in Settings → Gameplay.
 
+**Choose when to wake.** Use the bed beside the lodgings to sleep until a chosen
+hour. The town carries on, and your needs still change. Settings → Gameplay →
+Sleep Until switches this back to ordinary sleep.
+
 ![The farmland west of town](Docs/Images/farmland.png)
 
 | | |
@@ -112,6 +116,7 @@ mesh and shader data. Each script reports its elapsed time.
 | `./Scripts/Smoke-Packaged.ps1` | Check that real input moves the packaged player |
 | `./Scripts/Smoke-Progress.ps1` | Check save, Continue, New Visit and disabled saving in isolated packaged runs |
 | `./Scripts/Smoke-Survey.ps1 -Capture` | Check rebound journal input, tracking and off switches; capture the journal and HUD |
+| `./Scripts/Smoke-Rest.ps1 -Capture` | Check the bed panel, a full day of sleep, resumed life and both off switches |
 | `./Scripts/Screenshot-Tour.ps1` | Render the registered viewpoints headlessly to PNG |
 | `./Scripts/Screenshot-Tour.ps1 -Menu` | Render the menu and settings screens |
 | `./Scripts/Screenshot-Tour.ps1 -ExtraArgs '-UEGT2CaptureLife'` | Exercise food, washing, sitting and work through player interaction |

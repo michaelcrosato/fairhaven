@@ -6,6 +6,7 @@
 #include "UEGT2PlayerController.generated.h"
 
 class AUEGT2NPCActor;
+class AUEGT2Amenity;
 class SUEGT2Dialogue;
 class SUEGT2Menu;
 class UUEGT2InputConfig;
@@ -56,6 +57,11 @@ public:
 	bool IsSurveyJournalOpen() const;
 	bool IsSurveyJournalEnabled() const;
 	bool IsSurveyJournalAvailable() const;
+
+	/** Chosen wake times are offered only at a bed during a visit. */
+	bool OpenRestPanel(AUEGT2Amenity* Bed);
+	bool IsRestPanelOpen() const;
+	bool IsRestAvailable() const;
 
 	/** Drop back to the front end without leaving the level. */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Menu") void ReturnToMainMenu();

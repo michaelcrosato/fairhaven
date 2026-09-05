@@ -30,3 +30,5 @@ UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2NPC, Log, All);
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Progress, Log, All);
 /** Survey journal tracking and its feature gate. */
 UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Survey, Log, All);
+/** Explicit sleep intervals and their feature gate. */
+UEGT2_API DECLARE_LOG_CATEGORY_EXTERN(LogUEGT2Rest, Log, All);

@@ -68,7 +68,8 @@ AUEGT2GameMode
 ├── AUEGT2PlayerController     input, menu ownership, diagnostics toggle
 │   ├── SUEGT2Menu             front end, pause, settings (Slate, in code)
 │   ├── SUEGT2Dialogue         conversation and follow controls
-│   └── SUEGT2SurveyJournal    paused discovery roster and tracking controls
+│   ├── SUEGT2SurveyJournal    paused discovery roster and tracking controls
+│   └── SUEGT2RestPanel        chosen wake time, duration and date preview
 ├── AUEGT2HUD                  prompts, needs, almanac, F3 overlay
 └── UUEGT2GameUserSettings     every persisted setting, one settings file
 
@@ -86,6 +87,7 @@ World actors:
   UUEGT2NPCDirector            LOD tiers, schedule slices, the speech budget
   UUEGT2CaptureSubsystem       headless screenshot tours
   UUEGT2SurveySubsystem        landmark roster and one weak direction target; no tick
+  UUEGT2RestSubsystem          bed eligibility and explicit skipped life; no tick
 ```
 
 **The inhabitants** get their own document: [NPCs.md](NPCs.md). The organising
@@ -265,6 +267,14 @@ interval; frozen captures, a disabled day/night cycle and time suppressed by
 crowd density do not accrue NPC needs or coin. Pausing routine decisions still
 allows the ledger to advance.
 
+Chosen wake times use a separate director transaction. It validates and computes
+candidate needs and purses, including any pending live slice, before committing
+the interval. `UEGT2AdvanceScheduledLife` resolves routines in bounded minute
+steps using the same ledger; final placement bypasses route searches and player
+proximity reactions. Every elapsed-time baseline moves with the commit, so the
+next live slice cannot charge the skipped day again. World frame timers and
+physics time are unchanged.
+
 **You can talk to anyone, and what they say is true.** `UEGT2Dialogue.h` is a
 set of pure functions over `FUEGT2DialogueState` - a snapshot of one
 inhabitant's needs, activity, role, hour and seed. No world, no actor, no
@@ -414,7 +424,7 @@ or performance. A screenshot or short test does not cover a sustained hitch.
   quality levels.
 - `LogUEGT2`, `LogUEGT2Player`, `LogUEGT2Interaction`, `LogUEGT2Settings`,
   `LogUEGT2UI`, `LogUEGT2World`, `LogUEGT2Diag`, `LogUEGT2Dev`, `LogUEGT2NPC`,
-  `LogUEGT2Progress`, `LogUEGT2Survey` —
+  `LogUEGT2Progress`, `LogUEGT2Survey`, `LogUEGT2Rest` —
   one channel per system.
 - **The population report.** Twelve seconds into any run, `LogUEGT2NPC` prints
   how many inhabitants exist, how many are outdoors, how many are walking, how

@@ -14,6 +14,7 @@
 
 #include "CoreMinimal.h"
 #include "NPC/UEGT2NPCTypes.h"
+#include "Rest/UEGT2RestTypes.h"
 #include "Subsystems/WorldSubsystem.h"
 #include "World/UEGT2Weather.h"
 #include "UEGT2NPCDirector.generated.h"
@@ -71,6 +72,12 @@ public:
 	UFUNCTION(BlueprintPure, Category = "UEGT2|NPC") int32 GetDayIndex() const { return DayIndex; }
 	/** Restore a checkpoint calendar without manufacturing elapsed life or midnight crossings. */
 	bool RestoreCalendar(int32 InDayIndex, float InHour, EUEGT2Weather InWeather);
+	/** Pure next-hour calculation; equal clock hours mean tomorrow. */
+	static bool CalculateRestPreview(int32 Day, float InHour, int32 Wake, FUEGT2RestPreview& Out);
+	/** Cheap readiness/calendar check for UI bindings. World pause is allowed. */
+	bool CanAdvanceForRest(int32 Wake, FUEGT2RestPreview& Out, FText& Reason) const;
+	/** Simulate up to one day, then commit all ledgers, calendar and final placements together. */
+	bool AdvanceForRest(int32 Wake, FUEGT2RestPreview& Out, FText& Reason);
 	FVector GetPlayerLocation() const { return PlayerLocation; }
 
 	/**
@@ -130,6 +137,8 @@ public:
 	static constexpr int32 MaxConcurrentBubbles = 5;
 
 private:
+	bool BuildRestCandidate(AUEGT2NPCActor* NPC, const FUEGT2RestPreview& Preview,
+		FUEGT2NPCContext& Out) const;
 	void RefreshWorldFacts();
 	void UpdateLODs();
 	void RunScheduleSlice();

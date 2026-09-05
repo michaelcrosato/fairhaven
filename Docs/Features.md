@@ -149,7 +149,88 @@ Local evidence is under `Saved/Logs/Survey*` and `Saved/Screenshots/SurveySmoke/
 `888dcf14e22a4bf79c2fc541353ae607` (1080p) and
 `5b96b766012240e3ab40d8ffd1ed4cd1` (720p).
 
+## F003 — Sleep until a chosen hour
+
+Status: implemented and verified on `feature/sleep-until`, 2026-09-05.
+
+**What it adds.** Use the existing bed beside the lodgings to choose a wake hour.
+The paused panel defaults to 06:00, offers all 24 whole hours, and shows the
+duration and resulting date before committing. The next occurrence is used:
+choosing the current exact hour means sleeping for 24 hours. Cancel or Escape
+returns to play without advancing time.
+
+Sleep restores energy through the shared life ledger. Hunger, relief and
+company still decline, and the player earns no coins while asleep. The town
+continues its routines, including meals, wages, animals and weekday habits.
+Weather stays at its current preset. Waking leaves the player at the same
+position, ends transient activity and releases any carried prop. There is no
+automatic checkpoint; F001 can save the resulting state normally.
+
+**Player switch.** Settings → Gameplay → Sleep Until. Default On;
+`bSleepUntilEnabled` in `[/Script/UEGT2.UEGT2GameUserSettings]`.
+Turning it off restores ordinary bed sleep, which runs continuously until the
+player gets up or feels rested. Existing checkpoints remain unchanged.
+
+**Maintainer switch.** In `Config/DefaultGame.ini`:
+
+```ini
+[/Script/UEGT2.UEGT2RestSubsystem]
+bFeatureEnabled=False
+```
+
+Set it back to `True` to enable it. The player cannot override this gate. Standard
+captures, walk smoke and flight soak retain ordinary sleep automatically.
+Chosen wake times require a live clock, running schedules and a standing player
+within the bed's use range. Frozen or unready worlds cannot skip time.
+
+**Implementation.** `Rest/UEGT2RestSubsystem` validates the bed and player, then
+coordinates a bounded interval with the NPC director. The director prepares
+candidate life states before applying them, settles pending live time once,
+advances schedules in steps of at most one world minute, and resets each
+inhabitant's elapsed-time baseline. Density-suppressed inhabitants retain the
+existing rule of no needs or money advancement. Final placement suppresses
+proximity greetings and performs no discarded route search. `LogUEGT2Rest`
+records panel and sleep outcomes. No map, mesh or save schema changes are needed.
+
+**Research.** Epic's [frame timing API](https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/Engine/FGameTime)
+distinguishes paused world time from real time, and its [ticking guide](https://dev.epicgames.com/documentation/en-us/unreal-engine/actor-ticking-in-unreal-engine)
+describes the frame phases that include physics and timers. The implementation
+therefore advances Fairhaven's calendar and life ledger explicitly; it does not
+fast-forward Unreal's frame clock. The repository's `RestoreCalendar` intentionally
+adds no elapsed life, so sleep uses a separate interval operation.
+
+**Verification.** Both Development targets compile with adaptive unity disabled.
+All 78 automation tests pass, including six rest simulation tests and four rest
+service tests. They cover calendar rollovers, scheduled work and meals, animals,
+invalid-state atomicity, pending live time, density suppression, paused previews,
+bed eligibility, commit guards and disabled-feature fallback. The route-search
+counter remains unchanged during final rest placement. The final package completed
+in 2m03s.
+
+The packaged rest smoke passes at 1920×1080 and 1280×720. It uses the real bed
+interaction probe, checks that Cancel preserves paused state, and navigates from
+the initially focused Cancel button through the hour controls to Sleep using
+D-pad and A events without assigning button focus. It verifies the displayed
+07:00 and 08:00 selections before committing a full day. All 1,188 inhabitants
+advance, taking 60.1 ms and 62.2 ms respectively, while the player's 137.625 coins
+remain exact. Three seconds of live NPC updates with the clock frozen produce
+no deferred or duplicate life charge; the subsequent running clock advances
+needs normally. Both off switches restore ordinary bed sleep and getting up.
+Neither run writes a checkpoint. All four panel/waking screenshots were inspected.
+The wrapper's ten failure-handling cases pass under PowerShell 7 and 5.1.
+
+The four-phase progress regression and packaged survey regression pass. The
+ordinary walk smoke moves the player 23.02 m through real input. The ten-minute
+flight soak completes 63 legs with zero stalls, a 42.6 ms worst frame and a
+3.9 ms longest garbage collection. Its object count stays at 60,190 after the
+initial collection; memory peaks at 2,649 MB and ends at 2,605 MB. There are no
+hangs, route cycles or errors. Existing Far-tier ground-probe and engine renderer
+warnings remain documented in [Audit.md](Audit.md).
+
+Local evidence uses `Saved/Logs/Rest*`. Screenshots are under
+`Saved/Screenshots/RestSmoke/746b6af8c9a24445bf9cb3ae7d82b1b4/` (1080p) and
+`Saved/Screenshots/RestSmoke/ab73b7c35a6f4030aafc4b608419b2ba/` (720p).
+
 ## Next candidates
 
 - Optional autosaving with its own switch and explicit write-completion handling.
-- Sleep until a chosen hour, advancing the shared town/player ledger together.

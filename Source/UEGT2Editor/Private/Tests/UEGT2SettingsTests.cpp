@@ -36,6 +36,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	Settings->SetShowNeeds(false);
 	Settings->SetSaveProgressEnabled(false);
 	Settings->SetSurveyJournalEnabled(false);
+	Settings->SetSleepUntilEnabled(false);
 	Settings->SetUseFahrenheit(true);
 	Settings->SetCrowdDensity(0.2f);
 	Settings->SetKeyOverride(TEXT("Jump"), EKeys::J);
@@ -62,6 +63,7 @@ bool FUEGT2SettingsDefaultsTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("needs"), Settings->GetShowNeeds());
 	TestTrue(TEXT("progress saving"), Settings->GetSaveProgressEnabled());
 	TestTrue(TEXT("survey journal"), Settings->GetSurveyJournalEnabled());
+	TestTrue(TEXT("chosen wake times"), Settings->GetSleepUntilEnabled());
 	TestFalse(TEXT("Fahrenheit"), Settings->GetUseFahrenheit());
 	TestEqual(TEXT("crowd density"), Settings->GetCrowdDensity(), 1.0f);
 	TestFalse(TEXT("key override removed"), Settings->GetKeyOverride(TEXT("Jump")).IsValid());

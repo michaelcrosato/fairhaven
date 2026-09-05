@@ -713,3 +713,78 @@ FUEGT2ActivityDecision ResolveActivity(EUEGT2NPCRole Role, EUEGT2NPCSpecies Spec
 
 	return Decision;
 }
+
+namespace UEGT2ScheduledLife
+{
+	bool IsValidContext(const FUEGT2NPCContext& Context)
+	{
+		if (Context.DayIndex < 0 || Context.DayIndex > 1000000
+			|| !FMath::IsFinite(Context.Hour) || Context.Hour < 0.0f || Context.Hour >= 24.0f
+			|| static_cast<uint8>(Context.Weather) >= static_cast<uint8>(EUEGT2Weather::Count)
+			|| !FMath::IsFinite(Context.Purse.Coins) || Context.Purse.Coins < 0.0f)
+		{
+			return false;
+		}
+		const float UnitValues[] = { Context.Needs.Energy, Context.Needs.Fed,
+			Context.Needs.Relief, Context.Needs.Company, Context.Personality.Sociability,
+			Context.Personality.Punctuality, Context.Personality.Energy,
+			Context.Personality.Curiosity, Context.Personality.Bravery };
+		for (float Value : UnitValues)
+		{
+			if (!FMath::IsFinite(Value) || Value < 0.0f || Value > 1.0f) { return false; }
+		}
+		return true;
+	}
+}
+
+bool UEGT2AdvanceScheduledLife(EUEGT2NPCRole Role, EUEGT2NPCSpecies Species,
+	float WorldHours, FUEGT2NPCContext& Context)
+{
+	if (static_cast<uint8>(Role) >= static_cast<uint8>(EUEGT2NPCRole::Count)
+		|| static_cast<uint8>(Species) >= static_cast<uint8>(EUEGT2NPCSpecies::Count)
+		|| !FMath::IsFinite(WorldHours) || WorldHours < 0.0f || WorldHours > 24.0f
+		|| !UEGT2ScheduledLife::IsValidContext(Context))
+	{
+		return false;
+	}
+	const double EndHour = static_cast<double>(Context.Hour) + WorldHours;
+	const int32 Days = static_cast<int32>(EndHour / 24.0);
+	if (Context.DayIndex > 1000000 - Days) { return false; }
+	if (WorldHours == 0.0f) { return true; }
+
+	FUEGT2NPCContext Candidate = Context;
+	// A sleeping player's fixed position must not make the whole night a greeting
+	// or keep the chickens fleeing. This model does not move bodies between steps.
+	Candidate.PlayerDistance = 1.0e9f;
+	const double StartHour = Context.Hour;
+	double Elapsed = 0.0;
+	while (Elapsed < static_cast<double>(WorldHours))
+	{
+		const double Clock = StartHour + Elapsed;
+		const int32 DayOffset = static_cast<int32>(Clock / 24.0);
+		const double LocalHour = Clock - DayOffset * 24.0;
+		Candidate.DayIndex = Context.DayIndex + DayOffset;
+		// A float just below midnight can round to 24, which is outside the
+		// routine's domain. Keep that last fractional step on the correct day.
+		Candidate.Hour = FMath::Min(static_cast<float>(LocalHour), 23.999998f);
+		const double Step = FMath::Min(1.0 / 60.0,
+			FMath::Min(static_cast<double>(WorldHours) - Elapsed, 24.0 - LocalHour));
+		const FUEGT2ActivityDecision Decision = ResolveActivity(Role, Species, Candidate);
+		if (IsAnimalSpecies(Species))
+		{
+			Candidate.Needs.Advance(static_cast<float>(Step), Decision.Activity);
+		}
+		else
+		{
+			UEGT2AdvanceLife(static_cast<float>(Step), Decision.Activity, Role,
+				Candidate.Needs, Candidate.Purse);
+		}
+		Candidate.bExposed = !IsIndoorActivity(Decision.Activity);
+		Elapsed += Step;
+	}
+	Candidate.DayIndex = Context.DayIndex + Days;
+	Candidate.Hour = FMath::Min(static_cast<float>(EndHour - Days * 24.0), 23.999998f);
+	if (!UEGT2ScheduledLife::IsValidContext(Candidate)) { return false; }
+	Context = Candidate;
+	return true;
+}

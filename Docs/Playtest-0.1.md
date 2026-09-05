@@ -116,6 +116,14 @@ use it without saving enabled. The selected target resets on a new visit.
 
 ## What to look at
 
+At the bed beside your lodgings, **Sleep until...** opens a paused wake-time
+panel. Choose an hour and check the duration and date before pressing Sleep.
+Cancel or Escape returns without advancing time. Sleeping restores energy;
+you still get hungry and need the washroom and company. The town follows its
+routines while you sleep. **Settings → Gameplay → Sleep Until** turns the
+panel off and restores continuous sleep until rested or until you get up.
+Saving remains manual.
+
 **Scale.** Does a house feel house-sized next to you? Do the villagers read as
 people? Is the walk from town to the coast the right length, or too long/short?
 

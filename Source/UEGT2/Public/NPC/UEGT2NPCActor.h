@@ -244,6 +244,11 @@ protected:
 	TArray<FUEGT2NPCAnchorPoint> Anchors;
 
 private:
+	friend class UUEGT2NPCDirector;
+	void EvaluateScheduleInternal(const FUEGT2NPCContext& Context, bool bForceRepath, bool bSnap);
+	/** The director has validated every inhabitant before it calls this. */
+	void CommitRestState(const FUEGT2NPCContext& Context);
+
 	/** Cached because the personality is a pure function of the seed. */
 	FUEGT2Personality Personality;
 	FUEGT2NPCNeeds Needs;

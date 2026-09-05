@@ -66,6 +66,7 @@ public:
 	/** How far the player may stray before the activity ends. */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Amenity")
 	void SetUseRange(float Range);
+	float GetUseRange() const { return UseRange; }
 
 	/** Half-extents of the volume the interaction probe can find. */
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Amenity")

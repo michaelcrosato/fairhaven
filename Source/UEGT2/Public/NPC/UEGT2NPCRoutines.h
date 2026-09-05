@@ -41,3 +41,11 @@ UEGT2_API FUEGT2ActivityDecision ResolveActivity(EUEGT2NPCRole Role,
  * two hundred people on nineteen routines does not move like a parade.
  */
 UEGT2_API float GetEffectiveHour(float Hour, const FUEGT2Personality& Personality);
+
+/**
+ * Advance a copied life through its routines in steps no longer than a minute.
+ * Player proximity is ignored while resting. Invalid inputs leave Context intact.
+ * Zero hours validates without advancing; the largest permitted interval is a day.
+ */
+UEGT2_API bool UEGT2AdvanceScheduledLife(EUEGT2NPCRole Role,
+	EUEGT2NPCSpecies Species, float WorldHours, FUEGT2NPCContext& Context);

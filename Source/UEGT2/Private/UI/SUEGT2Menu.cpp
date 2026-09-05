@@ -1,5 +1,7 @@
 #include "SUEGT2Menu.h"
 #include "SUEGT2SurveyJournal.h"
+#include "SUEGT2RestPanel.h"
+#include "Interaction/UEGT2Amenity.h"
 
 #include "Dev/UEGT2DevModeSubsystem.h"
 #include "Diagnostics/UEGT2CaptureSubsystem.h"
@@ -228,6 +230,7 @@ void SUEGT2Menu::SetMenuState(EUEGT2MenuState InState)
 {
 	MenuState = InState;
 	Page = EUEGT2MenuPage::Root;
+	RestBed.Reset();
 	PendingRebind.Reset();
 	Rebuild();
 }
@@ -265,6 +268,25 @@ TSharedRef<SWidget> SUEGT2Menu::BuildSurveyJournal()
 	];
 }
 
+TSharedPtr<SWidget> SUEGT2Menu::OpenRestPanel(AUEGT2Amenity* Bed)
+{
+	RestBed = Bed;
+	GoToPage(EUEGT2MenuPage::Rest);
+	return RestInitialFocus.Pin();
+}
+
+TSharedRef<SWidget> SUEGT2Menu::BuildRestPanel()
+{
+	TWeakObjectPtr<AUEGT2PlayerController> WeakPC = Controller;
+	TSharedRef<SUEGT2RestPanel> RestPanel = SNew(SUEGT2RestPanel).Controller(WeakPC).Bed(RestBed)
+		.OnClose(FSimpleDelegate::CreateLambda([WeakPC]() { if (WeakPC.IsValid()) { WeakPC->CloseMenu(); } }));
+	RestInitialFocus = RestPanel->GetInitialFocusWidget();
+	return SNew(SBox).WidthOverride(560.0f)
+	[
+		RestPanel
+	];
+}
+
 void SUEGT2Menu::SelectTab(EUEGT2SettingsTab InTab)
 {
 	Tab = InTab;
@@ -289,6 +311,7 @@ void SUEGT2Menu::Rebuild()
 		Page == EUEGT2MenuPage::Root    ? BuildRoot() :
 		Page == EUEGT2MenuPage::DevMode ? BuildDevMode() :
 		Page == EUEGT2MenuPage::SurveyJournal ? BuildSurveyJournal() :
+		Page == EUEGT2MenuPage::Rest ? BuildRestPanel() :
 		                                  BuildSettings());
 }
 
@@ -846,6 +869,29 @@ TSharedRef<SWidget> SUEGT2Menu::BuildGameplayTab()
 		.AutoWrapText(true)
 	];
 
+	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
+	[ Label(LOCTEXT("LifeHeading", "DAILY LIFE"), 12, Accent, "Bold") ];
+	List->AddSlot().AutoHeight().Padding(0, 7)
+	[
+		SNew(SBox)
+		.IsEnabled_Lambda([WeakPC]() { return WeakPC.IsValid() && WeakPC->IsRestAvailable(); })
+		[
+			Row(LOCTEXT("SleepUntilSetting", "Sleep Until"), MakeToggle(
+				[S]() { return S->GetSleepUntilEnabled(); },
+				[this, S](bool bValue) { S->SetSleepUntilEnabled(bValue); ApplyAndSave(); }))
+		]
+	];
+	List->AddSlot().AutoHeight().Padding(0, 2, 0, 12)
+	[
+		SNew(STextBlock)
+		.Text_Lambda([WeakPC]()
+		{
+			return WeakPC.IsValid() && WeakPC->IsRestAvailable()
+				? LOCTEXT("SleepUntilHint", "Choose a wake time at a bed. Turning this off keeps ordinary sleep available.")
+				: LOCTEXT("SleepUntilUnavailable", "Chosen wake times are disabled for this session.");
+		})
+		.Font(Font("Regular", 11)).ColorAndOpacity(FSlateColor(Muted)).AutoWrapText(true)
+	];
 	List->AddSlot().AutoHeight().Padding(0, 4, 0, 10)
 	[ Label(LOCTEXT("CameraHeading", "CAMERA & HUD"), 12, Accent, "Bold") ];
 	List->AddSlot().AutoHeight().Padding(0, 7)
@@ -1584,6 +1630,12 @@ FReply SUEGT2Menu::OnKeyDown(const FGeometry& Geometry, const FKeyEvent& KeyEven
 	}
 
 	const FKey Key = KeyEvent.GetKey();
+	if (Page == EUEGT2MenuPage::Rest && (Key == EKeys::Escape
+		|| Key == UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Menu) || Key == EKeys::Gamepad_Special_Right))
+	{
+		if (AUEGT2PlayerController* PC = Controller.Get()) { PC->CloseMenu(); }
+		return FReply::Handled();
+	}
 	if (Page == EUEGT2MenuPage::SurveyJournal && (Key == EKeys::Escape
 		|| Key == UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Journal)
 		|| Key == UUEGT2InputConfig::GetEffectiveKey(EUEGT2InputSlot::Menu)
@@ -1627,6 +1679,7 @@ FReply SUEGT2Menu::OnPreviewKeyDown(const FGeometry& Geometry, const FKeyEvent& 
 	// Enter/Space can be rebound to Journal. Its shortcut must take priority
 	// over Slate's Accept action on both Track and the pause root's buttons.
 	if (Page == EUEGT2MenuPage::SurveyJournal) { return OnKeyDown(Geometry, KeyEvent); }
+	if (Page == EUEGT2MenuPage::Rest) { return OnKeyDown(Geometry, KeyEvent); }
 	const AUEGT2PlayerController* PC = Controller.Get();
 	const FKey Key = KeyEvent.GetKey();
 	if (Page == EUEGT2MenuPage::Root && MenuState == EUEGT2MenuState::Pause

@@ -109,6 +109,8 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetSurveyJournalEnabled() const { return bSurveyJournalEnabled; }
 	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetSurveyJournalEnabled(bool bValue);
+	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetSleepUntilEnabled() const { return bSleepUntilEnabled; }
+	UFUNCTION(BlueprintCallable, Category = "UEGT2|Gameplay") void SetSleepUntilEnabled(bool bValue);
 
 	/** The text-message bubbles NPCs put over their heads. */
 	UFUNCTION(BlueprintPure, Category = "UEGT2|Gameplay") bool GetShowSpeechBubbles() const { return bShowSpeechBubbles; }
@@ -166,6 +168,7 @@ private:
 	UPROPERTY(Config) bool bShowNeeds = true;
 	UPROPERTY(Config) bool bSaveProgressEnabled = true;
 	UPROPERTY(Config) bool bSurveyJournalEnabled = true;
+	UPROPERTY(Config) bool bSleepUntilEnabled = true;
 	UPROPERTY(Config) bool bUseFahrenheit = false;
 	UPROPERTY(Config) float CrowdDensity = 1.0f;
 

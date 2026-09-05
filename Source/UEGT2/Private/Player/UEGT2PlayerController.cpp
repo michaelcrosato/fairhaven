@@ -6,6 +6,7 @@
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/World.h"
 #include "GameFramework/PlayerStart.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/CommandLine.h"
@@ -15,6 +16,7 @@
 #include "Player/UEGT2InputConfig.h"
 #include "Player/UEGT2NeedsComponent.h"
 #include "Progress/UEGT2ProgressSubsystem.h"
+#include "Rest/UEGT2RestSubsystem.h"
 #include "Settings/UEGT2GameUserSettings.h"
 #include "Survey/UEGT2SurveySubsystem.h"
 #include "UEGT2LogChannels.h"
@@ -263,6 +265,7 @@ void AUEGT2PlayerController::AskDialogueTopic(int32 Topic)
 
 void AUEGT2PlayerController::ApplyMenuState(EUEGT2MenuState NewState)
 {
+	if (IsRestPanelOpen()) { UE_LOG(LogUEGT2Rest, Log, TEXT("Sleep panel closed.")); }
 	if (IsSurveyJournalOpen() && NewState != EUEGT2MenuState::Pause)
 	{
 		UE_LOG(LogUEGT2Survey, Log, TEXT("Survey journal closed."));
@@ -320,6 +323,42 @@ void AUEGT2PlayerController::ApplyMenuState(EUEGT2MenuState NewState)
 void AUEGT2PlayerController::ShowMainMenu() { ApplyMenuState(EUEGT2MenuState::Main); }
 void AUEGT2PlayerController::ShowPauseMenu() { ApplyMenuState(EUEGT2MenuState::Pause); }
 void AUEGT2PlayerController::CloseMenu() { ApplyMenuState(EUEGT2MenuState::None); }
+
+bool AUEGT2PlayerController::OpenRestPanel(AUEGT2Amenity* Bed)
+{
+	UUEGT2RestSubsystem* Rest = UUEGT2RestSubsystem::Get(GetWorld());
+	FText Reason;
+	if (!Rest || !Rest->CanSleepAt(this, Bed, Reason)) { return false; }
+	ShowPauseMenu();
+	if (!MenuWidget.IsValid() || !GetWorld()->IsPaused())
+	{
+		CloseMenu();
+		return false;
+	}
+	const TSharedPtr<SWidget> InitialFocus = MenuWidget->OpenRestPanel(Bed);
+	if (InitialFocus.IsValid())
+	{
+		// Queue this after the page is attached and after ShowPauseMenu's root
+		// focus. A full-screen focus rectangle cannot navigate into its buttons.
+		FInputModeUIOnly Mode;
+		Mode.SetWidgetToFocus(InitialFocus);
+		Mode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(Mode);
+	}
+	UE_LOG(LogUEGT2Rest, Log, TEXT("Sleep panel opened."));
+	return true;
+}
+
+bool AUEGT2PlayerController::IsRestPanelOpen() const
+{
+	return MenuState == EUEGT2MenuState::Pause && MenuWidget.IsValid() && MenuWidget->IsRestPanelOpen();
+}
+
+bool AUEGT2PlayerController::IsRestAvailable() const
+{
+	const UUEGT2RestSubsystem* Rest = UUEGT2RestSubsystem::Get(GetWorld());
+	return Rest && Rest->IsAvailable();
+}
 
 void AUEGT2PlayerController::ToggleMenu()
 {
